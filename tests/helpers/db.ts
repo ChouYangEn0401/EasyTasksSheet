@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createApp } from '../../src/server/app.ts';
+import { createApp, type AppDeps } from '../../src/server/app.ts';
 import { createDb, type Db } from '../../src/server/db/client.ts';
 import { runMigrations } from '../../src/server/db/migrate.ts';
 import { runSeed } from '../../src/server/db/seed.ts';
@@ -37,9 +37,9 @@ export function createFakeClock(start = Date.parse('2026-01-05T09:00:00+08:00'))
 }
 
 /** 建立測試用 app（記憶體 DB，可注入時鐘） */
-export function createTestApp(options: { now?: () => number } = {}) {
+export function createTestApp(options: Omit<AppDeps, 'db'> = {}) {
   const db = createTestDb();
-  const app = createApp({ db, now: options.now });
+  const app = createApp({ db, ...options });
   return { app, db };
 }
 

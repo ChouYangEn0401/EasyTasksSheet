@@ -5,7 +5,12 @@ export const STATUS_CATEGORIES = ['todo', 'doing', 'done'] as const;
 export const statusCategory = z.enum(STATUS_CATEGORIES);
 export type StatusCategory = z.infer<typeof statusCategory>;
 
-const color = z.string().regex(/^#[0-9a-fA-F]{6}$/, '顏色格式須為 #RRGGBB');
+/** 標籤 / 專案 / 狀態 / select 選項共用調色盤鍵名（DB 存鍵名，不存色碼；色值見 docs/design/core-shell.md） */
+export const TAG_COLORS = ['gray', 'blue', 'purple', 'green', 'yellow', 'orange', 'red', 'teal'] as const;
+export const tagColor = z.enum(TAG_COLORS);
+export type TagColor = z.infer<typeof tagColor>;
+
+const color = tagColor;
 
 export const project = z.object({
   id: z.number().int(),

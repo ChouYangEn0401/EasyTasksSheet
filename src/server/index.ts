@@ -7,12 +7,14 @@ import { createApp } from './app.ts';
 import { createDb } from './db/client.ts';
 import { runMigrations } from './db/migrate.ts';
 import { runSeed } from './db/seed.ts';
+import { ensureAdmin } from './features/users/service.ts';
 
 process.env.TZ = config.TZ;
 
 const db = createDb(config.DATABASE_PATH);
 runMigrations(db);
 runSeed(db);
+await ensureAdmin(db, { username: config.ADMIN_USERNAME, password: config.ADMIN_PASSWORD });
 
 const app = createApp({ db });
 

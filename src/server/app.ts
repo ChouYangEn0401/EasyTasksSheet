@@ -1,6 +1,9 @@
 import { Hono } from 'hono';
 import type { Db } from './db/client.ts';
+import { config } from './config.ts';
 import type { AppEnv } from './lib/context.ts';
+import { csrfGuard, requireSession } from './lib/session.ts';
+import { authSettingsFrom, type AuthSettings } from './lib/settings.ts';
 import { errorBody, handleError } from './lib/errors.ts';
 import { authRoutes } from './features/auth/routes.ts';
 import { usersRoutes } from './features/users/routes.ts';
@@ -18,17 +21,26 @@ import { changesRoutes, eventsRoutes } from './features/sync/routes.ts';
 export type AppDeps = {
   db: Db;
   now?: () => number;
+  /** 認證設定覆寫（測試用）；預設取自環境變數 */
+  settings?: Partial<AuthSettings>;
 };
 
+/** 不需登入的路由 */
+const PUBLIC_PATHS = new Set(['/api/health', '/api/auth/login', '/api/auth/logout']);
+
 /** 建立 API app（不含靜態檔）。所有 feature router 在此一次掛好 */
-export function createApp({ db, now = Date.now }: AppDeps) {
+export function createApp({ db, now = Date.now, settings }: AppDeps) {
   const api = new Hono<AppEnv>();
+  const authSettings = { ...authSettingsFrom(config), ...settings };
 
   api.use('*', async (c, next) => {
     c.set('db', db);
     c.set('now', now);
+    c.set('settings', authSettings);
     await next();
   });
+  api.use('*', csrfGuard);
+  api.use('*', (c, next) => (PUBLIC_PATHS.has(c.req.path) ? next() : requireSession(c, next)));
 
   api.get('/health', (c) => c.json({ ok: true as const, time: now() }));
 

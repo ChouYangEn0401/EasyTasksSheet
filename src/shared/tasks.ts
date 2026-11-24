@@ -48,10 +48,24 @@ export type TaskCreateInput = z.infer<typeof taskCreateInput>;
 export const taskUpdateInput = taskCreateInput.partial();
 export type TaskUpdateInput = z.infer<typeof taskUpdateInput>;
 
+/** 逗號分隔的 id 清單，例如 `1,3` */
+const idList = z
+  .string()
+  .regex(/^\d+(,\d+)*$/, '格式須為逗號分隔的 id')
+  .transform((s) => s.split(',').map(Number));
+
+/** GET /api/tasks 的篩選；多值以逗號分隔，assignee 可含 `none`（未指派） */
 export const taskListQuery = z.object({
-  project: z.coerce.number().int().optional(),
-  assignee: z.coerce.number().int().optional(),
-  status: z.coerce.number().int().optional(),
-  q: z.string().optional(),
+  project: idList.optional(),
+  assignee: z
+    .string()
+    .regex(/^(\d+|none)(,(\d+|none))*$/, '格式須為逗號分隔的 id 或 none')
+    .transform((s) => {
+      const parts = s.split(',');
+      return { ids: parts.filter((p) => p !== 'none').map(Number), none: parts.includes('none') };
+    })
+    .optional(),
+  status: idList.optional(),
+  q: z.string().trim().max(200).optional(),
 });
 export type TaskListQuery = z.infer<typeof taskListQuery>;

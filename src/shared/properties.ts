@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { timestamps } from './common.ts';
+import { tagColor } from './projects.ts';
 
 export const PROPERTY_TYPES = [
   'text',
@@ -17,7 +18,7 @@ export type PropertyType = z.infer<typeof propertyType>;
 export const selectOption = z.object({
   id: z.string().min(1),
   label: z.string().min(1).max(100),
-  color: z.string().optional(),
+  color: tagColor.optional(),
 });
 export type SelectOption = z.infer<typeof selectOption>;
 
@@ -47,6 +48,11 @@ export const propertyUpdateInput = z.object({
 });
 export type PropertyUpdateInput = z.infer<typeof propertyUpdateInput>;
 
-/** tasks.custom 格式：{ "<property_id>": value } */
+/**
+ * tasks.custom 格式：{ "<property_id>": value }。
+ * 寫入時依 property 型別驗證：text=string、number=number、select=選項 id、multi_select=選項 id 陣列、
+ * date=YYYY-MM-DD、checkbox=boolean、url=URL 字串、person=使用者 id。
+ * PATCH 時與既有值逐鍵合併，值為 null 代表清除該欄。
+ */
 export const customValues = z.record(z.string(), z.unknown());
 export type CustomValues = z.infer<typeof customValues>;

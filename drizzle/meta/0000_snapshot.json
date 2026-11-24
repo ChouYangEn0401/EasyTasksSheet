@@ -515,7 +515,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'#4f6bed'"
+          "default": "'blue'"
         },
         "is_archived": {
           "name": "is_archived",

@@ -70,7 +70,7 @@ CREATE UNIQUE INDEX `personal_user_task_uq` ON `personal_items` (`user_id`,`task
 CREATE TABLE `projects` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`name` text NOT NULL,
-	`color` text DEFAULT '#4f6bed' NOT NULL,
+	`color` text DEFAULT 'blue' NOT NULL,
 	`is_archived` integer DEFAULT false NOT NULL,
 	`sort_order` real DEFAULT 0 NOT NULL,
 	`created_at` integer NOT NULL,

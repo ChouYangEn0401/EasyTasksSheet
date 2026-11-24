@@ -13,8 +13,14 @@ export const changePasswordInput = z.object({
 });
 export type ChangePasswordInput = z.infer<typeof changePasswordInput>;
 
-export const meResponse = z.object({
-  user: publicUser,
-  session: z.object({ expiresAt: z.number(), idleTimeoutMs: z.number() }),
+/** session 資訊：expiresAt 為 9 小時絕對期限；閒置截止 = lastActiveAt + idleTimeoutMs */
+export const sessionInfo = z.object({
+  expiresAt: z.number(),
+  lastActiveAt: z.number(),
+  idleTimeoutMs: z.number(),
 });
+export type SessionInfo = z.infer<typeof sessionInfo>;
+
+/** GET /api/auth/me、POST /api/auth/login 的回應 */
+export const meResponse = z.object({ user: publicUser, session: sessionInfo });
 export type MeResponse = z.infer<typeof meResponse>;

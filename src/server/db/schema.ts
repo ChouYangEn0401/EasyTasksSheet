@@ -59,7 +59,8 @@ export const loginAttempts = sqliteTable(
 export const projects = sqliteTable('projects', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull(),
-  color: text('color').notNull().default('#4f6bed'),
+  /** 調色盤鍵名（TAG_COLORS），不存色碼 */
+  color: text('color').notNull().default('blue'),
   isArchived: bool('is_archived').notNull().default(false),
   sortOrder: real('sort_order').notNull().default(0),
   createdAt: createdAt(),
