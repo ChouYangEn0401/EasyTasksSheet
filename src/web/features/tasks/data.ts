@@ -1,0 +1,201 @@
+/**
+ * T1 的資料層：任務欄位樂觀更新、樂觀新增、自訂 property CRUD、「剛建立 / 剛移動」高亮。
+ * 共用查詢鍵沿用 lib/queryClient.ts；不修改 lib。
+ */
+import { useCallback, useSyncExternalStore } from 'react';
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import type { PropertyCreateInput, PropertyDef, PropertyUpdateInput } from '../../../shared/properties.ts';
+import type { Task, TaskCreateInput, TaskUpdateInput } from '../../../shared/tasks.ts';
+import { api } from '../../lib/api.ts';
+import type { TaskFilters } from '../../lib/filters.ts';
+import { queryKeys } from '../../lib/queryClient.ts';
+import { applyPatch, matchesFilters } from './model.ts';
+
+// ── 高亮（剛建立 / 剛因編輯而移動）─────────────────
+
+const FLASH_MS = 1200;
+let flashed = new Set<number>();
+const flashListeners = new Set<() => void>();
+const emitFlash = () => flashListeners.forEach((fn) => fn());
+
+export function flashTask(id: number) {
+  flashed = new Set(flashed).add(id);
+  emitFlash();
+  window.setTimeout(() => {
+    if (!flashed.has(id)) return;
+    const next = new Set(flashed);
+    next.delete(id);
+    flashed = next;
+    emitFlash();
+  }, FLASH_MS);
+}
+
+export function useFlashed(): Set<number> {
+  return useSyncExternalStore(
+    (fn) => {
+      flashListeners.add(fn);
+      return () => flashListeners.delete(fn);
+    },
+    () => flashed,
+  );
+}
+
+// ── 快取工具 ───────────────────────────────────────
+
+type ListEntry = [readonly unknown[], Task[] | undefined];
+
+function listEntries(qc: QueryClient): ListEntry[] {
+  return qc.getQueriesData<Task[]>({ queryKey: queryKeys.tasks.lists() }) as ListEntry[];
+}
+
+function filtersOf(key: readonly unknown[]): TaskFilters | undefined {
+  return key[2] as TaskFilters | undefined;
+}
+
+/** 以 fn 改寫所有任務清單快取 */
+function updateLists(qc: QueryClient, fn: (list: Task[], filters: TaskFilters | undefined) => Task[]) {
+  for (const [key, list] of listEntries(qc)) {
+    if (list) qc.setQueryData(key, fn(list, filtersOf(key)));
+  }
+}
+
+function findTask(qc: QueryClient, id: number): Task | undefined {
+  const detail = qc.getQueryData<Task>(queryKeys.tasks.detail(id));
+  if (detail) return detail;
+  for (const [, list] of listEntries(qc)) {
+    const t = list?.find((x) => x.id === id);
+    if (t) return t;
+  }
+  return undefined;
+}
+
+// ── 欄位更新（樂觀）────────────────────────────────
+
+type UpdateVars = { id: number; patch: TaskUpdateInput; userId?: number | null };
+type UpdateCtx = { lists: ListEntry[]; detail: Task | undefined };
+
+/** PATCH 單一欄位：立即套用到所有快取，失敗回復 */
+export function useOptimisticUpdate() {
+  const qc = useQueryClient();
+  return useMutation<Task, Error, UpdateVars, UpdateCtx>({
+    mutationFn: ({ id, patch }) => api.patch<Task>(`/tasks/${id}`, patch),
+    onMutate: async ({ id, patch, userId }) => {
+      await qc.cancelQueries({ queryKey: queryKeys.tasks.all });
+      const lists = listEntries(qc);
+      const detail = qc.getQueryData<Task>(queryKeys.tasks.detail(id));
+      const now = Date.now();
+      updateLists(qc, (list) => list.map((t) => (t.id === id ? applyPatch(t, patch, now, userId) : t)));
+      if (detail) qc.setQueryData(queryKeys.tasks.detail(id), applyPatch(detail, patch, now, userId));
+      return { lists, detail };
+    },
+    onError: (_err, { id }, ctx) => {
+      if (!ctx) return;
+      for (const [key, list] of ctx.lists) qc.setQueryData(key, list);
+      if (ctx.detail) qc.setQueryData(queryKeys.tasks.detail(id), ctx.detail);
+    },
+    onSuccess: (task) => {
+      qc.setQueryData(queryKeys.tasks.detail(task.id), task);
+      updateLists(qc, (list) => list.map((t) => (t.id === task.id ? task : t)));
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() }),
+  });
+}
+
+// ── 新增（樂觀插入）────────────────────────────────
+
+let tempSeq = 0;
+
+export type CreateResult = { task: Task; matches: boolean };
+
+/**
+ * 樂觀新增：立即在符合條件的清單末端插入暫時列（負 id），成功後換成正式資料並高亮；
+ * 失敗則移除。回傳 promise（成功值含「是否符合目前篩選」）。
+ */
+export function useOptimisticCreate() {
+  const qc = useQueryClient();
+  return useCallback(
+    async (input: TaskCreateInput, temp: Omit<Task, 'id'>, current: TaskFilters): Promise<CreateResult> => {
+      const tempId = -++tempSeq;
+      const tempTask: Task = { ...temp, id: tempId };
+      await qc.cancelQueries({ queryKey: queryKeys.tasks.lists() });
+      updateLists(qc, (list, f) => (!f || matchesFilters(tempTask, f) ? [...list, tempTask] : list));
+      try {
+        const task = await api.post<Task>('/tasks', input);
+        qc.setQueryData(queryKeys.tasks.detail(task.id), task);
+        updateLists(qc, (list, f) => {
+          const without = list.filter((t) => t.id !== tempId);
+          return !f || matchesFilters(task, f) ? [...without, task] : without;
+        });
+        flashTask(task.id);
+        void qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
+        return { task, matches: matchesFilters(task, current) };
+      } catch (err) {
+        updateLists(qc, (list) => list.filter((t) => t.id !== tempId));
+        throw err;
+      }
+    },
+    [qc],
+  );
+}
+
+// ── 刪除任務 ───────────────────────────────────────
+
+export function useDeleteTaskOptimistic() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.delete<{ ok: true }>(`/tasks/${id}`),
+    onSuccess: (_r, id) => {
+      updateLists(qc, (list) => list.filter((t) => t.id !== id));
+      // Drawer 仍開著時不移除（否則會立即重抓而得到 404）；關閉後由快取回收
+      const detail = qc.getQueryCache().find({ queryKey: queryKeys.tasks.detail(id) });
+      if (!detail?.getObserversCount()) qc.removeQueries({ queryKey: queryKeys.tasks.detail(id) });
+      return qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
+    },
+  });
+}
+
+// ── 自訂 property ──────────────────────────────────
+
+export function useCreateProperty() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PropertyCreateInput) => api.post<PropertyDef>('/properties', input),
+    onSuccess: (p) => {
+      qc.setQueryData<PropertyDef[]>(queryKeys.properties, (prev) => (prev ? [...prev, p] : [p]));
+      return qc.invalidateQueries({ queryKey: queryKeys.properties });
+    },
+  });
+}
+
+export function useUpdateProperty() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...input }: PropertyUpdateInput & { id: number }) =>
+      api.patch<PropertyDef>(`/properties/${id}`, input),
+    onMutate: async ({ id, ...input }) => {
+      await qc.cancelQueries({ queryKey: queryKeys.properties });
+      const prev = qc.getQueryData<PropertyDef[]>(queryKeys.properties);
+      qc.setQueryData<PropertyDef[]>(queryKeys.properties, (list) =>
+        list?.map((p) => (p.id === id ? { ...p, ...input } : p)),
+      );
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKeys.properties, ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.properties }),
+  });
+}
+
+export function useDeleteProperty() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.delete<{ ok: true }>(`/properties/${id}`),
+    onSuccess: (_r, id) => {
+      qc.setQueryData<PropertyDef[]>(queryKeys.properties, (list) => list?.filter((p) => p.id !== id));
+      return qc.invalidateQueries({ queryKey: queryKeys.properties });
+    },
+  });
+}
+
+export { findTask };

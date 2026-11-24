@@ -1,27 +1,35 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
 import type { Task } from '../../../shared/tasks.ts';
 import { ApiError } from '../../lib/api.ts';
-import { formatDateOnly, isOverdue } from '../../lib/format.ts';
-import { useProjectsById, useStatusesById, useTask, useUsersById } from '../../lib/hooks.ts';
+import { useCurrentUser } from '../../lib/auth.ts';
+import { useProperties, useTask } from '../../lib/hooks.ts';
 import { closeTask, readTaskParam } from '../../lib/openTask.ts';
 import { isEditableTarget } from '../../lib/shortcuts.ts';
+import { useTaskFilters } from '../../lib/useTaskFilters.ts';
 import {
-  Avatar,
   Button,
-  ColorDot,
+  Dialog,
   EmptyState,
   ErrorState,
+  Menu,
   Skeleton,
-  StatusBadge,
+  Textarea,
   UpdatedAt,
 } from '../../ui/index.ts';
 import { PinButton } from '../personal/PinButton.tsx';
+import { useDeleteTaskOptimistic, useOptimisticUpdate } from './data.ts';
+import { EditableField, type EditState } from './EditableField.tsx';
+import type { FieldCol } from './fields.tsx';
+import { applicableProperties, propertyColumn } from './model.ts';
+import { Popover } from './Popover.tsx';
+import { NewPropertyForm } from './PropertyPanel.tsx';
+import './tasks.css';
 
 /**
- * 插槽：任務詳情抽屜（core 最小版：唯讀，由 feat/task-list 升級為可編輯）。
+ * 插槽：任務詳情抽屜（T1 升級為可編輯）。
  * 由網址 `?task=<id>` 驅動（以 openTask(id) 開啟）；由 AppShell 全域掛載，任何頁面皆可開啟。
- * 關閉：✕、Esc、移除 ?task 或瀏覽器上一頁。無遮罩（1024px 以下視為 modal 並加遮罩）。
+ * 關閉：✕、Esc（編輯中的 Esc 優先取消編輯）、移除 ?task 或瀏覽器上一頁。
  */
 export function TaskDrawer() {
   const [sp] = useSearchParams();
@@ -30,17 +38,43 @@ export function TaskDrawer() {
   return <TaskDrawerPanel key={id} id={id} />;
 }
 
+const FIELDS: FieldCol[] = [
+  { key: 'assignee', label: '負責人', kind: 'assignee' },
+  { key: 'project', label: '專案', kind: 'project' },
+  { key: 'priority', label: '優先度', kind: 'priority' },
+  { key: 'startDate', label: '開始日', kind: 'startDate' },
+  { key: 'dueDate', label: '到期日', kind: 'dueDate' },
+  { key: 'estimateHours', label: '預估工時', kind: 'estimate' },
+  { key: 'progress', label: '進度', kind: 'progress' },
+];
+const TITLE: FieldCol = { key: 'title', label: '標題', kind: 'title' };
+const STATUS: FieldCol = { key: 'status', label: '狀態', kind: 'status' };
+
 function TaskDrawerPanel({ id }: { id: number }) {
   const query = useTask(id);
   const titleId = useId();
-  const panelRef = useRef<HTMLElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const del = useDeleteTaskOptimistic();
 
   useEffect(() => {
-    panelRef.current?.focus();
+    closeRef.current?.focus();
   }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'F6') {
+        // 非 modal 時在清單與 Drawer 間切換 focus
+        const panel = document.querySelector('.task-drawer');
+        if (panel?.contains(e.target as Node)) {
+          const cell = document.querySelector<HTMLElement>('[role="grid"] [data-nav][tabindex="0"]');
+          if (cell) {
+            e.preventDefault();
+            cell.focus();
+          }
+        }
+        return;
+      }
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       if (isEditableTarget(e.target)) return;
       if (document.querySelector('dialog[open]')) return;
@@ -75,7 +109,6 @@ function TaskDrawerPanel({ id }: { id: number }) {
     <>
       <div className="task-drawer-backdrop" onClick={closeTask} aria-hidden="true" />
       <aside
-        ref={panelRef}
         className="task-drawer"
         role="dialog"
         aria-modal="false"
@@ -87,104 +120,250 @@ function TaskDrawerPanel({ id }: { id: number }) {
         <div className="task-drawer-head">
           <span className="task-drawer-id">#{id}</span>
           {task && <PinButton taskId={task.id} size="sm" />}
-          <Button variant="ghost" size="sm" iconOnly icon="x" aria-label="關閉任務詳情" onClick={closeTask} />
+          {task && (
+            <Menu
+              align="end"
+              width={180}
+              label="更多動作"
+              trigger={(p) => (
+                <Button {...p} variant="ghost" size="sm" iconOnly icon="menu" aria-label="更多動作" />
+              )}
+              items={[
+                {
+                  key: 'copy',
+                  label: '複製連結',
+                  onSelect: () =>
+                    void navigator.clipboard
+                      ?.writeText(`${window.location.origin}/tasks/list?task=${task.id}`)
+                      .catch(() => undefined),
+                },
+                { key: 'sep', separator: true },
+                { key: 'delete', label: '刪除任務', danger: true, onSelect: () => setConfirmDelete(true) },
+              ]}
+            />
+          )}
+          <Button
+            ref={closeRef}
+            variant="ghost"
+            size="sm"
+            iconOnly
+            icon="x"
+            aria-label="關閉任務詳情"
+            onClick={closeTask}
+          />
         </div>
         <div className="task-drawer-body">{body}</div>
         {task && (
-          <div className="task-drawer-foot">
+          <div className="task-drawer-foot tl-drawer-foot">
+            <UpdatedAt at={task.createdAt} by={task.createdBy} prefix="建立於" />
             <UpdatedAt at={task.updatedAt} by={task.updatedBy} prefix="更新於" />
           </div>
         )}
       </aside>
+      <Dialog
+        open={confirmDelete && !!task}
+        onClose={() => setConfirmDelete(false)}
+        role="alertdialog"
+        title={`刪除任務「${task?.title ?? ''}」？`}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmDelete(false)} data-autofocus>
+              取消
+            </Button>
+            <Button
+              variant="danger"
+              loading={del.isPending}
+              onClick={() =>
+                task &&
+                del.mutate(task.id, {
+                  onSuccess: () => {
+                    setConfirmDelete(false);
+                    closeTask();
+                  },
+                })
+              }
+            >
+              刪除
+            </Button>
+          </>
+        }
+      >
+        <p className="m-0">刪除後將從所有檢視中移除。</p>
+        {del.isError && <p className="ui-field-error">{del.error.message}</p>}
+      </Dialog>
     </>
   );
 }
 
 function FieldRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="task-field">
+    <div className="task-field tl-drawer-field">
       <span className="task-field-label">{label}</span>
-      <span className="flex min-w-0 items-center gap-2">{children}</span>
+      {children}
     </div>
   );
 }
 
-const Empty = () => <span className="task-field-empty">—</span>;
-
 function TaskDetail({ task, titleId }: { task: Task; titleId: string }) {
-  const users = useUsersById();
-  const projects = useProjectsById();
-  const statuses = useStatusesById();
-  const assignee = task.assigneeId != null ? users.get(task.assigneeId) : undefined;
-  const project = projects.get(task.projectId);
-  const status = statuses.get(task.statusId);
-  const overdue = status?.category !== 'done' && isOverdue(task.dueDate);
+  const [editing, setEditing] = useState<{ key: string; state: EditState } | null>(null);
+  const properties = useProperties().data;
+  const { filters } = useTaskFilters();
+  const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
+  const custom = applicableProperties(properties ?? [], task.projectId).map(propertyColumn);
+
+  const field = (col: FieldCol, className = '', ariaLabel: string | null = col.label) => (
+    <EditableField
+      task={task}
+      col={col}
+      mode="drawer"
+      tabIndex={0}
+      aria-label={ariaLabel ?? undefined}
+      className={`tl-drawer-value ${className}`}
+      edit={editing?.key === col.key ? editing.state : null}
+      onEditChange={(next) => setEditing(next ? { key: col.key, state: next } : null)}
+    />
+  );
 
   return (
     <>
-      <h2 id={titleId} className="task-drawer-title">
-        {task.title}
+      {/* 標題欄不設 aria-label，讓 Drawer 的名稱即為任務標題 */}
+      <h2 id={titleId} className="task-drawer-title tl-drawer-title">
+        {field(TITLE, 'tl-drawer-title-field', null)}
       </h2>
-      <StatusBadge status={status} />
+      {field(STATUS, 'tl-drawer-status')}
       <div className="task-drawer-section" style={{ marginTop: 16 }}>
-        <FieldRow label="負責人">
-          {task.assigneeId != null ? (
-            <>
-              <Avatar userId={task.assigneeId} size="sm" tooltip={false} />
-              <span className="truncate">{assignee?.displayName ?? '—'}</span>
-            </>
-          ) : (
-            <Empty />
-          )}
-        </FieldRow>
-        <FieldRow label="專案">
-          {project ? (
-            <>
-              <ColorDot color={project.color} size="md" />
-              <span className="truncate">{project.name}</span>
-            </>
-          ) : (
-            <Empty />
-          )}
-        </FieldRow>
-        <FieldRow label="開始日">{task.startDate ? formatDateOnly(task.startDate) : <Empty />}</FieldRow>
-        <FieldRow label="到期日">
-          {task.dueDate ? (
-            <span style={overdue ? { color: 'var(--color-status-overdue-text)' } : undefined}>
-              {formatDateOnly(task.dueDate)}
-              {overdue ? '（已逾期）' : ''}
-            </span>
-          ) : (
-            <Empty />
-          )}
-        </FieldRow>
-        <FieldRow label="預估工時">
-          {task.estimateHours != null ? `${task.estimateHours} 小時` : <Empty />}
-        </FieldRow>
-        <FieldRow label="進度">
-          <span
-            className="progress"
-            role="progressbar"
-            aria-valuenow={task.progress}
-            aria-valuemin={0}
-            aria-valuemax={100}
-          >
-            <span style={{ width: `${task.progress}%` }} />
-          </span>
-          <span className="tabular-nums text-secondary">{task.progress}%</span>
-        </FieldRow>
+        {FIELDS.map((f) => (
+          <FieldRow key={f.key} label={f.label}>
+            {field(f)}
+          </FieldRow>
+        ))}
       </div>
       <div className="task-drawer-section">
-        <div className="mb-2 text-sm font-medium text-secondary">描述</div>
-        {task.description ? (
-          <p className="m-0 whitespace-pre-wrap text-base" style={{ overflowWrap: 'anywhere' }}>
-            {task.description}
-          </p>
-        ) : (
-          <Empty />
+        <div className="tl-section-title">自訂欄位</div>
+        {custom.length === 0 && <div className="tl-empty tl-drawer-none">尚未建立自訂欄位</div>}
+        {custom.map((c) => (
+          <FieldRow key={c.key} label={c.label}>
+            {field(c)}
+          </FieldRow>
+        ))}
+        <Button
+          variant="ghost"
+          size="sm"
+          icon="plus"
+          className="tl-drawer-add"
+          onClick={(e) => setAddAnchor(addAnchor ? null : e.currentTarget)}
+        >
+          新增欄位
+        </Button>
+        {addAnchor && (
+          <Popover anchor={addAnchor} onClose={() => setAddAnchor(null)} width={300} label="新增欄位">
+            <NewPropertyForm
+              scopeProjectId={filters.project.length === 1 ? filters.project[0]! : null}
+              onDone={() => setAddAnchor(null)}
+            />
+          </Popover>
         )}
       </div>
+      <Description task={task} />
     </>
+  );
+}
+
+type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+
+/** 描述：失焦或 Ctrl+Enter 儲存；關閉 / 切換任務前先送出未存內容 */
+function Description({ task }: { task: Task }) {
+  const update = useOptimisticUpdate();
+  const me = useCurrentUser();
+  const [draft, setDraft] = useState(task.description);
+  const [base, setBase] = useState(task.description);
+  const [focused, setFocused] = useState(false);
+  const [state, setState] = useState<SaveState>('idle');
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const latest = useRef({ draft, base, id: task.id });
+  useEffect(() => {
+    latest.current = { draft, base, id: task.id };
+  });
+
+  // 他人修改（輪詢）：未在編輯且無未存內容時同步
+  if (task.description !== base && !focused && draft === base && state !== 'saving') {
+    setBase(task.description);
+    setDraft(task.description);
+  }
+
+  const save = () => {
+    if (draft === base) return;
+    const value = draft;
+    setState('saving');
+    update.mutate(
+      { id: task.id, patch: { description: value }, userId: me?.id },
+      {
+        onSuccess: () => {
+          setBase(value);
+          setState('saved');
+        },
+        onError: () => setState('error'),
+      },
+    );
+  };
+
+  // 卸載（關閉 Drawer / 切換任務）時送出未存內容
+  const mutate = update.mutate;
+  useEffect(
+    () => () => {
+      const { draft: d, base: b, id } = latest.current;
+      if (d !== b) mutate({ id, patch: { description: d } });
+    },
+    [mutate],
+  );
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.max(96, el.scrollHeight)}px`;
+  }, [draft]);
+
+  return (
+    <div className="task-drawer-section">
+      <div className="tl-section-title">
+        <span>描述</span>
+        <span className="tl-save-state" aria-live="polite">
+          {state === 'saving' && '儲存中…'}
+          {state === 'saved' && '已儲存'}
+          {state === 'error' && (
+            <span className="tl-danger-text">
+              儲存失敗 ·{' '}
+              <button type="button" className="tl-linkbtn" onClick={save}>
+                重試
+              </button>
+            </span>
+          )}
+        </span>
+      </div>
+      <Textarea
+        ref={ref}
+        value={draft}
+        placeholder="加入描述…"
+        aria-label="描述"
+        className="tl-desc"
+        onFocus={() => setFocused(true)}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          setFocused(false);
+          save();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            save();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+        }}
+      />
+    </div>
   );
 }
 

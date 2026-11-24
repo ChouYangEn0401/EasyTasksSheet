@@ -197,3 +197,11 @@
 | 1024–1279px | 標題欄最小寬縮為 240；其餘欄寬不變，靠區塊內水平捲動；工具列按鈕維持文字 |
 | 768–1023px | 標題欄最小寬 200；工具列「分組」「欄位」改 iconOnly + tooltip；列高維持 40，但 hover 才出現的「開啟」鈕、表頭 chevron、url 鉛筆**改為常駐顯示**（觸控無 hover）；Popover 寬度上限 `calc(100vw - 32px)`；Drawer 依 core 轉為 modal（有遮罩），故不加 padding-right |
 | < 768px | 不支援，僅需不產生頁面水平捲軸（表格仍在區塊內捲動） |
+
+## 11. 實作備註（T1 實作時補充）
+
+- 欄位顯示 / 隱藏：`localStorage` 鍵 `tasks.list.columns` 存「隱藏」的欄位鍵（新欄位預設顯示）；群組收合存 `tasks.list.collapsed`。
+- 依狀態分組且 FilterBar 已篩選狀態時，只顯示被篩選的狀態群組（避免出現一定為空的群組）。
+- 「分組」使用 core `Select`（core 無 `sm` 尺寸，故為 `md` 32px）；型別圖示以單一字元表示（core `Icon` 無對應圖示，不改 `ui/`）。
+- 自建 Popover 以 portal + `position: fixed` 錨定，避免被表格水平捲動區塊裁切；本資料夾 CSS 為 `features/tasks/tasks.css`，檔首宣告與 Tailwind 相同的 layer 順序。
+- 鍵盤：表頭 `Enter` / `Space` 切換排序、`Alt+↓` / 右鍵 / chevron 開欄位選單；`F6` 在清單與 Drawer 間切換。
