@@ -1,100 +1,87 @@
-import {
-  WORKTREE_STATES,
-  type Repo,
-  type WorktreeFlag,
-  type WorktreePlan,
-  type WorktreeRow,
-  type WorktreeState,
-  type WorktreeStatus,
-} from '../../../shared/eng.ts';
+import type {
+  IssueStatus,
+  MachineGroup,
+  ManualIssue,
+  WorktreeRecordStatus,
+  WorktreeReport,
+} from '../../../shared/engManual.ts';
 import type { BadgeTone } from '../../ui/index.ts';
 
 export type EngTab = 'issues' | 'worktrees';
 
-export type EngParams = { tab: EngTab; repoId: number | null; wt: WorktreeState | null };
+/** 分頁由 URL 驅動（?tab=worktrees；預設為問題） */
+export const readEngTab = (sp: URLSearchParams): EngTab =>
+  sp.get('tab') === 'worktrees' ? 'worktrees' : 'issues';
 
-/** 由 URL 讀出分頁、repo 與 worktree 篩選；repo 不存在時退回第一個 */
-export function readEngParams(sp: URLSearchParams, repos: Repo[]): EngParams {
-  const tab: EngTab = sp.get('tab') === 'worktrees' ? 'worktrees' : 'issues';
-  const raw = Number(sp.get('repo'));
-  const repoId = repos.find((r) => r.id === raw)?.id ?? repos[0]?.id ?? null;
-  const w = sp.get('wt');
-  const wt = (WORKTREE_STATES as readonly string[]).includes(w ?? '') ? (w as WorktreeState) : null;
-  return { tab, repoId, wt };
-}
-
-/** 寫回 URL（null 移除該參數；預設值不寫入） */
-export function writeEngParams(sp: URLSearchParams, patch: Partial<EngParams>): URLSearchParams {
+export function writeEngTab(sp: URLSearchParams, tab: EngTab): URLSearchParams {
   const next = new URLSearchParams(sp);
-  const set = (key: string, value: string | null) =>
-    value == null ? next.delete(key) : next.set(key, value);
-  if (patch.tab !== undefined) set('tab', patch.tab === 'issues' ? null : patch.tab);
-  if (patch.repoId !== undefined) set('repo', patch.repoId == null ? null : String(patch.repoId));
-  if (patch.wt !== undefined) set('wt', patch.wt);
+  if (tab === 'issues') next.delete('tab');
+  else next.set('tab', tab);
   return next;
 }
 
-export const STATUS_TONE: Record<WorktreeStatus, BadgeTone> = {
-  missing: 'danger',
-  unplanned: 'warning',
+export const ISSUE_TONE: Record<IssueStatus, BadgeTone> = {
+  open: 'warning',
+  doing: 'accent',
+  closed: 'success',
+};
+
+export const RECORD_TONE: Record<WorktreeRecordStatus, BadgeTone> = {
+  active: 'success',
+  idle: 'neutral',
   merged: 'accent',
-  ok: 'success',
+  lost: 'danger',
+  cleaned: 'neutral',
 };
 
-export const ABNORMAL: readonly WorktreeStatus[] = ['missing', 'unplanned', 'merged'];
+/** 問題清單：預設隱藏已結案 */
+export const visibleIssues = (issues: ManualIssue[], showClosed: boolean) =>
+  showClosed ? issues : issues.filter((i) => i.status !== 'closed');
 
-export const isFlag = (s: WorktreeState): s is WorktreeFlag => s === 'dirty' || s === 'stale';
+export const openIssueCount = (issues: ManualIssue[]) => issues.filter((i) => i.status !== 'closed').length;
 
-export function matchesState(row: WorktreeRow, state: WorktreeState): boolean {
-  return isFlag(state) ? row.flags.includes(state) : row.status === state;
+/** 已知的專案 / repo 名稱（供輸入框下拉建議），去重排序 */
+export function knownNames(...lists: (string | null | undefined)[][]): string[] {
+  const set = new Set<string>();
+  for (const list of lists) for (const n of list) if (n && n.trim()) set.add(n.trim());
+  return [...set].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
 }
 
-export function countStates(rows: WorktreeRow[]): Record<WorktreeState, number> {
-  const counts = Object.fromEntries(WORKTREE_STATES.map((s) => [s, 0])) as Record<WorktreeState, number>;
-  for (const r of rows) for (const s of WORKTREE_STATES) if (matchesState(r, s)) counts[s] += 1;
-  return counts;
+/** 路徑比對鍵（同後端 path_key）：正斜線、去除結尾斜線；Windows 路徑不分大小寫 */
+export function pathKey(p: string): string {
+  let s = p.trim().replace(/\\/g, '/');
+  while (s.length > 1 && s.endsWith('/') && !/^[a-zA-Z]:\/$/.test(s)) s = s.slice(0, -1);
+  if (/^[a-zA-Z]:\//.test(s) || s.startsWith('//')) s = s.toLowerCase();
+  return s;
 }
 
-export const filterRows = (rows: WorktreeRow[], state: WorktreeState | null) =>
-  state ? rows.filter((r) => matchesState(r, state)) : rows;
-
-export const abnormalCount = (rows: WorktreeRow[]) => rows.filter((r) => ABNORMAL.includes(r.status)).length;
-
-/** 從中間截斷：保留頭尾，中間以 … 取代 */
-export function middleTruncate(text: string, max: number): string {
-  if (text.length <= max) return text;
-  const keep = max - 1;
-  const head = Math.ceil(keep / 2);
-  return `${text.slice(0, head)}…${text.slice(text.length - (keep - head))}`;
+/** 紀錄對應的回報（同電腦群組內、同路徑） */
+export function reportFor(group: MachineGroup, path: string): WorktreeReport | undefined {
+  const k = pathKey(path);
+  return group.reports.find((r) => pathKey(r.path) === k);
 }
 
-export const shortSha = (sha: string | null) => (sha ? sha.slice(0, 7) : '');
-
-/** 只產生字串供複製；畫面不執行任何 git 寫入 */
-export function cleanupCommand(row: WorktreeRow): string {
-  const quote = (s: string) => (/[\s"'$`]/.test(s) ? `"${s.replace(/(["\\$`])/g, '\\$1')}"` : s);
-  const lines = [`git worktree remove ${quote(row.path)}`];
-  if (row.branch) lines.push(`git branch -d ${quote(row.branch)}`);
-  return lines.join('\n');
+/** 需要留意的提示數：可能遺失 + 未登記 */
+export function hintCount(machines: MachineGroup[]): number {
+  let n = 0;
+  for (const g of machines) {
+    n += g.records.filter((r) => r.hint === 'missing').length;
+    n += g.reports.filter((r) => !r.registered).length;
+  }
+  return n;
 }
 
-/** 安排對話框的表單內容 */
-export type PlanDraft = {
-  id?: number;
-  repoId: number;
-  branch: string;
-  path: string;
-  ownerId: number | null;
-  taskId: number | null;
-  purpose: string;
-};
+export const recordCount = (machines: MachineGroup[]) => machines.reduce((n, g) => n + g.records.length, 0);
 
-export const draftFromPlan = (p: WorktreePlan): PlanDraft => ({
-  id: p.id,
-  repoId: p.repoId,
-  branch: p.branch,
-  path: p.path,
-  ownerId: p.ownerId,
-  taskId: p.taskId,
-  purpose: p.purpose,
-});
+/** 回報快照的簡短描述，例如「未提交變更 · ↑2 ↓0 · 已併入 main」 */
+export function reportSummary(r: WorktreeReport): string {
+  const parts: string[] = [];
+  if (r.isPrunable) parts.push('目錄已不存在');
+  if (r.isDirty) parts.push('未提交變更');
+  if (r.ahead != null && r.behind != null) parts.push(`↑${r.ahead} ↓${r.behind}`);
+  if (r.isMerged) parts.push('已併入 main');
+  return parts.join(' · ') || '無變更';
+}
+
+/** localStorage：記住上次填寫的電腦名稱（新增表單預設值） */
+export const MACHINE_STORAGE_KEY = 'eng.machine';

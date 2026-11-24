@@ -1,115 +1,73 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
-  IssuesResponse,
-  Repo,
-  RepoInput,
-  RepoUpdateInput,
-  WorktreePlan,
-  WorktreePlanInput,
-  WorktreePlanUpdateInput,
-  WorktreesResponse,
-} from '../../../shared/eng.ts';
+  ManualIssue,
+  ManualIssueInput,
+  WorktreeRecord,
+  WorktreeRecordInput,
+  WorktreesOverview,
+} from '../../../shared/engManual.ts';
 import { api } from '../../lib/api.ts';
 import { LIST_POLL_MS } from '../../lib/queryClient.ts';
 
 export const engKeys = {
   all: ['eng'] as const,
-  repos: () => ['eng', 'repos'] as const,
-  issues: (repoId: number) => ['eng', 'issues', repoId] as const,
-  worktrees: (repoId: number) => ['eng', 'worktrees', repoId] as const,
+  issues: () => ['eng', 'issues'] as const,
+  worktrees: () => ['eng', 'worktrees'] as const,
 };
 
-export function useRepos() {
+export function useIssues() {
   return useQuery({
-    queryKey: engKeys.repos(),
-    queryFn: ({ signal }) => api.get<Repo[]>('/eng/repos', { signal }),
+    queryKey: engKeys.issues(),
+    queryFn: ({ signal }) => api.get<ManualIssue[]>('/eng/issues', { signal }),
     refetchInterval: LIST_POLL_MS,
   });
 }
 
-/** Issue 快取（輪詢只讀快取；後端在快取過期時才向來源同步） */
-export function useIssues(repoId: number | null) {
+export function useWorktrees() {
   return useQuery({
-    queryKey: engKeys.issues(repoId ?? 0),
-    queryFn: ({ signal }) => api.get<IssuesResponse>(`/eng/issues?repo=${repoId}`, { signal }),
-    enabled: repoId != null,
+    queryKey: engKeys.worktrees(),
+    queryFn: ({ signal }) => api.get<WorktreesOverview>('/eng/worktrees', { signal }),
     refetchInterval: LIST_POLL_MS,
   });
 }
 
-/** 手動重新整理：向來源同步 */
-export function useRefreshIssues() {
+/** 新增 / 編輯問題；silent 時由表單自行顯示錯誤（不發全域 toast） */
+export function useSaveIssue({ silent = false }: { silent?: boolean } = {}) {
   const qc = useQueryClient();
   return useMutation({
-    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
-    meta: { errorToast: false },
-    mutationFn: (repoId: number) => api.post<IssuesResponse>('/eng/issues/refresh', { repoId }),
-    onSuccess: (data) => qc.setQueryData(engKeys.issues(data.repoId), data),
+    meta: silent ? { errorToast: false } : undefined,
+    mutationFn: ({ id, ...input }: ManualIssueInput & { id?: number }) =>
+      id ? api.patch<ManualIssue>(`/eng/issues/${id}`, input) : api.post<ManualIssue>('/eng/issues', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.issues() }),
   });
 }
 
-export function useWorktrees(repoId: number | null) {
-  return useQuery({
-    queryKey: engKeys.worktrees(repoId ?? 0),
-    queryFn: ({ signal }) => api.get<WorktreesResponse>(`/eng/worktrees?repo=${repoId}`, { signal }),
-    enabled: repoId != null,
-    refetchInterval: LIST_POLL_MS,
+export function useDeleteIssue() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { errorToast: false },
+    mutationFn: (id: number) => api.delete<{ ok: true }>(`/eng/issues/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.issues() }),
   });
 }
 
-/** 重新偵測（略過 server 端的短暫快取） */
-export function useRedetect() {
+export function useSaveRecord({ silent = false }: { silent?: boolean } = {}) {
   const qc = useQueryClient();
   return useMutation({
-    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
-    meta: { errorToast: false },
-    mutationFn: (repoId: number) => api.get<WorktreesResponse>(`/eng/worktrees?repo=${repoId}&refresh=1`),
-    onSuccess: (data) => qc.setQueryData(engKeys.worktrees(data.repoId), data),
-  });
-}
-
-export function useSavePlan() {
-  const qc = useQueryClient();
-  return useMutation({
-    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
-    meta: { errorToast: false },
-    mutationFn: ({ id, ...input }: WorktreePlanInput & { id?: number }) =>
+    meta: silent ? { errorToast: false } : undefined,
+    mutationFn: ({ id, ...input }: WorktreeRecordInput & { id?: number }) =>
       id
-        ? api.patch<WorktreePlan>(`/eng/worktree-plans/${id}`, input satisfies WorktreePlanUpdateInput)
-        : api.post<WorktreePlan>('/eng/worktree-plans', input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['eng', 'worktrees'] }),
+        ? api.patch<WorktreeRecord>(`/eng/worktree-records/${id}`, input)
+        : api.post<WorktreeRecord>('/eng/worktree-records', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.worktrees() }),
   });
 }
 
-export function useDeletePlan() {
+export function useDeleteRecord() {
   const qc = useQueryClient();
   return useMutation({
-    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
     meta: { errorToast: false },
-    mutationFn: (id: number) => api.delete<{ ok: true }>(`/eng/worktree-plans/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['eng', 'worktrees'] }),
-  });
-}
-
-export function useSaveRepo() {
-  const qc = useQueryClient();
-  return useMutation({
-    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
-    meta: { errorToast: false },
-    mutationFn: ({ id, ...input }: RepoInput & { id?: number }) =>
-      id
-        ? api.patch<Repo>(`/eng/repos/${id}`, input satisfies RepoUpdateInput)
-        : api.post<Repo>('/eng/repos', input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.all }),
-  });
-}
-
-export function useDeleteRepo() {
-  const qc = useQueryClient();
-  return useMutation({
-    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
-    meta: { errorToast: false },
-    mutationFn: (id: number) => api.delete<{ ok: true }>(`/eng/repos/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.all }),
+    mutationFn: (id: number) => api.delete<{ ok: true }>(`/eng/worktree-records/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.worktrees() }),
   });
 }

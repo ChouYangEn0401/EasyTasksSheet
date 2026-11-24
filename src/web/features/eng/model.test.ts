@@ -1,89 +1,113 @@
 import { describe, expect, it } from 'vitest';
-import type { Repo, WorktreeRow } from '../../../shared/eng.ts';
+import type { MachineGroup, ManualIssue, WorktreeReport } from '../../../shared/engManual.ts';
 import {
-  abnormalCount,
-  cleanupCommand,
-  countStates,
-  filterRows,
-  middleTruncate,
-  readEngParams,
-  writeEngParams,
+  hintCount,
+  knownNames,
+  openIssueCount,
+  pathKey,
+  readEngTab,
+  recordCount,
+  reportFor,
+  reportSummary,
+  visibleIssues,
+  writeEngTab,
 } from './model.ts';
 
-const repo = (id: number): Repo => ({
+const issue = (id: number, status: ManualIssue['status']): ManualIssue => ({
   id,
-  name: `r${id}`,
-  localPath: null,
-  remoteSlug: null,
+  title: `i${id}`,
+  description: '',
+  project: '',
+  status,
+  assigneeId: null,
+  url: null,
+  createdBy: null,
+  updatedBy: null,
   createdAt: 0,
   updatedAt: 0,
 });
 
-const row = (status: WorktreeRow['status'], flags: WorktreeRow['flags'] = []): WorktreeRow => ({
-  key: `${status}-${flags.join()}`,
-  status,
-  flags,
+const report = (path: string, patch: Partial<WorktreeReport> = {}): WorktreeReport => ({
+  id: 1,
+  machine: 'PC',
+  repo: '',
+  path,
   branch: 'feat/x',
-  path: '/srv/wt x',
-  plan: null,
-  snapshot: null,
+  headSha: null,
+  isDirty: false,
+  ahead: null,
+  behind: null,
+  lastCommitAt: null,
+  isPrunable: false,
+  isMerged: false,
+  reportedAt: 0,
+  ...patch,
 });
 
-describe('URL 參數', () => {
-  it('預設 issues 分頁與第一個 repo；不合法的篩選忽略', () => {
-    const repos = [repo(3), repo(5)];
-    expect(readEngParams(new URLSearchParams(''), repos)).toEqual({ tab: 'issues', repoId: 3, wt: null });
-    expect(readEngParams(new URLSearchParams('tab=worktrees&repo=5&wt=dirty'), repos)).toEqual({
-      tab: 'worktrees',
-      repoId: 5,
-      wt: 'dirty',
-    });
-    expect(readEngParams(new URLSearchParams('repo=9&wt=bogus'), repos)).toMatchObject({
-      repoId: 3,
-      wt: null,
-    });
-    expect(readEngParams(new URLSearchParams(''), [])).toMatchObject({ repoId: null });
+describe('分頁 URL', () => {
+  it('預設為問題；寫回時預設值移除並保留其他參數', () => {
+    expect(readEngTab(new URLSearchParams(''))).toBe('issues');
+    expect(readEngTab(new URLSearchParams('tab=worktrees'))).toBe('worktrees');
+    expect(readEngTab(new URLSearchParams('tab=bogus'))).toBe('issues');
+    expect(writeEngTab(new URLSearchParams('tab=worktrees&task=1'), 'issues').toString()).toBe('task=1');
+    expect(writeEngTab(new URLSearchParams(), 'worktrees').toString()).toBe('tab=worktrees');
+  });
+});
+
+describe('問題', () => {
+  const list = [issue(1, 'open'), issue(2, 'doing'), issue(3, 'closed')];
+  it('預設隱藏已結案；未結案計數', () => {
+    expect(visibleIssues(list, false).map((i) => i.id)).toEqual([1, 2]);
+    expect(visibleIssues(list, true)).toHaveLength(3);
+    expect(openIssueCount(list)).toBe(2);
+  });
+  it('已知名稱去重排序、略過空白', () => {
+    expect(knownNames(['b', ' a ', ''], [null, 'b', undefined])).toEqual(['a', 'b']);
+  });
+});
+
+describe('worktree 比對', () => {
+  it('路徑鍵：Windows 不分大小寫與斜線方向，POSIX 保留大小寫', () => {
+    expect(pathKey('C:\\Work\\Repo\\')).toBe('c:/work/repo');
+    expect(pathKey('/home/A/wt/')).toBe('/home/A/wt');
   });
 
-  it('寫回時預設值移除', () => {
-    const sp = writeEngParams(new URLSearchParams('tab=worktrees&wt=stale&task=1'), {
-      tab: 'issues',
-      wt: null,
-    });
-    expect(sp.toString()).toBe('task=1');
-    expect(writeEngParams(new URLSearchParams(), { repoId: 2, tab: 'worktrees' }).toString()).toBe(
-      'tab=worktrees&repo=2',
+  it('紀錄找對應回報、計算提示數', () => {
+    const group: MachineGroup = {
+      machine: 'PC',
+      reportedAt: 1,
+      records: [
+        {
+          id: 1,
+          machine: 'PC',
+          path: 'c:/work/a',
+          branch: 'a',
+          ownerId: null,
+          purpose: '',
+          status: 'active',
+          note: '',
+          createdBy: null,
+          updatedBy: null,
+          createdAt: 0,
+          updatedAt: 0,
+          hint: 'missing',
+        },
+      ],
+      reports: [
+        { ...report('C:\\work\\b'), registered: false },
+        { ...report('C:/work/c'), registered: true },
+      ],
+    };
+    expect(reportFor(group, 'c:\\WORK\\b\\')?.path).toBe('C:\\work\\b');
+    expect(reportFor(group, 'c:/work/a')).toBeUndefined();
+    expect(hintCount([group])).toBe(2);
+    expect(recordCount([group])).toBe(1);
+  });
+
+  it('快照摘要', () => {
+    expect(reportSummary(report('/x'))).toBe('無變更');
+    expect(reportSummary(report('/x', { isDirty: true, ahead: 2, behind: 0, isMerged: true }))).toBe(
+      '未提交變更 · ↑2 ↓0 · 已併入 main',
     );
-  });
-});
-
-describe('worktree 計數與篩選', () => {
-  const rows = [
-    row('missing'),
-    row('unplanned'),
-    row('ok', ['dirty', 'stale']),
-    row('ok', ['dirty']),
-    row('ok'),
-  ];
-  it('主狀態與旗標分別計數；異常數只算前三種主狀態', () => {
-    expect(countStates(rows)).toEqual({ missing: 1, unplanned: 1, merged: 0, ok: 3, dirty: 2, stale: 1 });
-    expect(abnormalCount(rows)).toBe(2);
-    expect(filterRows(rows, 'dirty')).toHaveLength(2);
-    expect(filterRows(rows, null)).toHaveLength(5);
-  });
-});
-
-describe('顯示工具', () => {
-  it('從中間截斷', () => {
-    expect(middleTruncate('abcdefghij', 20)).toBe('abcdefghij');
-    const t = middleTruncate('C:/Users/me/Desktop/TasksSheets-eng-tracking', 20);
-    expect(t).toHaveLength(20);
-    expect(t.startsWith('C:/Users/')).toBe(true);
-    expect(t.endsWith('tracking')).toBe(true);
-    expect(t).toContain('…');
-  });
-
-  it('清理指令：路徑含空白時加引號', () => {
-    expect(cleanupCommand(row('merged'))).toBe('git worktree remove "/srv/wt x"\ngit branch -d feat/x');
   });
 });

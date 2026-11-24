@@ -4,7 +4,7 @@ import sqlite3
 import pytest
 
 from server.app.changes import prune_changes, record_change
-from server.app.db import DEFAULT_STATUSES, MIGRATIONS_DIR, create_db, run_migrations, run_seed
+from server.app.db import DEFAULT_STATUSES, DRIZZLE_WHEN, MIGRATIONS_DIR, create_db, run_migrations, run_seed
 
 from .helpers import create_test_db, create_test_user
 
@@ -13,6 +13,7 @@ ALL_TABLES = [
     "feedback_items",
     "git_issues_cache",
     "login_attempts",
+    "manual_issues",
     "personal_items",
     "projects",
     "property_defs",
@@ -22,6 +23,8 @@ ALL_TABLES = [
     "tasks",
     "users",
     "worktree_plans",
+    "worktree_records",
+    "worktree_reports",
     "worktree_snapshots",
 ]
 
@@ -39,7 +42,7 @@ def table_names(db):
 def test_fresh_db_full_schema_and_idempotent(tmp_path):
     path = str(tmp_path / "sub" / "test.db")
     db = create_db(path)
-    assert run_migrations(db) == ["0000_init", "0001_worktree_is_merged"]
+    assert run_migrations(db) == ["0000_init", "0001_worktree_is_merged", "0002_eng_manual"]
     run_seed(db)
     assert table_names(db) == ALL_TABLES
     db.close()
@@ -94,7 +97,7 @@ def test_upgrade_old_db_adds_is_merged(tmp_path):
     db.close()
 
     db2 = create_db(path)
-    assert run_migrations(db2) == ["0001_worktree_is_merged"]
+    assert run_migrations(db2) == ["0001_worktree_is_merged", "0002_eng_manual"]
     assert run_migrations(db2) == []
     assert "is_merged" in columns(db2)
     rows = db2.all("SELECT * FROM worktree_snapshots")
@@ -112,7 +115,10 @@ def test_adopts_existing_drizzle_db(tmp_path):
     """由 TS 版（drizzle）建立的 DB：依 __drizzle_migrations 視為已套用，不重跑"""
     path = str(tmp_path / "ts.db")
     raw = sqlite3.connect(path)
+    # TS 版只認得 drizzle 的 migration（0000、0001）
     for f in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        if f.stem not in DRIZZLE_WHEN:
+            continue
         for stmt in f.read_text(encoding="utf-8").split("--> statement-breakpoint"):
             if stmt.strip():
                 raw.execute(stmt)
@@ -123,8 +129,11 @@ def test_adopts_existing_drizzle_db(tmp_path):
     raw.close()
 
     db = create_db(path)
+    # drizzle 已套用者不重跑，只補上 Python 端新增的 migration
+    assert run_migrations(db) == ["0002_eng_manual"]
     assert run_migrations(db) == []
-    assert db.scalar("SELECT count(*) FROM _migrations") == 2
+    assert db.scalar("SELECT count(*) FROM _migrations") == 3
+    assert db.scalar("SELECT count(*) FROM manual_issues") == 0
     db.close()
 
 

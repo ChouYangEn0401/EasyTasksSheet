@@ -1,4 +1,4 @@
-/* T6 工程追蹤（docs/design/eng-tracking.md）。只用 tokens.css 的變數，不新增 token。 */
+/* 工程追蹤（簡化版，docs/design/eng-tracking.md）。只用 tokens.css 的變數，不新增 token。 */
 
 /* 先宣告與 Tailwind 相同的 layer 順序：本檔可能早於 index.css 載入，避免 components 被排到 base 之前 */
 @layer theme, base, components, utilities;
@@ -15,8 +15,6 @@
   .eng-tabs {
     display: flex;
     align-items: stretch;
-    flex-wrap: wrap;
-    gap: var(--space-3);
     min-height: 44px;
     border-bottom: 1px solid var(--color-border);
   }
@@ -28,27 +26,8 @@
     color: var(--color-text-tertiary);
     font-weight: var(--font-regular);
   }
-  .eng-tabs-actions {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-  .eng-repo-select {
-    width: 240px;
-    min-width: 0;
-  }
-  .eng-repo-value {
-    flex: 1;
-    min-width: 0;
-    text-align: left;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 
-  /* ── 區段與工具列 ── */
+  /* ── 區段 ── */
   .eng-section {
     display: flex;
     flex-direction: column;
@@ -61,13 +40,6 @@
     gap: var(--space-2);
     min-height: var(--control-md);
   }
-  .eng-toolbar-end {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex: none;
-  }
   .eng-sync {
     font-size: var(--text-sm);
     display: inline-flex;
@@ -75,25 +47,17 @@
     gap: var(--space-1);
     white-space: nowrap;
   }
-  .eng-chips {
-    display: flex;
-    gap: var(--space-2);
-    min-width: 0;
-    flex-wrap: wrap;
+  .eng-help {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
   }
-  .eng-chip[data-active='true'] {
-    background: var(--color-accent-soft);
-    border-color: var(--color-info-border);
-    color: var(--color-accent-text);
-  }
-  .eng-chip .tabular-nums {
-    color: var(--color-text-tertiary);
-  }
-  .eng-chip[data-active='true'] .tabular-nums {
-    color: inherit;
+  .eng-help code {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
   }
 
-  /* ── 表格卡片 ── */
+  /* ── 卡片 ── */
   .eng-card {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -103,6 +67,34 @@
   .eng-scroll {
     overflow-x: auto;
   }
+
+  /* ── 頂部新增表單 ── */
+  .eng-add {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+  .eng-add-grid {
+    display: grid;
+    gap: var(--space-3);
+    align-items: start;
+  }
+  .eng-add-grid--issue {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
+  }
+  .eng-add-grid--wt {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.2fr);
+  }
+  .eng-add-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-3);
+    font-size: var(--text-sm);
+  }
+
+  /* ── 表格 ── */
   .eng-table {
     width: 100%;
     border-collapse: collapse;
@@ -119,7 +111,7 @@
     white-space: nowrap;
   }
   .eng-table td {
-    height: var(--row-height);
+    height: 52px;
     padding: var(--space-1) var(--space-3);
     border-bottom: 1px solid var(--color-border-subtle);
     vertical-align: middle;
@@ -131,77 +123,86 @@
   .eng-table tbody tr:hover td {
     background: var(--color-surface-hover);
   }
-  .eng-col-num {
-    width: 64px;
-    font-family: var(--font-mono);
-    color: var(--color-text-secondary);
-  }
   .eng-col-title {
-    max-width: 0;
     width: 100%;
+    max-width: 0;
+  }
+  .eng-col-path {
+    max-width: 320px;
+  }
+  .eng-col-detail {
+    max-width: 220px;
   }
   .eng-col-action {
     width: 1%;
     text-align: right;
   }
-  .eng-issue-link {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--color-text);
-    text-decoration: none;
+  .eng-issue-row[data-closed] .eng-issue-title {
+    color: var(--color-text-tertiary);
+    text-decoration: line-through;
   }
-  .eng-issue-link:hover {
-    color: var(--color-accent-text);
-    text-decoration: underline;
-  }
-  .eng-labels {
-    display: inline-flex;
+  .eng-issue-title {
+    display: flex;
+    align-items: center;
     gap: var(--space-1);
+    min-width: 0;
   }
-
-  /* Worktree 列為兩行，高 56 */
-  .eng-table--wt td {
-    height: 56px;
+  .eng-link-icon {
+    display: inline-flex;
+    flex: none;
+    color: var(--color-text-tertiary);
   }
-  .eng-wt-row--missing td:first-child {
+  .eng-link-icon:hover {
+    color: var(--color-accent-text);
+  }
+  .eng-status-select {
+    display: inline-block;
+    width: 148px;
+  }
+  .eng-status-select .ui-select-trigger {
+    border-color: transparent;
+    background: transparent;
+  }
+  .eng-status-select .ui-select-trigger:hover {
+    border-color: var(--color-border);
+  }
+  .eng-wt-row[data-hint='missing'] td:first-child {
     box-shadow: inset 2px 0 0 var(--color-danger);
   }
-  .eng-wt-row--unplanned td:first-child {
+  .eng-wt-row[data-hint='unregistered'] td:first-child {
     box-shadow: inset 2px 0 0 var(--color-warning);
   }
-  .eng-wt-row--merged td:first-child {
-    box-shadow: inset 2px 0 0 var(--color-info);
+
+  /* ── 依電腦分組 ── */
+  .eng-machine-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
   }
-  .eng-badges {
-    display: inline-flex;
-    gap: var(--space-1);
+  .eng-machine-name {
+    margin: 0;
+    font-size: var(--text-base);
+    font-weight: var(--font-semibold);
   }
-  .eng-status--merged .ui-dot {
-    color: var(--color-info);
+  .eng-machine-head .eng-sync {
+    margin-left: auto;
   }
-  .eng-flag--dirty .ui-dot {
-    color: var(--color-tag-orange);
-  }
-  .eng-flag--stale .ui-dot {
-    color: var(--color-tag-gray);
-  }
+
+  /* ── 文字 ── */
   .eng-two-line {
     display: flex;
     flex-direction: column;
     gap: 2px;
     min-width: 0;
   }
-  .eng-branch,
-  .eng-actual {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .eng-purpose {
-    display: inline-flex;
-    color: var(--color-text-tertiary);
+  .eng-ellipsis {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .eng-path {
     font-family: var(--font-mono);
@@ -217,32 +218,6 @@
     align-items: center;
     gap: var(--space-2);
   }
-  .eng-col-task {
-    max-width: 220px;
-  }
-  .eng-task-link {
-    display: block;
-    max-width: 220px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    padding: 0;
-    border: none;
-    background: none;
-    color: var(--color-text);
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-  }
-  .eng-task-link:hover {
-    color: var(--color-accent-text);
-    text-decoration: underline;
-  }
-  .eng-counts {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-  }
-
   .eng-mono {
     font-family: var(--font-mono);
   }
@@ -262,75 +237,24 @@
     flex-direction: column;
     gap: var(--space-4);
   }
-  .eng-counter {
-    display: block;
-    text-align: right;
-  }
-  .eng-form-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-2);
-  }
   .eng-dialog-text {
     margin: 0;
     color: var(--color-text-secondary);
     font-size: var(--text-sm);
   }
-  .eng-repo-list {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-3);
-  }
-  .eng-repo-list ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    width: 100%;
-  }
-  .eng-repo-item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-2) 0;
-    border-bottom: 1px solid var(--color-border-subtle);
-  }
-  .eng-repo-info {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .eng-repo-info .eng-path {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .eng-repo-name {
-    font-weight: var(--font-medium);
-  }
-  .eng-repo-actions {
-    display: inline-flex;
-    gap: var(--space-1);
-  }
 
-  /* ── 響應式（design §6） ── */
+  /* ── 響應式 ── */
   @media (max-width: 1023px) {
-    .eng-tabs-actions {
-      flex-basis: 100%;
-      margin-left: 0;
-      padding-bottom: var(--space-2);
+    .eng-add-grid--issue,
+    .eng-add-grid--wt {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .eng-add-title,
+    .eng-add-path {
+      grid-column: 1 / -1;
     }
     .eng-owner-name {
       display: none;
-    }
-    .eng-chips {
-      flex-wrap: nowrap;
-      overflow-x: auto;
-    }
-    .eng-toolbar {
-      flex-wrap: wrap;
     }
   }
 }

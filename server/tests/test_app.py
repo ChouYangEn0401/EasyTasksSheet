@@ -7,13 +7,14 @@ FEATURE_PATHS = [
     ("GET", "/api/overview"),
     ("GET", "/api/feedback"),
     ("GET", "/api/personal"),
-    ("GET", "/api/eng/repos"),
-    ("GET", "/api/admin/users"),
     ("GET", "/api/changes?since=0"),
     ("GET", "/api/events"),
 ]
 
 CORE_LIST_PATHS = ["/api/users", "/api/projects", "/api/statuses", "/api/tasks", "/api/properties"]
+
+# 已實作的功能路由：只驗證未登入 401
+IMPLEMENTED_FEATURE_PATHS = [("GET", "/api/eng/issues"), ("GET", "/api/eng/worktrees"), ("GET", "/api/admin/users")]
 
 PROTECTED_PATHS = [
     ("GET", "/api/auth/me"),
@@ -29,6 +30,7 @@ PROTECTED_PATHS = [
     ("GET", "/api/properties"),
     ("GET", "/api/nope"),
     *FEATURE_PATHS,
+    *IMPLEMENTED_FEATURE_PATHS,
 ]
 
 
@@ -59,7 +61,7 @@ def test_core_list_paths_mounted(path):
     assert api.get(path).status_code == 200
 
 
-@pytest.mark.parametrize("method,path", FEATURE_PATHS + [("POST", "/api/eng/worktrees/report"), ("PUT", "/api/personal/pins/1")])
+@pytest.mark.parametrize("method,path", FEATURE_PATHS + [("PUT", "/api/personal/pins/1")])
 def test_feature_stubs_return_501(method, path):
     api = logged_in()
     res = api.request(method, path, None if method == "GET" else {})
@@ -70,7 +72,9 @@ def test_feature_stubs_return_501(method, path):
 def test_public_report_path_skips_session():
     t = create_test_app()
     res = client(t).request("POST", "/api/eng/worktrees/report", {})
-    assert res.status_code == 501
+    # 不需 session；未設定 WORKTREE_REPORT_TOKEN 時一律 403
+    assert res.status_code == 403
+    assert res.json()["error"]["code"] == "FORBIDDEN"
 
 
 def test_unknown_api_returns_json_404():

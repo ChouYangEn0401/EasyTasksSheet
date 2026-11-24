@@ -1,128 +1,172 @@
-import { expect, test, type Page } from '@playwright/test';
-import { createGitFixture } from '../../src/server/features/eng/gitFixture.ts';
+import { resolve } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
 
-// T6 工程追蹤：管理 repo → issue 未設定 token 提示 → worktree 偵測（暫存 git repo）→ 篩選 → 登記 / 編輯 / 刪除安排
+// 工程追蹤簡化版（手動輸入優先）：問題的新增 / 改狀態 / 結案；worktree 紀錄的新增 / 登記 / 刪除；
+// 各電腦回報快照的顯示與「未登記」「可能遺失」提示。此版本只由 Python 後端提供。
+test.skip(process.env.E2E_BACKEND !== 'py', '工程追蹤簡化版僅由 Python 後端（E2E_BACKEND=py）提供');
 test.describe.configure({ mode: 'serial' });
 
-const fx = createGitFixture();
-const REPO_NAME = `e2e-repo-${Date.now()}`;
+const stamp = Date.now().toString(36);
+const ISSUE = `E2E 問題 ${stamp}`;
+const ISSUE_RENAMED = `E2E 問題改名 ${stamp}`;
+const PROJECT = `e2e-proj-${stamp}`;
+const MACHINE = `E2E-PC-${stamp}`;
+const WT = {
+  kept: { path: `C:/e2e/${stamp}/wt-kept`, branch: `feat/kept-${stamp}` },
+  gone: { path: `C:/e2e/${stamp}/wt-gone`, branch: `feat/gone-${stamp}` },
+  spike: { path: `C:/e2e/${stamp}/wt-spike`, branch: `tmp/spike-${stamp}` },
+};
 
-test.beforeAll(() => {
-  fx.scenario(Date.now());
-});
-test.afterAll(() => fx.cleanup());
-
-const row = (page: Page, branch: string) =>
-  page.locator('tr.eng-wt-row').filter({ has: page.getByText(branch, { exact: true }) });
-
-test('管理員：新增 repo、查看 issue 提示與 worktree 狀態，登記 / 編輯 / 刪除安排', async ({ page }) => {
-  test.setTimeout(90_000);
-  const errors = collectErrors(page);
-  await loginViaUi(page, E2E_USERS.admin, '/eng');
-
-  // 沒有 repo：空狀態 + 管理 repo
-  await expect(page.getByText('尚未登記任何 repo')).toBeVisible();
-  await page.getByRole('button', { name: '管理 repo' }).click();
-  const manage = page.getByRole('dialog', { name: '管理 repo' });
-  await manage.getByLabel('名稱').fill(REPO_NAME);
-  await manage.getByLabel('本機路徑').fill(fx.repo);
-  await manage.getByLabel('遠端').fill('acme/demo');
-  await manage.getByRole('button', { name: '儲存' }).click();
-  await expect(manage.getByText(REPO_NAME)).toBeVisible();
-  await expect(manage.locator('.eng-repo-item time')).toBeVisible();
-  await manage.getByRole('button', { name: '關閉' }).click();
-
-  // Issues 分頁（E2E 未設定 token）
-  await expect(page.getByRole('link', { name: /Issues/ })).toHaveAttribute('aria-current', 'page');
-  if (!process.env.GITHUB_TOKEN) {
-    await expect(page.getByText('尚未設定 issue 來源')).toBeVisible();
-    await expect(page.getByRole('button', { name: '重試' })).toHaveCount(0);
+/** 模擬某台電腦已回報（E2E 未設定 WORKTREE_REPORT_TOKEN，直接寫入 E2E 專用 DB） */
+function seedReport() {
+  const db = new DatabaseSync(resolve('data/e2e.db'));
+  try {
+    db.exec('PRAGMA busy_timeout = 5000');
+    const insert = db.prepare(
+      'INSERT INTO worktree_reports (machine, repo, path, branch, head_sha, is_dirty, ahead, behind, is_merged, reported_at) ' +
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    );
+    const t = Date.now();
+    insert.run(MACHINE, 'e2e-repo', WT.kept.path, WT.kept.branch, 'abcdef1', 1, 2, 0, 0, t);
+    insert.run(MACHINE, 'e2e-repo', WT.spike.path, WT.spike.branch, 'abcdef2', 0, 0, 3, 0, t);
+  } finally {
+    db.close();
   }
+}
 
-  // Worktrees 分頁：URL 驅動
-  await page.getByRole('link', { name: /Worktrees/ }).click();
-  await expect(page).toHaveURL(/tab=worktrees/);
-  await expect(row(page, 'tmp/spike')).toBeVisible();
-  // 尚無安排：全部為未登記（遺失的 worktree 也列出）
-  await expect(row(page, 'feat/ok').getByText('未登記')).toBeVisible();
-  await expect(row(page, 'feat/gone').getByText('遺失')).toBeVisible();
-  await expect(row(page, 'feat/dirty').getByText('未提交變更')).toBeVisible();
-  await expect(row(page, 'feat/stale').getByText('久未更新')).toBeVisible();
-  // 每列都有更新時間
-  const rowCount = await page.locator('tr.eng-wt-row').count();
-  await expect(page.locator('tr.eng-wt-row td:nth-last-child(2) time')).toHaveCount(rowCount);
+const tab = (page: Page, name: RegExp) =>
+  page.getByRole('navigation', { name: '工程追蹤' }).getByRole('link', { name });
+const issueRow = (page: Page, title: string) => page.locator('tr.eng-issue-row').filter({ hasText: title });
+const wtRow = (scope: Page | Locator, branch: string) =>
+  scope.locator('tr.eng-wt-row').filter({ hasText: branch });
 
-  // 登記 feat/merged → 已合併未清理
-  await row(page, 'feat/merged').getByRole('button', { name: '登記' }).click();
-  let dialog = page.getByRole('dialog', { name: '新增 worktree 安排' });
-  await expect(dialog.getByLabel('分支')).toHaveValue('feat/merged');
-  await dialog.getByLabel('用途').fill('合併後待清理');
+async function pickOption(page: Page, trigger: Locator, option: string) {
+  await trigger.click();
+  await page.getByRole('option', { name: option }).click();
+}
+
+test('問題：手動新增 → 改狀態 → 編輯 → 結案 → 顯示已結案', async ({ page }) => {
+  const errors = collectErrors(page);
+  await loginViaUi(page, E2E_USERS.member, '/eng');
+  await expect(tab(page, /問題/)).toHaveAttribute('aria-current', 'page');
+
+  // 新增表單在最上面：填標題與專案，Enter 送出
+  const form = page.getByRole('form', { name: '新增問題' });
+  await form.getByLabel('專案 / Repo').fill(PROJECT);
+  await form.getByLabel('標題').fill(ISSUE);
+  await form.getByLabel('標題').press('Enter');
+  const row = issueRow(page, ISSUE);
+  await expect(row).toBeVisible();
+  await expect(row.getByText(PROJECT)).toBeVisible();
+  await expect(row.getByText('未處理')).toBeVisible();
+  await expect(row.locator('time')).toHaveCount(1);
+  // 送出後標題清空、專案保留，方便連續登錄
+  await expect(form.getByLabel('標題')).toHaveValue('');
+  await expect(form.getByLabel('專案 / Repo')).toHaveValue(PROJECT);
+
+  // 列上直接改狀態
+  await pickOption(page, row.getByRole('button', { name: `「${ISSUE}」的狀態` }), '處理中');
+  await expect(row.getByText('處理中')).toBeVisible();
+
+  // 編輯（對話框）
+  await row.getByRole('button', { name: `「${ISSUE}」的操作` }).click();
+  await page.getByRole('menuitem', { name: '編輯' }).click();
+  const dialog = page.getByRole('dialog', { name: '編輯問題' });
+  await dialog.getByLabel('標題').fill(ISSUE_RENAMED);
+  await dialog.getByLabel('連結').fill('https://example.com/issue/1');
   await dialog.getByRole('button', { name: '儲存' }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(row(page, 'feat/merged').getByText('已合併未清理')).toBeVisible();
-  await expect(row(page, 'feat/merged').getByText('已併入 main')).toBeVisible();
+  const renamed = issueRow(page, ISSUE_RENAMED);
+  await expect(renamed.getByRole('link', { name: `開啟「${ISSUE_RENAMED}」的連結` })).toHaveAttribute(
+    'href',
+    'https://example.com/issue/1',
+  );
 
-  // 新增一個不存在的安排 → 遺失；路徑重複時顯示欄位錯誤
-  await page.getByRole('button', { name: '新增安排' }).first().click();
-  dialog = page.getByRole('dialog', { name: '新增 worktree 安排' });
-  await dialog.getByLabel('分支').fill('feat/never');
-  await dialog.getByLabel('路徑').fill('../wt-merged');
-  await dialog.getByRole('button', { name: '儲存' }).click();
-  await expect(dialog.getByText('此路徑已有安排')).toBeVisible();
-  await dialog.getByLabel('路徑').fill('../wt-never');
-  await dialog.getByRole('button', { name: '儲存' }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(row(page, 'feat/never').getByText('找不到此 worktree')).toBeVisible();
+  // 結案：預設清單隱藏，勾選「顯示已結案」後出現
+  await renamed.getByRole('button', { name: `「${ISSUE_RENAMED}」的操作` }).click();
+  await page.getByRole('menuitem', { name: '結案' }).click();
+  await expect(renamed).toHaveCount(0);
+  await page.getByLabel(/顯示已結案/).check();
+  await expect(renamed.getByText('已結案')).toBeVisible();
 
-  // 篩選 chip：遺失（URL 保留）
-  await page.getByRole('button', { name: /^遺失/ }).click();
-  await expect(page).toHaveURL(/wt=missing/);
-  await expect(row(page, 'feat/never')).toBeVisible();
-  await expect(row(page, 'tmp/spike')).toHaveCount(0);
-  await page.reload();
-  await expect(row(page, 'feat/never')).toBeVisible();
-  await expect(row(page, 'tmp/spike')).toHaveCount(0);
-  await page.getByRole('button', { name: /^全部/ }).click();
-  await expect(row(page, 'tmp/spike')).toBeVisible();
-
-  // 編輯安排
-  await row(page, 'feat/never')
-    .getByRole('button', { name: /的動作$/ })
-    .click();
-  await page.getByRole('menuitem', { name: '編輯安排' }).click();
-  dialog = page.getByRole('dialog', { name: '編輯 worktree 安排' });
-  await dialog.getByLabel('分支').fill('feat/never-2');
-  await dialog.getByRole('button', { name: '儲存' }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(row(page, 'feat/never-2')).toBeVisible();
-
-  // 刪除安排
-  await row(page, 'feat/never-2')
-    .getByRole('button', { name: /的動作$/ })
-    .click();
-  await page.getByRole('menuitem', { name: '刪除安排' }).click();
-  const confirm = page.getByRole('alertdialog', { name: '刪除此安排？' });
-  await confirm.getByRole('button', { name: '刪除' }).click();
-  await expect(confirm).toHaveCount(0);
-  await expect(row(page, 'feat/never-2')).toHaveCount(0);
-
-  // R：重新偵測
-  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-  await page.keyboard.press('r');
-  await expect(page.locator('[aria-live="polite"]').filter({ hasText: /已更新，共 \d+ 筆/ })).toBeAttached();
-
-  // 預期中的 409（路徑重複）會在 console 留下資源載入失敗訊息，不算錯誤
   expect(errors.filter((e) => !e.includes('Failed to load resource'))).toEqual([]);
 });
 
-test('一般成員：看得到 repo 與 worktree，但沒有管理 repo 入口', async ({ page }) => {
+test('Worktree：手動新增紀錄、回報快照依電腦分組、未登記與可能遺失提示', async ({ page }) => {
+  const errors = collectErrors(page);
+  // 未設定回報 token：回報端點一律 403（不需登入）
+  if (!process.env.WORKTREE_REPORT_TOKEN) {
+    const res = await page.request.post('/api/eng/worktrees/report', {
+      headers: { 'x-report-token': 'whatever' },
+      data: { machine: MACHINE, worktrees: [] },
+    });
+    expect(res.status()).toBe(403);
+  }
+
   await loginViaUi(page, E2E_USERS.member, '/eng?tab=worktrees');
-  await expect(row(page, 'tmp/spike')).toBeVisible();
-  await expect(page.getByRole('button', { name: '管理 repo' })).toHaveCount(0);
-  const res = await page.request.post('/api/eng/repos', {
-    headers: { 'content-type': 'application/json', origin: new URL(page.url()).origin },
-    data: JSON.stringify({ name: 'x' }),
-  });
-  expect(res.status()).toBe(403);
+  await expect(tab(page, /Worktree/)).toHaveAttribute('aria-current', 'page');
+
+  // 手動新增兩筆紀錄（電腦名稱會記住，第二筆不用再填）
+  const form = page.getByRole('form', { name: '新增 worktree 紀錄' });
+  await form.getByLabel('電腦').fill(MACHINE);
+  for (const wt of [WT.kept, WT.gone]) {
+    await form.getByLabel('路徑').fill(wt.path);
+    await form.getByLabel('分支').fill(wt.branch);
+    await form.getByRole('button', { name: '新增紀錄' }).click();
+    await expect(form.getByLabel('路徑')).toHaveValue('');
+  }
+  await expect(form.getByLabel('電腦')).toHaveValue(MACHINE);
+
+  const section = page.getByRole('region', { name: `電腦 ${MACHINE}` });
+  await expect(section.getByText('尚未回報（僅手動紀錄）')).toBeVisible();
+  await expect(wtRow(section, WT.kept.branch).getByText('使用中')).toBeVisible();
+  // 同電腦同路徑不可重複
+  await form.getByLabel('路徑').fill(WT.kept.path.toUpperCase());
+  await form.getByRole('button', { name: '新增紀錄' }).click();
+  await expect(form.getByText('此電腦的這個路徑已有紀錄')).toBeVisible();
+  await form.getByLabel('路徑').fill('');
+
+  // 該電腦回報：kept（有紀錄）與 spike（未登記）；gone 不在回報中 → 可能遺失
+  seedReport();
+  await page.reload();
+  await expect(section.getByText(/回報於/).first()).toBeVisible();
+  await expect(wtRow(section, WT.kept.branch).getByText('未提交變更 · ↑2 ↓0')).toBeVisible();
+  await expect(wtRow(section, WT.gone.branch).getByText('可能遺失')).toBeVisible();
+  const spike = wtRow(section, WT.spike.branch);
+  await expect(spike.getByText('未登記')).toBeVisible();
+  await expect(tab(page, /Worktree/).getByLabel('2 個提示')).toBeVisible();
+  // 每列都有更新時間
+  const rows = await section.locator('tr.eng-wt-row').count();
+  expect(rows).toBe(3);
+  await expect(section.locator('tr.eng-wt-row time')).toHaveCount(rows);
+
+  // 一鍵登記 → 不再是未登記
+  await spike.getByRole('button', { name: '登記' }).click();
+  await expect(spike.getByText('未登記')).toHaveCount(0);
+  await expect(spike.getByText('使用中')).toBeVisible();
+
+  // 手動狀態改為「已遺失」→ 不再提示可能遺失
+  const gone = wtRow(section, WT.gone.branch);
+  await pickOption(page, gone.getByRole('button', { name: `「${WT.gone.branch}」的狀態` }), '已遺失');
+  await expect(gone.getByText('已遺失')).toBeVisible();
+  await expect(gone.getByText('可能遺失')).toHaveCount(0);
+
+  // 編輯備註、刪除紀錄
+  await gone.getByRole('button', { name: `「${WT.gone.branch}」的操作` }).click();
+  await page.getByRole('menuitem', { name: '編輯' }).click();
+  const dialog = page.getByRole('dialog', { name: '編輯 worktree 紀錄' });
+  await dialog.getByLabel('備註').fill('硬碟重灌後消失');
+  await dialog.getByRole('button', { name: '儲存' }).click();
+  await expect(gone.getByText('硬碟重灌後消失')).toBeVisible();
+
+  await gone.getByRole('button', { name: `「${WT.gone.branch}」的操作` }).click();
+  await page.getByRole('menuitem', { name: '刪除' }).click();
+  const confirm = page.getByRole('alertdialog', { name: '刪除此紀錄？' });
+  await confirm.getByRole('button', { name: '刪除' }).click();
+  await expect(gone).toHaveCount(0);
+
+  // 預期中的 409（路徑重複）會在 console 留下資源載入失敗訊息，不算錯誤
+  expect(errors.filter((e) => !e.includes('Failed to load resource'))).toEqual([]);
 });
