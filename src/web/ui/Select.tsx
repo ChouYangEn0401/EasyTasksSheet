@@ -361,7 +361,10 @@ export type MenuItem =
       icon?: ReactNode;
       onSelect: () => void;
       danger?: boolean;
+      /** 停用：仍可用鍵盤移到（aria-disabled），但無法執行 */
       disabled?: boolean;
+      /** 停用原因：hover 以 title 提示、鍵盤移到時顯示於項目下方，並作為 aria-description */
+      disabledReason?: string;
     }
   | { key: string; separator: true }
   | { key: string; content: ReactNode };
@@ -390,17 +393,19 @@ export function Menu({
   label?: string;
 }) {
   const { open, setOpen, anchorRef, triggerRef, close } = usePopoverState();
+  // 可移動到的項目（含停用項目，讓鍵盤使用者也能得知停用原因）
   const actionable = items.filter(
-    (i): i is Extract<MenuItem, { onSelect: () => void }> => 'onSelect' in i && !i.disabled,
+    (i): i is Extract<MenuItem, { onSelect: () => void }> => 'onSelect' in i,
   );
   const [active, setActive] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuId = useId();
 
   useEffect(() => {
     if (open) menuRef.current?.focus();
   }, [open]);
   const openMenu = (v: boolean) => {
-    if (v) setActive(0);
+    if (v) setActive(Math.max(0, actionable.findIndex((i) => !i.disabled)));
     setOpen(v);
   };
 
@@ -423,7 +428,7 @@ export function Menu({
       case ' ': {
         e.preventDefault();
         const item = actionable[active];
-        if (item) {
+        if (item && !item.disabled) {
           close(true);
           item.onSelect();
         }
@@ -452,6 +457,7 @@ export function Menu({
           ref={menuRef}
           role="menu"
           aria-label={label}
+          aria-activedescendant={actionable[active] ? `${menuId}-item-${active}` : undefined}
           tabIndex={-1}
           className={`ui-panel${align === 'end' ? ' ui-panel--right' : ''}`}
           style={{ width, outline: 'none' }}
@@ -467,13 +473,19 @@ export function Menu({
                 </div>
               );
             const idx = actionable.indexOf(item as (typeof actionable)[number]);
+            const highlighted = idx === active && idx >= 0;
+            const reason = item.disabled ? item.disabledReason : undefined;
             return (
               <div
                 key={item.key}
+                id={`${menuId}-item-${idx}`}
                 role="menuitem"
                 aria-disabled={item.disabled || undefined}
-                data-highlighted={idx === active && idx >= 0}
+                aria-description={reason}
+                title={reason}
+                data-highlighted={highlighted}
                 className={`ui-option${item.danger ? ' ui-option--danger' : ''}`}
+                style={reason && highlighted ? { flexWrap: 'wrap' } : undefined}
                 onPointerMove={() => idx >= 0 && setActive(idx)}
                 onClick={() => {
                   if (item.disabled) return;
@@ -483,6 +495,18 @@ export function Menu({
               >
                 {item.icon}
                 <span className="ui-option-label">{item.label}</span>
+                {reason && highlighted && (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      flexBasis: '100%',
+                      fontSize: 'var(--text-xs, 12px)',
+                      color: 'var(--color-text-tertiary)',
+                    }}
+                  >
+                    {reason}
+                  </span>
+                )}
               </div>
             );
           })}

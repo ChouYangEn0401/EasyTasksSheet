@@ -36,6 +36,14 @@ const paths = {
   refresh: 'M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6',
   lock: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4',
   logo: 'M12 2l9 5v10l-9 5-9-5V7z',
+  calendar: 'M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM16 3v4M8 3v4M3 11h18',
+  clock: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 7v5l3 2',
+  /** ⋯ 更多動作 */
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
+  bookmark: 'M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z',
+  /** 拖曳把手（六點） */
+  grip: 'M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01',
+  pencil: 'M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5zM15 5l4 4',
 } as const;
 
 export type IconName = keyof typeof paths;

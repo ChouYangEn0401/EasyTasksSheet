@@ -12,11 +12,14 @@ export function UpdatedAt({
   by,
   prefix,
   className = '',
+  focusable = true,
 }: {
   at: number;
   by?: number | string | null;
   prefix?: string;
   className?: string;
+  /** false 時不進入 Tab 順序（tabIndex=-1），用於外層已可聚焦、避免多一個停駐點的情境 */
+  focusable?: boolean;
 }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -31,7 +34,7 @@ export function UpdatedAt({
       <time
         className={`ui-updated-at ${className}`}
         dateTime={new Date(at).toISOString()}
-        tabIndex={0}
+        tabIndex={focusable ? 0 : -1}
         aria-label={`${prefix ?? '更新於'} ${full}`}
       >
         {prefix ? `${prefix} ` : ''}

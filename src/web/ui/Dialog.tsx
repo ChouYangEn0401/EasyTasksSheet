@@ -17,7 +17,7 @@ export function Dialog({
   dismissible = true,
   dirty = false,
   role = 'dialog',
-  showClose = true,
+  showClose,
 }: {
   open: boolean;
   onClose: () => void;
@@ -29,6 +29,10 @@ export function Dialog({
   dismissible?: boolean;
   dirty?: boolean;
   role?: 'dialog' | 'alertdialog';
+  /**
+   * 是否顯示標題列 ✕ 關閉鈕。未指定時跟隨 dismissible（可關閉才顯示）；
+   * 明確傳 true 時即使 dismissible=false 也顯示（Esc / 點遮罩仍無效，只能按 ✕ 或動作列關閉）。
+   */
   showClose?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -81,7 +85,7 @@ export function Dialog({
             <h2 id={titleId} className="ui-dialog-title">
               {title}
             </h2>
-            {dismissible && showClose && (
+            {(showClose ?? dismissible) && (
               <Button variant="ghost" size="sm" iconOnly icon="x" aria-label="關閉" onClick={onClose} />
             )}
           </div>

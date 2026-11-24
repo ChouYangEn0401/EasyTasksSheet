@@ -66,7 +66,9 @@ test('看板：拖曳改狀態與順序、點擊開詳情、欄尾新增、鍵�
   for (const name of ['待辦', '進行中', '審查中', '完成']) await expect(column(page, name)).toBeVisible();
   const todoCol = column(page, '待辦');
   await expect(card(todoCol, T.a)).toBeVisible();
-  expect((await cardTitles(page, '待辦')).filter((t) => t.includes(String(stamp)))).toEqual([T.a, T.b, T.c]);
+  await expect
+    .poll(async () => (await cardTitles(page, '待辦')).filter((t) => t.includes(String(stamp))))
+    .toEqual([T.a, T.b, T.c]);
 
   // 卡片內容：標題、負責人（未指派）、到期日（逾期）、預估工時、最後更新
   const cardA = card(todoCol, T.a);
@@ -116,7 +118,10 @@ test('看板：拖曳改狀態與順序、點擊開詳情、欄尾新增、鍵�
     })
     .toBe(true);
   await page.reload();
-  expect((await cardTitles(page, '待辦')).filter((t) => t.includes(String(stamp)))).toEqual([T.c, T.b]);
+  // 重整後資料非同步載入：以自動重試斷言等待欄內順序穩定
+  await expect
+    .poll(async () => (await cardTitles(page, '待辦')).filter((t) => t.includes(String(stamp))))
+    .toEqual([T.c, T.b]);
 
   // 鍵盤拖曳跨欄：B → 右移一欄（進行中）
   const cardB = card(column(page, '待辦'), T.b);
@@ -155,6 +160,10 @@ test('看板：拖曳改狀態與順序、點擊開詳情、欄尾新增、鍵�
   await page.keyboard.press('Enter');
   await expect(page.getByRole('dialog', { name: T.c })).toBeVisible();
   await page.keyboard.press('Escape');
+  // 等抽屜完全關閉（closeTask 會把 focus 拉回卡片），再操作 QuickAdd，避免 focus 被搶走
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page).not.toHaveURL(/[?&]task=/);
+  await expect(card(column(page, '待辦'), T.c)).toBeFocused();
 
   // 欄尾快速新增：帶入該欄狀態，出現在欄底
   const review = await statusIdOf(req, '審查中');

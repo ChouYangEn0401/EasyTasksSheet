@@ -63,6 +63,8 @@
     "db:migrate": "node scripts/db.ts migrate",
     "db:seed": "node scripts/db.ts seed",
     "db:setup": "node scripts/db.ts setup",
-    "user:add": "node scripts/user-add.ts"
+    "user:add": "node scripts/user-add.ts",
+    "backup": "node scripts/backup.mjs",
+    "backup:self-test": "node scripts/backup.mjs --self-test"
   }
 }
