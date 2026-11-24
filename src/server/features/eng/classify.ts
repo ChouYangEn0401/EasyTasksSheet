@@ -19,12 +19,12 @@ export type ClassifyOptions = {
 };
 
 /**
- * 已併入基準分支：優先採用偵測端的判定（ahead = 0 且分支曾有自己的變動，排除剛建立的分支）；
- * 未知時退回 ahead = 0（等同 `git branch --merged main`）。
+ * 已併入基準分支：採用偵測端的判定（ahead = 0 且分支曾有自己的變動，排除剛建立的分支），
+ * 該判定持久化於 worktree_snapshots.is_merged，server 重啟後不變。
  */
 export function isMerged(s: WorktreeSnapshot): boolean {
   if (s.branch == null || BASE_BRANCHES.has(s.branch) || s.headSha == null) return false;
-  return s.isMerged ?? s.ahead === 0;
+  return s.isMerged;
 }
 
 export function statusOf(plan: WorktreePlan | null, snap: WorktreeSnapshot | null): WorktreeStatus {

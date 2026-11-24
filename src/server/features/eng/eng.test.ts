@@ -1,7 +1,16 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { client, loginAs } from '../../../../tests/helpers/auth.ts';
-import { createFakeClock, createTestApp, createTestUser } from '../../../../tests/helpers/db.ts';
+import {
+  createFakeClock,
+  createTempDbFile,
+  createTestApp,
+  createTestUser,
+} from '../../../../tests/helpers/db.ts';
 import type { GitIssue, IssuesResponse, WorktreesResponse } from '../../../shared/eng.ts';
+import { createApp } from '../../app.ts';
+import { createDb } from '../../db/client.ts';
+import { runMigrations } from '../../db/migrate.ts';
+import { runSeed } from '../../db/seed.ts';
 import { changes, tasks } from '../../db/schema.ts';
 import { createGitFixture } from './gitFixture.ts';
 import { createGitHubIssueSource, IssueSourceError, type IssueSource } from './issueSource.ts';
@@ -333,8 +342,8 @@ describe('/api/eng/worktrees', () => {
     expect((await res.json()).error.message).toContain('逾時');
   });
 
-  it('模式 B：回報端點需 token，整批取代實際狀態並記錄變更', async () => {
-    const { a, app, createRepo, changeRows, alice } = await setup();
+  it('模式 B：回報端點免 session、僅以 token 驗證，整批取代實際狀態並記錄變更', async () => {
+    const { a, app, createRepo, changeRows } = await setup();
     const repo = await createRepo({ name: 'remote-repo', localPath: 'D:/dev/remote-repo-not-on-server' });
     const report = {
       repo: 'remote-repo',
@@ -352,25 +361,54 @@ describe('/api/eng/worktrees', () => {
         },
       ],
     };
-    expect((await a.request('POST', '/api/eng/worktrees/report', report)).status).toBe(403);
-    configureEng({ reportToken: 'secret-token' });
+    const countBefore = changeRows().length;
+    // 腳本式請求：無 cookie、無 Origin
+    const post = (headers: Record<string, string>, body: unknown = report) =>
+      app.request('http://localhost/api/eng/worktrees/report', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...headers },
+        body: JSON.stringify(body),
+      });
+
+    // token 未設定：一律拒絕（即使帶了 token 或已登入）
+    expect((await post({ 'x-report-token': 'anything' })).status).toBe(403);
     expect(
-      (await a.request('POST', '/api/eng/worktrees/report', report, { 'x-report-token': 'wrong' })).status,
+      (await a.request('POST', '/api/eng/worktrees/report', report, { 'x-report-token': 'anything' })).status,
     ).toBe(403);
-    // 未登入仍被 session 擋下（core 規則）
+
+    configureEng({ reportToken: 'secret-token' });
+    // 無 token / 錯誤 token
+    expect((await post({})).status).toBe(403);
+    expect((await post({ 'x-report-token': 'wrong' })).status).toBe(403);
+    expect((await post({ authorization: 'Bearer secret-token-x' })).status).toBe(403);
+    // 已登入但沒帶 token 也不行（session 不能取代 token）
+    expect((await a.request('POST', '/api/eng/worktrees/report', report)).status).toBe(403);
+    // CSRF：仍須 application/json；帶 Origin 時須同源
+    const wrongType = await app.request('http://localhost/api/eng/worktrees/report', {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain', 'x-report-token': 'secret-token' },
+      body: JSON.stringify(report),
+    });
+    expect(wrongType.status).toBe(403);
+    expect((await post({ 'x-report-token': 'secret-token', origin: 'https://evil.example' })).status).toBe(
+      403,
+    );
+    expect(changeRows()).toHaveLength(countBefore);
+
+    // 有效 token：免登入即可回報（X-Report-Token 或 Bearer 皆可）
+    expect((await post({ 'x-report-token': 'secret-token' })).status).toBe(200);
+    const ok = await post({ authorization: 'Bearer secret-token' });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ ok: true, repoId: repo.id, count: 1 });
+    expect(changeRows().at(-1)).toMatchObject({ entityType: 'repo', entityId: repo.id, actorId: null });
+    // 同源瀏覽器請求亦可
     expect(
       (
         await client(app).request('POST', '/api/eng/worktrees/report', report, {
           'x-report-token': 'secret-token',
         })
       ).status,
-    ).toBe(401);
-    const ok = await a.request('POST', '/api/eng/worktrees/report', report, {
-      authorization: 'Bearer secret-token',
-    });
-    expect(ok.status).toBe(200);
-    expect(await ok.json()).toMatchObject({ ok: true, repoId: repo.id, count: 1 });
-    expect(changeRows().at(-1)).toMatchObject({ entityType: 'repo', entityId: repo.id, actorId: alice.id });
+    ).toBe(200);
 
     await a.request('POST', '/api/eng/worktree-plans', {
       repoId: repo.id,
@@ -390,5 +428,68 @@ describe('/api/eng/worktrees', () => {
       { 'x-report-token': 'secret-token' },
     );
     expect(missingRepo.status).toBe(404);
+  });
+
+  it('「已併入」判定持久化：server 重啟後仍區分剛建立未提交與已合併未清理', async () => {
+    const tmp = createTempDbFile();
+    try {
+      configureEng({ reportToken: 'secret-token' });
+      const db1 = createDb(tmp.path);
+      runMigrations(db1);
+      runSeed(db1);
+      const user = await createTestUser(db1, { role: 'admin' });
+      const app1 = createApp({ db: db1 });
+      const u1 = await loginAs(app1, user);
+      const repoRes = await u1.request('POST', '/api/eng/repos', { name: 'remote-repo' });
+      const repo = (await repoRes.json()) as { id: number };
+      const wt = (branch: string, isMerged?: boolean) => ({
+        path: `/dev/wt-${branch.replace('/', '-')}`,
+        branch,
+        headSha: 'abcdef1234567',
+        isDirty: false,
+        ahead: 0,
+        behind: 1,
+        lastCommitAt: Date.now(),
+        isPrunable: false,
+        ...(isMerged !== undefined && { isMerged }),
+      });
+      for (const branch of ['feat/merged', 'feat/fresh', 'feat/unknown']) {
+        const p = wt(branch).path;
+        expect(
+          (await u1.request('POST', '/api/eng/worktree-plans', { repoId: repo.id, branch, path: p })).status,
+        ).toBe(201);
+      }
+      const res = await app1.request('http://localhost/api/eng/worktrees/report', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-report-token': 'secret-token' },
+        body: JSON.stringify({
+          repoId: repo.id,
+          worktrees: [wt('feat/merged', true), wt('feat/fresh', false), wt('feat/unknown')],
+        }),
+      });
+      expect(res.status).toBe(200);
+      const statuses = async (c: Awaited<ReturnType<typeof loginAs>>) => {
+        const body: WorktreesResponse = await (await c.get(`/api/eng/worktrees?repo=${repo.id}`)).json();
+        return Object.fromEntries(body.rows.map((r) => [r.branch, [r.status, r.snapshot?.isMerged]]));
+      };
+      const expected = {
+        'feat/merged': ['merged', true],
+        // 剛建立未提交：ahead 同為 0 但偵測端判定未併入
+        'feat/fresh': ['ok', false],
+        // 偵測端無法判定（省略 isMerged）：存 false
+        'feat/unknown': ['ok', false],
+      };
+      expect(await statuses(u1)).toEqual(expected);
+      db1.$client.close();
+
+      // 模擬重啟：重新開啟 DB 檔、建立新的 app（記憶體狀態全部清空）
+      const db2 = createDb(tmp.path);
+      runMigrations(db2);
+      const app2 = createApp({ db: db2 });
+      expect(await statuses(await loginAs(app2, user))).toEqual(expected);
+      db2.$client.close();
+    } finally {
+      tmp.cleanup();
+    }
   });
 });

@@ -210,6 +210,8 @@ export const worktreeSnapshots = sqliteTable(
     behind: integer('behind'),
     lastCommitAt: integer('last_commit_at'),
     isPrunable: bool('is_prunable').notNull().default(false),
+    /** 偵測端的「已併入基準分支」判定（有自己的變動且 ahead = 0；排除剛建立未提交的分支） */
+    isMerged: bool('is_merged').notNull().default(false),
     reportedBy: text('reported_by'),
     reportedAt: integer('reported_at').notNull().$defaultFn(now),
   },

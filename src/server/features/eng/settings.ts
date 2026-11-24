@@ -47,8 +47,6 @@ export type RepoRuntime = {
   issuesError?: { message: string; at: number } | null;
   issuesInflight?: Promise<void>;
   detectedAt?: number;
-  /** 偵測端的「已併入」判定（pathKey → boolean） */
-  merged?: Map<string, boolean>;
   detectInflight?: Promise<void>;
 };
 

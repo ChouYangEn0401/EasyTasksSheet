@@ -22,7 +22,7 @@ import { badRequest, forbidden, HttpError, notFound } from '../../lib/errors.ts'
 import { recordChange } from '../../lib/recordChange.ts';
 import { readJson, readQuery } from '../../lib/validate.ts';
 import { pathKey, resolvePlanPath } from './detect.ts';
-import { getIssues, getWorktrees, listPlans, rememberMerged, replaceSnapshots } from './service.ts';
+import { getIssues, getWorktrees, listPlans, replaceSnapshots } from './service.ts';
 import { clearRepoRuntime, engSettings } from './settings.ts';
 
 const REPO_NOT_FOUND = '此 repo 不存在或已被刪除';
@@ -74,10 +74,15 @@ function checkPlan(
 
 const sha = (s: string) => createHash('sha256').update(s).digest();
 
-/** 回報 token：X-Report-Token 或 Authorization: Bearer；以固定時間比較 */
+/**
+ * 回報 token：X-Report-Token 或 Authorization: Bearer；以固定時間比較（先取 SHA-256 使長度一致）。
+ * 此端點免 session（見 app.ts PUBLIC_PATHS），token 是唯一的驗證。
+ */
 function checkReportToken(c: Context<AppEnv>) {
   const expected = engSettings().reportToken;
-  if (!expected) throw forbidden('伺服器未設定回報 token（WORKTREE_REPORT_TOKEN）');
+  if (!expected) {
+    throw forbidden('伺服器未設定回報 token（WORKTREE_REPORT_TOKEN），回報功能停用');
+  }
   const given =
     c.req.header('x-report-token') ?? c.req.header('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
   if (!given || !timingSafeEqual(sha(given), sha(expected))) throw forbidden('回報 token 錯誤');
@@ -176,7 +181,7 @@ export const engRoutes = new Hono<AppEnv>()
   .post('/worktrees/report', async (c) => {
     checkReportToken(c);
     const { db, now } = c.var;
-    // 若日後此端點改為免 session（僅 token），user 可能不存在
+    // 此端點免 session（僅 token），通常沒有 user
     const actor = c.get('user') as UserRow | undefined;
     const input = await readJson(c, worktreeReportInput);
     const repo =
@@ -195,7 +200,6 @@ export const engRoutes = new Hono<AppEnv>()
       });
       return n;
     });
-    rememberMerged(db, repo.id, input.worktrees);
     return c.json({ ok: true as const, repoId: repo.id, count });
   })
 

@@ -1,0 +1,1 @@
+ALTER TABLE `worktree_snapshots` ADD `is_merged` integer DEFAULT false NOT NULL;

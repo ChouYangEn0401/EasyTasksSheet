@@ -25,8 +25,17 @@ export type AppDeps = {
   settings?: Partial<AuthSettings>;
 };
 
-/** 不需登入的路由 */
-const PUBLIC_PATHS = new Set(['/api/health', '/api/auth/login', '/api/auth/logout']);
+/**
+ * 不需登入的路由。
+ * - /api/eng/worktrees/report：開發機腳本回報 worktree 狀態，由端點自行以 WORKTREE_REPORT_TOKEN 驗證
+ *   （未設定 token 時一律拒絕）；仍受 csrfGuard 約束（帶 Origin 須同源、須為 application/json）
+ */
+const PUBLIC_PATHS = new Set([
+  '/api/health',
+  '/api/auth/login',
+  '/api/auth/logout',
+  '/api/eng/worktrees/report',
+]);
 
 /** 建立 API app（不含靜態檔）。所有 feature router 在此一次掛好 */
 export function createApp({ db, now = Date.now, settings }: AppDeps) {

@@ -1,10 +1,14 @@
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
+import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createTempDbFile, createTestDb, createTestUser } from '../../../tests/helpers/db.ts';
 import { createDb } from './client.ts';
-import { runMigrations } from './migrate.ts';
+import { MIGRATIONS_DIR, runMigrations } from './migrate.ts';
 import { DEFAULT_STATUSES, runSeed } from './seed.ts';
-import { projects, statuses, tasks } from './schema.ts';
+import { projects, repos, statuses, tasks, worktreeSnapshots } from './schema.ts';
 
 const ALL_TABLES = [
   'changes',
@@ -52,6 +56,44 @@ describe('migration + seed', () => {
     expect(db2.select().from(statuses).all()).toHaveLength(DEFAULT_STATUSES.length);
     expect(db2.select().from(projects).all()).toHaveLength(1);
     expect(db2.$client.pragma('journal_mode', { simple: true })).toBe('wal');
+    db2.$client.close();
+  });
+
+  it('舊 DB（只套用 0000）升級：worktree_snapshots 補上 is_merged（預設 0），既有資料保留', () => {
+    const tmp = createTempDbFile();
+    const oldDir = mkdtempSync(join(tmpdir(), 'tasks-sheets-mig-'));
+    cleanup = () => {
+      tmp.cleanup();
+      rmSync(oldDir, { recursive: true, force: true });
+    };
+    // 建立只含第一個 migration 的資料夾，模擬升級前的版本
+    const journal = JSON.parse(readFileSync(join(MIGRATIONS_DIR, 'meta', '_journal.json'), 'utf8'));
+    const first = journal.entries[0];
+    mkdirSync(join(oldDir, 'meta'));
+    writeFileSync(join(oldDir, 'meta', '_journal.json'), JSON.stringify({ ...journal, entries: [first] }));
+    copyFileSync(join(MIGRATIONS_DIR, `${first.tag}.sql`), join(oldDir, `${first.tag}.sql`));
+
+    const db = createDb(tmp.path);
+    migrate(db, { migrationsFolder: oldDir });
+    runSeed(db);
+    const columns = (d: typeof db) =>
+      d.$client.prepare("select name from pragma_table_info('worktree_snapshots')").pluck().all();
+    expect(columns(db)).not.toContain('is_merged');
+    const repoId = db.insert(repos).values({ name: 'r', createdAt: 1, updatedAt: 1 }).returning().get().id;
+    db.$client
+      .prepare(
+        'insert into worktree_snapshots (repo_id, path, branch, ahead, reported_at) values (?, ?, ?, ?, ?)',
+      )
+      .run(repoId, '/dev/wt', 'feat/x', 0, 1);
+    db.$client.close();
+
+    const db2 = createDb(tmp.path);
+    runMigrations(db2);
+    runMigrations(db2);
+    expect(columns(db2)).toContain('is_merged');
+    const rows = db2.select().from(worktreeSnapshots).all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ repoId, path: '/dev/wt', branch: 'feat/x', isMerged: false });
     db2.$client.close();
   });
 

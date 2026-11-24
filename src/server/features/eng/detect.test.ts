@@ -98,7 +98,7 @@ describe('detectWorktrees（暫存 git repo）', () => {
     const { worktrees } = await detectWorktrees(fx.repo, { timeoutMs: 15_000 });
     const snaps: WorktreeSnapshot[] = worktrees.map((w) => ({
       ...w,
-      isMerged: w.isMerged ?? null,
+      isMerged: w.isMerged ?? false,
       repoId: 1,
       reportedBy: 'server',
       reportedAt: now,
@@ -176,7 +176,7 @@ describe('classifyWorktrees', () => {
     behind: 0,
     lastCommitAt: now,
     isPrunable: false,
-    isMerged: null,
+    isMerged: false,
     reportedBy: 'dev',
     reportedAt: now,
     ...over,
@@ -217,12 +217,12 @@ describe('classifyWorktrees', () => {
     expect(rows[0]!.status).toBe('ok');
   });
 
-  it('已合併：優先採用偵測端判定，未知時以 ahead = 0 判定', () => {
+  it('已合併：採用偵測端判定（剛建立未提交的分支 ahead = 0 也不算）', () => {
     const status = (over: Partial<WorktreeSnapshot>) =>
       classifyWorktrees([plan({})], [snap(over)], opts)[0]!.status;
     expect(status({ ahead: 0, isMerged: false })).toBe('ok');
     expect(status({ ahead: 0, isMerged: true })).toBe('merged');
-    expect(status({ ahead: 0, isMerged: null })).toBe('merged');
-    expect(status({ ahead: 3, isMerged: null })).toBe('ok');
+    expect(status({ branch: null, isMerged: true })).toBe('ok');
+    expect(status({ headSha: null, isMerged: true })).toBe('ok');
   });
 });

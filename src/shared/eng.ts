@@ -107,10 +107,10 @@ export type WorktreeSnapshot = {
   lastCommitAt: number | null;
   isPrunable: boolean;
   /**
-   * 偵測端判定的「已併入 main」（排除剛建立尚未提交的分支）；
-   * 未知時（例如 server 重啟後尚未重新偵測 / 回報）為 null，改以 ahead = 0 判定
+   * 偵測端判定的「已併入 main」（排除剛建立尚未提交的分支）；持久化於 worktree_snapshots.is_merged。
+   * 偵測端無法判定時為 false
    */
-  isMerged: boolean | null;
+  isMerged: boolean;
   reportedBy: string | null;
   reportedAt: number;
 };

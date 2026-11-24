@@ -102,10 +102,7 @@ export async function getIssues(
 
 // ── Worktrees ────────────────────────────────────────────────
 
-const toSnapshot = (
-  r: typeof worktreeSnapshots.$inferSelect,
-  merged: Map<string, boolean> | undefined,
-): WorktreeSnapshot => ({
+const toSnapshot = (r: typeof worktreeSnapshots.$inferSelect): WorktreeSnapshot => ({
   repoId: r.repoId,
   path: r.path,
   branch: r.branch,
@@ -115,12 +112,16 @@ const toSnapshot = (
   behind: r.behind,
   lastCommitAt: r.lastCommitAt,
   isPrunable: r.isPrunable,
-  isMerged: merged?.get(pathKey(r.path)) ?? null,
+  isMerged: r.isMerged,
   reportedBy: r.reportedBy,
   reportedAt: r.reportedAt,
 });
 
-/** 以一次偵測 / 回報的結果整批取代該 repo 的實際狀態（同路徑只留一筆） */
+/**
+ * 以一次偵測 / 回報的結果整批取代該 repo 的實際狀態（同路徑只留一筆）。
+ * 「已併入」判定一併寫入 is_merged，server 重啟後仍能區分「剛建立未提交」與「已合併未清理」；
+ * 偵測端無法判定（省略 isMerged）時存 false。
+ */
 export function replaceSnapshots(
   tx: DbOrTx,
   repoId: number,
@@ -130,25 +131,22 @@ export function replaceSnapshots(
 ): number {
   tx.delete(worktreeSnapshots).where(eq(worktreeSnapshots.repoId, repoId)).run();
   const seen = new Set<string>();
-  for (const { isMerged: _merged, ...w } of worktrees) {
+  for (const w of worktrees) {
     const key = pathKey(w.path);
     if (seen.has(key)) continue;
     seen.add(key);
     tx.insert(worktreeSnapshots)
-      .values({ ...w, repoId, path: normalizePath(w.path), reportedBy, reportedAt: at })
+      .values({
+        ...w,
+        isMerged: w.isMerged ?? false,
+        repoId,
+        path: normalizePath(w.path),
+        reportedBy,
+        reportedAt: at,
+      })
       .run();
   }
   return seen.size;
-}
-
-/**
- * 記住偵測端的「已併入」判定（worktree_snapshots 沒有此欄位，暫存於記憶體；
- * server 重啟後到下次偵測 / 回報前退回 ahead = 0 判定）
- */
-export function rememberMerged(db: Db, repoId: number, worktrees: DetectedWorktree[]): void {
-  const map = new Map<string, boolean>();
-  for (const w of worktrees) if (w.isMerged != null) map.set(pathKey(w.path), w.isMerged);
-  repoRuntime(db, repoId).merged = map;
 }
 
 /** server 是否能直接偵測此 repo（模式 A：已登記的本機路徑存在於 server 上） */
@@ -163,7 +161,6 @@ function detectLocal(db: Db, repo: Repo, now: () => number): Promise<void> {
       const result = await detect(repo.localPath!, { timeoutMs: gitTimeoutMs });
       const t = now();
       db.transaction((tx) => replaceSnapshots(tx, repo.id, result.worktrees, 'server', t));
-      rememberMerged(db, repo.id, result.worktrees);
       rt.detectedAt = t;
     } catch (err) {
       throw new HttpError(502, 'INTERNAL_ERROR', `worktree 偵測失敗：${(err as Error).message}`);
@@ -199,7 +196,7 @@ export async function getWorktrees(
     .from(worktreeSnapshots)
     .where(eq(worktreeSnapshots.repoId, repo.id))
     .all()
-    .map((r) => toSnapshot(r, repoRuntime(db, repo.id).merged));
+    .map(toSnapshot);
   const plans = listPlans(db, repo.id);
   const detectedAt = snapshots.reduce<number | null>(
     (m, s) => (m == null || s.reportedAt > m ? s.reportedAt : m),
