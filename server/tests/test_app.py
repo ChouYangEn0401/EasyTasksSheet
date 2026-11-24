@@ -2,7 +2,7 @@ import pytest
 
 from .helpers import client, create_test_app, create_test_user, login_as
 
-# 由各功能軌道實作的路由：此處只驗證「未登入一律 401」與「登入後為 stub 501」
+# 各功能路由：此處只驗證「未登入一律 401」（功能細節由各自的測試檔負責）
 FEATURE_PATHS = [
     ("GET", "/api/overview"),
     ("GET", "/api/feedback"),
@@ -59,14 +59,6 @@ def test_protected_paths_require_login(method, path):
 def test_core_list_paths_mounted(path):
     api = logged_in()
     assert api.get(path).status_code == 200
-
-
-@pytest.mark.parametrize("method,path", FEATURE_PATHS + [("PUT", "/api/personal/pins/1")])
-def test_feature_stubs_return_501(method, path):
-    api = logged_in()
-    res = api.request(method, path, None if method == "GET" else {})
-    assert res.status_code == 501
-    assert res.json()["error"]["code"] == "NOT_IMPLEMENTED"
 
 
 def test_public_report_path_skips_session():
