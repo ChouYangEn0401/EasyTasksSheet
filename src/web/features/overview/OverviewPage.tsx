@@ -101,9 +101,7 @@ function StatsRow({ data }: { data: OverviewResponse }) {
       >
         <span className="ov-stat-label">目前無任務</span>
         <span className="ov-stat-value">{idleCount} 人</span>
-        <span className="ov-stat-hint">
-          {idleCount > 0 ? `共 ${totals.activeMembers} 位成員` : '所有成員都有進行中的任務'}
-        </span>
+        <span className="ov-stat-hint">共 {totals.activeMembers} 位成員</span>
       </button>
       <div className="ov-stat" data-testid="stat-overdue">
         <span className="ov-stat-label">逾期</span>
@@ -173,7 +171,7 @@ function CompactGantt({ members }: { members: OverviewResponse['members'] | unde
           甘特圖進度
         </h2>
         <Link to="/tasks/gantt?group=assignee" className="ov-link">
-          開啟完整 Gantt →
+          開啟完整甘特圖 →
         </Link>
       </div>
       {tasks.isPending || !members ? (

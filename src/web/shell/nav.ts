@@ -18,9 +18,9 @@ export const NAV_ENTRIES: NavEntry[] = [
     to: '/tasks',
     icon: 'listCheck',
     children: [
-      { key: 'list', label: 'List', to: '/tasks/list' },
-      { key: 'kanban', label: 'Kanban', to: '/tasks/kanban' },
-      { key: 'gantt', label: 'Gantt', to: '/tasks/gantt' },
+      { key: 'list', label: '清單', to: '/tasks/list' },
+      { key: 'kanban', label: '看板', to: '/tasks/kanban' },
+      { key: 'gantt', label: '甘特圖', to: '/tasks/gantt' },
     ],
   },
   { key: 'feedback', label: '問題回饋', to: '/feedback', icon: 'chat' },

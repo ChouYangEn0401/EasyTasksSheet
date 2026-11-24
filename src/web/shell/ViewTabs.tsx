@@ -6,9 +6,9 @@ import type { TaskView } from './nav.ts';
 import { ViewTabsActionsContext } from './viewTabsContext.ts';
 
 const VIEWS: { key: TaskView; label: string; icon: IconName }[] = [
-  { key: 'list', label: 'List', icon: 'list' },
-  { key: 'kanban', label: 'Kanban', icon: 'kanban' },
-  { key: 'gantt', label: 'Gantt', icon: 'gantt' },
+  { key: 'list', label: '清單', icon: 'list' },
+  { key: 'kanban', label: '看板', icon: 'kanban' },
+  { key: 'gantt', label: '甘特圖', icon: 'gantt' },
 ];
 
 /**
@@ -20,7 +20,7 @@ export function ViewTabsActions({ children }: { children: ReactNode }) {
   return el ? createPortal(children, el) : null;
 }
 
-/** List / Kanban / Gantt 切換；為路由連結，切換時保留目前 query string（篩選不重置） */
+/** 清單 / 看板 / 甘特圖切換；為路由連結，切換時保留目前 query string（篩選不重置） */
 export function ViewTabs({ actionsRef }: { actionsRef: (el: HTMLDivElement | null) => void }) {
   const { search } = useLocation();
   return (

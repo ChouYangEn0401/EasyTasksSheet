@@ -15,9 +15,9 @@ const NAV_PAGES: { link: string; url: RegExp }[] = [
 ];
 
 const TASK_VIEWS: { link: string; url: RegExp }[] = [
-  { link: 'List', url: /\/tasks\/list/ },
-  { link: 'Kanban', url: /\/tasks\/kanban/ },
-  { link: 'Gantt', url: /\/tasks\/gantt/ },
+  { link: '清單', url: /\/tasks\/list/ },
+  { link: '看板', url: /\/tasks\/kanban/ },
+  { link: '甘特圖', url: /\/tasks\/gantt/ },
 ];
 
 const expectPageTitle = async (page: Page) => {
@@ -92,7 +92,7 @@ test('登入 → 強制改密碼 → 走訪導覽 → 快速新增 → 另一瀏
   }
   // ViewTabs 切換保留 query
   await page.goto('/tasks/list?status=1');
-  await page.getByRole('navigation', { name: '任務檢視' }).getByRole('link', { name: 'Gantt' }).click();
+  await page.getByRole('navigation', { name: '任務檢視' }).getByRole('link', { name: '甘特圖' }).click();
   await expect(page).toHaveURL(/\/tasks\/gantt\?status=1$/);
   await expect(page.getByRole('button', { name: /狀態：待辦/ })).toBeVisible();
   await page.getByRole('search').getByRole('button', { name: '清除篩選' }).click();
