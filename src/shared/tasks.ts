@@ -1,0 +1,57 @@
+import { z } from 'zod';
+import { dateString, timestamps } from './common.ts';
+import { customValues } from './properties.ts';
+
+export const TASK_PRIORITIES = ['none', 'low', 'medium', 'high', 'urgent'] as const;
+export const taskPriority = z.enum(TASK_PRIORITIES);
+export type TaskPriority = z.infer<typeof taskPriority>;
+
+export const task = z.object({
+  id: z.number().int(),
+  projectId: z.number().int(),
+  title: z.string(),
+  description: z.string(),
+  statusId: z.number().int(),
+  assigneeId: z.number().int().nullable(),
+  priority: taskPriority,
+  startDate: dateString.nullable(),
+  dueDate: dateString.nullable(),
+  estimateHours: z.number().nullable(),
+  progress: z.number().int().min(0).max(100),
+  sortOrder: z.number(),
+  custom: customValues,
+  createdBy: z.number().int().nullable(),
+  updatedBy: z.number().int().nullable(),
+  deletedAt: z.number().int().nullable(),
+  ...timestamps,
+});
+export type Task = z.infer<typeof task>;
+
+/** 建立任務只需 title，其餘由後端給預設值 */
+export const taskCreateInput = z.object({
+  title: z.string().trim().min(1).max(500),
+  projectId: z.number().int().optional(),
+  description: z.string().max(20_000).optional(),
+  statusId: z.number().int().optional(),
+  assigneeId: z.number().int().nullable().optional(),
+  priority: taskPriority.optional(),
+  startDate: dateString.nullable().optional(),
+  dueDate: dateString.nullable().optional(),
+  estimateHours: z.number().min(0).nullable().optional(),
+  progress: z.number().int().min(0).max(100).optional(),
+  sortOrder: z.number().optional(),
+  custom: customValues.optional(),
+});
+export type TaskCreateInput = z.infer<typeof taskCreateInput>;
+
+/** PATCH 只送改動的欄位（欄位層級後寫入者勝） */
+export const taskUpdateInput = taskCreateInput.partial();
+export type TaskUpdateInput = z.infer<typeof taskUpdateInput>;
+
+export const taskListQuery = z.object({
+  project: z.coerce.number().int().optional(),
+  assignee: z.coerce.number().int().optional(),
+  status: z.coerce.number().int().optional(),
+  q: z.string().optional(),
+});
+export type TaskListQuery = z.infer<typeof taskListQuery>;
