@@ -1,0 +1,81 @@
+/**
+ * 全域快捷鍵（docs/design/core-shell.md §8）：
+ *   N 聚焦 Header 的 QuickAdd；/ 聚焦 FilterBar 搜尋框；G 然後 O/L/K/G/F/M/E 前往頁面；[ 收合 Sidebar
+ * focus 在輸入框 / 可編輯區時不觸發；suspendGlobalShortcuts() 可暫停（例如 Kanban 鍵盤拖曳中）。
+ */
+
+/** G 序列對應的路由 */
+export const GOTO_KEYS: Record<string, string> = {
+  o: '/',
+  l: '/tasks/list',
+  k: '/tasks/kanban',
+  g: '/tasks/gantt',
+  f: '/feedback',
+  m: '/me',
+  e: '/eng',
+};
+
+/** 標記用的 data 屬性：Header QuickAdd 與 FilterBar 搜尋框 */
+export const GLOBAL_QUICKADD_ATTR = 'data-global-quickadd';
+export const FILTER_SEARCH_ATTR = 'data-filter-search';
+
+let suspendCount = 0;
+
+/** 暫停全域快捷鍵，回傳恢復函式（可巢狀呼叫） */
+export function suspendGlobalShortcuts(): () => void {
+  suspendCount += 1;
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    suspendCount -= 1;
+  };
+}
+
+export const shortcutsSuspended = () => suspendCount > 0;
+
+/** 事件目標是否為可輸入的元素 */
+export function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (tag === 'INPUT') {
+    const type = (target as HTMLInputElement).type;
+    return !['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color', 'file'].includes(type);
+  }
+  return false;
+}
+
+export type ShortcutAction =
+  | { type: 'focus-quickadd' }
+  | { type: 'focus-search' }
+  | { type: 'toggle-sidebar' }
+  | { type: 'goto'; path: string };
+
+/**
+ * 依按鍵與「上一個按鍵是否為 G（且未逾時）」決定動作（純函式，方便測試）。
+ * 回傳 { action, pendingG }：pendingG 表示這次按鍵開啟了 G 序列。
+ */
+export function resolveShortcut(
+  key: string,
+  pendingG: boolean,
+): { action: ShortcutAction | null; pendingG: boolean } {
+  const k = key.length === 1 ? key.toLowerCase() : key;
+  if (pendingG) {
+    const path = GOTO_KEYS[k];
+    return { action: path ? { type: 'goto', path } : null, pendingG: false };
+  }
+  switch (k) {
+    case 'n':
+      return { action: { type: 'focus-quickadd' }, pendingG: false };
+    case '/':
+      return { action: { type: 'focus-search' }, pendingG: false };
+    case '[':
+      return { action: { type: 'toggle-sidebar' }, pendingG: false };
+    case 'g':
+      return { action: null, pendingG: true };
+    default:
+      return { action: null, pendingG: false };
+  }
+}

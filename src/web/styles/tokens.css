@@ -1,0 +1,177 @@
+/*
+ * 設計 token（docs/design/core-shell.md §2）。全專案基準，各軌道只引用變數名稱，不得自訂色碼或尺寸。
+ * 色彩、字級、圓角、陰影放在 Tailwind @theme（static：全部輸出到 :root），同時產生 utility：
+ *   bg-surface、text-text-secondary（或別名 text-secondary）、border-border、rounded-md、shadow-md、text-sm…
+ * 其餘（間距、字重、控制項高度、版面、層級、動態）為一般 :root 變數。
+ */
+
+@theme static {
+  /* 停用 Tailwind 預設色票，避免寫死顏色 */
+  --color-*: initial;
+
+  /* 2.1 中性與強調 */
+  --color-bg: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-surface-hover: #f3f4f6;
+  --color-surface-active: #e9ebef;
+  --color-border: #e3e5e9;
+  --color-border-subtle: #eef0f2;
+  --color-border-strong: #c9cdd4;
+  --color-text: #1c2024;
+  --color-text-secondary: #5b6370;
+  --color-text-tertiary: #8b929d;
+  --color-text-disabled: #b4b9c1;
+  --color-text-on-accent: #ffffff;
+  --color-accent: #2f6feb;
+  --color-accent-hover: #245bd0;
+  --color-accent-active: #1d4cb0;
+  --color-accent-soft: #eaf1fe;
+  --color-accent-text: #1f56c4;
+  --color-focus-ring: rgba(47, 111, 235, 0.35);
+  --color-overlay: rgba(20, 24, 32, 0.4);
+
+  /* 2.2 語意色 */
+  --color-success: #1f9d61;
+  --color-success-soft: #e7f6ee;
+  --color-success-text: #15734a;
+  --color-success-border: #bfe5d0;
+  --color-warning: #d98a0b;
+  --color-warning-soft: #fdf3df;
+  --color-warning-text: #8f5a06;
+  --color-warning-border: #f3d9a4;
+  --color-danger: #d8433b;
+  --color-danger-soft: #fdecea;
+  --color-danger-text: #a82c26;
+  --color-danger-border: #f4c4c0;
+  --color-info: #2f6feb;
+  --color-info-soft: #eaf1fe;
+  --color-info-text: #1f56c4;
+  --color-info-border: #c3d6fa;
+
+  /* 2.3 狀態色 */
+  --color-status-todo: #8b929d;
+  --color-status-todo-soft: #f0f1f3;
+  --color-status-todo-text: #4b5360;
+  --color-status-doing: #2f6feb;
+  --color-status-doing-soft: #eaf1fe;
+  --color-status-doing-text: #1f56c4;
+  --color-status-review: #8257d9;
+  --color-status-review-soft: #f1ebfd;
+  --color-status-review-text: #5e3bb0;
+  --color-status-done: #1f9d61;
+  --color-status-done-soft: #e7f6ee;
+  --color-status-done-text: #15734a;
+  --color-status-overdue: #d8433b;
+  --color-status-overdue-soft: #fdecea;
+  --color-status-overdue-text: #a82c26;
+
+  /* 標籤調色盤（DB 存鍵名）；-soft = 本色混白 88%；-text = 本色加深（Avatar、Badge 字色） */
+  --color-tag-gray: #8b929d;
+  --color-tag-blue: #2f6feb;
+  --color-tag-purple: #8257d9;
+  --color-tag-green: #1f9d61;
+  --color-tag-yellow: #c99a0a;
+  --color-tag-orange: #e0762a;
+  --color-tag-red: #d8433b;
+  --color-tag-teal: #1a9ba8;
+  --color-tag-gray-soft: color-mix(in srgb, #8b929d 12%, #ffffff);
+  --color-tag-blue-soft: color-mix(in srgb, #2f6feb 12%, #ffffff);
+  --color-tag-purple-soft: color-mix(in srgb, #8257d9 12%, #ffffff);
+  --color-tag-green-soft: color-mix(in srgb, #1f9d61 12%, #ffffff);
+  --color-tag-yellow-soft: color-mix(in srgb, #c99a0a 12%, #ffffff);
+  --color-tag-orange-soft: color-mix(in srgb, #e0762a 12%, #ffffff);
+  --color-tag-red-soft: color-mix(in srgb, #d8433b 12%, #ffffff);
+  --color-tag-teal-soft: color-mix(in srgb, #1a9ba8 12%, #ffffff);
+  --color-tag-gray-text: color-mix(in srgb, #8b929d 70%, #000000);
+  --color-tag-blue-text: color-mix(in srgb, #2f6feb 70%, #000000);
+  --color-tag-purple-text: color-mix(in srgb, #8257d9 70%, #000000);
+  --color-tag-green-text: color-mix(in srgb, #1f9d61 70%, #000000);
+  --color-tag-yellow-text: color-mix(in srgb, #c99a0a 70%, #000000);
+  --color-tag-orange-text: color-mix(in srgb, #e0762a 70%, #000000);
+  --color-tag-red-text: color-mix(in srgb, #d8433b 70%, #000000);
+  --color-tag-teal-text: color-mix(in srgb, #1a9ba8 70%, #000000);
+
+  /* 2.4 字級 */
+  --font-sans: 'Inter', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 20px;
+  --text-base: 14px;
+  --text-base--line-height: 22px;
+  --text-lg: 16px;
+  --text-lg--line-height: 24px;
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
+  --text-2xl: 24px;
+  --text-2xl--line-height: 32px;
+
+  /* 2.5 圓角、陰影、曲線 */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-full: 9999px;
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-sm: 0 2px 6px rgba(16, 24, 40, 0.08);
+  --shadow-md: 0 8px 24px rgba(16, 24, 40, 0.12);
+  --shadow-lg: 0 16px 48px rgba(16, 24, 40, 0.18);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* 讓設計稿寫法 text-secondary / text-tertiary 也可用 */
+@theme inline {
+  --color-secondary: var(--color-text-secondary);
+  --color-tertiary: var(--color-text-tertiary);
+  --color-disabled: var(--color-text-disabled);
+}
+
+:root {
+  /* 字重 */
+  --font-regular: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+
+  /* 間距（4px 基準） */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* 控制項高度 */
+  --control-sm: 28px;
+  --control-md: 32px;
+  --control-lg: 40px;
+
+  /* 版面 */
+  --sidebar-width: 232px;
+  --sidebar-width-collapsed: 56px;
+  --header-height: 52px;
+  --drawer-width: 480px;
+  --content-max: 1440px;
+  --row-height: 40px;
+
+  /* 層級 */
+  --z-header: 10;
+  --z-sidebar: 20;
+  --z-drawer: 30;
+  --z-dialog: 40;
+  --z-popover: 50;
+  --z-toast: 60;
+
+  /* 動態 */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+  }
+}

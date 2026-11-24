@@ -10,7 +10,8 @@ export default defineConfig({
   reporter: 'list',
   use: { baseURL: `http://localhost:${port}` },
   webServer: {
-    command: 'npm run build && npm run db:setup && npm start',
+    // 每次重建 E2E 專用 DB 並建立固定測試帳號（tests/helpers/e2eUsers.ts）
+    command: 'npm run build && node scripts/e2e-setup.ts && npm start',
     url: `http://localhost:${port}/api/health`,
     reuseExistingServer: false,
     timeout: 180_000,

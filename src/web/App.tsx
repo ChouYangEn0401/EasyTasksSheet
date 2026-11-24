@@ -1,8 +1,16 @@
-// 最小入口：AppShell、路由與 QueryClient 由 core/shell 實作。
+import { QueryClientProvider } from '@tanstack/react-query';
+import { RouterProvider } from 'react-router';
+import { registerNavigate } from './lib/navigation.ts';
+import { queryClient } from './lib/queryClient.ts';
+import { createAppRouter } from './routes.tsx';
+
+const router = createAppRouter();
+registerNavigate((to, opts) => void router.navigate(to, opts));
+
 export function App() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-white text-slate-700">
-      <p>TasksSheets</p>
-    </main>
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
   );
 }
