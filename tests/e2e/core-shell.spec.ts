@@ -95,7 +95,7 @@ test('登入 → 強制改密碼 → 走訪導覽 → 快速新增 → 另一瀏
   await page.getByRole('navigation', { name: '任務檢視' }).getByRole('link', { name: 'Gantt' }).click();
   await expect(page).toHaveURL(/\/tasks\/gantt\?status=1$/);
   await expect(page.getByRole('button', { name: /狀態：待辦/ })).toBeVisible();
-  await page.getByRole('button', { name: '清除篩選' }).click();
+  await page.getByRole('search').getByRole('button', { name: '清除篩選' }).click();
   await expect(page).toHaveURL(/\/tasks\/gantt$/);
 
   // 404
@@ -137,7 +137,7 @@ test('登入 → 強制改密碼 → 走訪導覽 → 快速新增 → 另一瀏
   await search.fill('第二筆');
   await expect(page).toHaveURL(/q=%E7%AC%AC%E4%BA%8C%E7%AD%86/);
   await expect(page.getByText('共 1 筆')).toBeVisible();
-  await page.getByRole('button', { name: '清除篩選' }).click();
+  await page.getByRole('search').getByRole('button', { name: '清除篩選' }).click();
   await expect(page.getByText('共 2 筆')).toBeVisible();
 
   // TaskDrawer：?task=<id> 開啟，Esc 關閉
