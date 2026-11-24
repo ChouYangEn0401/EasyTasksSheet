@@ -1,0 +1,36 @@
+# TasksSheets systemd unit 範例
+# 安裝：
+#   sudo cp deploy/tasks-sheets.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now tasks-sheets
+# 檢視紀錄：journalctl -u tasks-sheets -f
+#
+# 假設：程式放在 /opt/tasks-sheets，以系統帳號 tasks-sheets 執行，Node 位於 /usr/bin/node（>= 22.18）。
+# 設定一律寫在 /opt/tasks-sheets/.env（程式啟動時會從工作目錄讀取 .env）。
+
+[Unit]
+Description=TasksSheets 任務管理
+After=network.target
+
+[Service]
+Type=simple
+User=tasks-sheets
+Group=tasks-sheets
+WorkingDirectory=/opt/tasks-sheets
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node src/server/index.ts
+Restart=on-failure
+RestartSec=5
+# 停止時給進行中的請求與 SQLite 寫入一點時間
+TimeoutStopSec=20
+
+# ── 強化 ──
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# 只允許寫入資料與備份目錄（對應 .env 的 DATABASE_PATH 與 BACKUP_DIR）
+ReadWritePaths=/opt/tasks-sheets/data /opt/tasks-sheets/backups
+
+[Install]
+WantedBy=multi-user.target

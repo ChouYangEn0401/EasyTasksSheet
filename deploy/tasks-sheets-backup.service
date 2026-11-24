@@ -1,0 +1,23 @@
+# 每日備份（由 tasks-sheets-backup.timer 觸發）。服務運行中執行即可，不需停機。
+# 安裝：
+#   sudo cp deploy/tasks-sheets-backup.service deploy/tasks-sheets-backup.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now tasks-sheets-backup.timer
+# 立即手動跑一次：sudo systemctl start tasks-sheets-backup
+# 查看結果：journalctl -u tasks-sheets-backup
+
+[Unit]
+Description=TasksSheets SQLite 備份
+
+[Service]
+Type=oneshot
+User=tasks-sheets
+Group=tasks-sheets
+WorkingDirectory=/opt/tasks-sheets
+# 備份目錄與保留份數取自 .env 的 BACKUP_DIR / BACKUP_KEEP，也可在此加 --out / --keep 覆寫
+ExecStart=/usr/bin/node scripts/backup.mjs
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/tasks-sheets/data /opt/tasks-sheets/backups

@@ -1,0 +1,52 @@
+# 可選：Docker Compose 部署（TasksSheets + Caddy）。
+# 在專案根目錄執行：
+#   cp .env.example .env   # 依 README 修改
+#   docker compose -f deploy/docker-compose.yml up -d --build
+# 備份（服務運行中）：
+#   docker compose -f deploy/docker-compose.yml exec app node scripts/backup.mjs
+# 備份檔位於 volume tasks-backups，可用 `docker cp` 取出或改成 bind mount 到備份磁碟。
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      # 以下固定為容器內路徑，覆寫 .env 中的同名設定
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: '3000'
+      DATABASE_PATH: /data/app.db
+      BACKUP_DIR: /backups
+      STATIC_DIR: dist/web
+    volumes:
+      - tasks-data:/data
+      - tasks-backups:/backups
+    # 不對外開放；只由 caddy 經內部網路存取
+    expose:
+      - '3000'
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      # 對應 deploy/Caddyfile 中的 {$SITE_ADDRESS} 與 {$UPSTREAM}
+      SITE_ADDRESS: ${SITE_ADDRESS:-tasks.lab.example}
+      UPSTREAM: app:3000
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  tasks-data:
+  tasks-backups:
+  caddy-data:
+  caddy-config:

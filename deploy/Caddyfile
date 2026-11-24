@@ -1,0 +1,49 @@
+# TasksSheets 反向代理範例（Caddy v2）
+# 安裝位置通常為 /etc/caddy/Caddyfile；修改後 `sudo systemctl reload caddy`。
+# 把 tasks.lab.example 換成實際主機名稱（或設環境變數 SITE_ADDRESS）。
+# Node 服務請只綁 127.0.0.1:3000（.env 的 HOST / PORT）；容器部署時以環境變數 UPSTREAM=app:3000 覆寫。
+
+{$SITE_ADDRESS:tasks.lab.example} {
+	# ── HTTPS 憑證（三選一）────────────────────────────────
+	# (A) 僅內網 / VPN、無公開 DNS：用 Caddy 內建 CA 簽發，
+	#     再把 Caddy 根憑證（/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt）
+	#     安裝到使用者電腦的信任清單。
+	tls internal
+	# (B) 有校方 / 自備憑證：
+	# tls /etc/caddy/certs/tasks.crt /etc/caddy/certs/tasks.key
+	# (C) 主機名稱可從網際網路解析且 80/443 對外開放：刪除 tls 這行，Caddy 會自動申請 Let's Encrypt。
+
+	# 壓縮回應，但 SSE 不壓縮（壓縮器會累積資料再送出，造成事件延遲）
+	@compressible not path /api/events
+	encode @compressible zstd gzip
+
+	# ── SSE：/api/events ──────────────────────────────────
+	# 關閉緩衝、立即送出每個事件；不設讀寫逾時，連線可長時間保持。
+	# 伺服器端會定時送心跳，前端斷線會自動重連並退回輪詢。
+	handle /api/events {
+		reverse_proxy {$UPSTREAM:127.0.0.1:3000} {
+			flush_interval -1
+			transport http {
+				read_timeout 0
+				write_timeout 0
+			}
+			# 重新載入 Caddy 設定時，給既有 SSE 連線 5 分鐘自然結束，避免所有人同時重連
+			stream_close_delay 5m
+		}
+	}
+
+	# ── 其他請求（API 與前端靜態檔都由同一個 Node 行程提供）──
+	handle {
+		reverse_proxy {$UPSTREAM:127.0.0.1:3000}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+
+	# 存取紀錄寫到 Caddy 的 stderr（systemd 下可用 journalctl -u caddy 查看）
+	log
+}
