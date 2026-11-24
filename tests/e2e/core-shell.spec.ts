@@ -6,20 +6,25 @@ test.describe.configure({ mode: 'serial' });
 
 const NEW_PASSWORD = 'e2e-newbie-changed-1';
 
-const NAV_PAGES: { link: string; url: RegExp; placeholder: string }[] = [
-  { link: '總覽', url: /\/$/, placeholder: '總覽' },
-  { link: '問題回饋', url: /\/feedback$/, placeholder: '問題回饋' },
-  { link: '個人清單', url: /\/me$/, placeholder: '個人清單' },
-  { link: '工程追蹤', url: /\/eng$/, placeholder: '工程追蹤' },
+// 走訪只確認 URL 與頁面標題（h1）存在；頁面內容由各功能軌道實作，不在此假設
+const NAV_PAGES: { link: string; url: RegExp }[] = [
+  { link: '總覽', url: /\/$/ },
+  { link: '問題回饋', url: /\/feedback$/ },
+  { link: '個人清單', url: /\/me$/ },
+  { link: '工程追蹤', url: /\/eng$/ },
 ];
 
-const TASK_VIEWS: { link: string; url: RegExp; placeholder: string }[] = [
-  { link: 'List', url: /\/tasks\/list/, placeholder: 'List 檢視' },
-  { link: 'Kanban', url: /\/tasks\/kanban/, placeholder: 'Kanban 檢視' },
-  { link: 'Gantt', url: /\/tasks\/gantt/, placeholder: 'Gantt 檢視' },
+const TASK_VIEWS: { link: string; url: RegExp }[] = [
+  { link: 'List', url: /\/tasks\/list/ },
+  { link: 'Kanban', url: /\/tasks\/kanban/ },
+  { link: 'Gantt', url: /\/tasks\/gantt/ },
 ];
 
-const placeholderTitle = (page: Page) => page.locator('.ui-empty-title');
+const expectPageTitle = async (page: Page) => {
+  const h1 = page.locator('h1').first();
+  await expect(h1).toBeVisible();
+  await expect(h1).not.toHaveText('');
+};
 
 test('登入 → 強制改密碼 → 走訪導覽 → 快速新增 → 另一瀏覽器可見 → 登出', async ({ page, browser }) => {
   test.setTimeout(120_000); // 含等待另一瀏覽器的 30 秒輪詢
@@ -56,7 +61,7 @@ test('登入 → 強制改密碼 → 走訪導覽 → 快速新增 → 另一瀏
   const nav = page.getByRole('navigation', { name: '主要導覽' });
   await expect(nav).toBeVisible();
   await expect(page).toHaveURL(/\/tasks\/kanban$/);
-  await expect(placeholderTitle(page)).toHaveText('Kanban 檢視');
+  await expectPageTitle(page);
   // 一般成員看不到成員管理
   await expect(nav.getByRole('link', { name: '成員管理' })).toHaveCount(0);
   // 登入前的 401（/api/auth/me 探測、錯誤密碼）屬預期，之後不得再有 console error
@@ -75,8 +80,7 @@ test('登入 → 強制改密碼 → 走訪導覽 → 快速新增 → 另一瀏
   for (const p of NAV_PAGES) {
     await nav.getByRole('link', { name: p.link, exact: true }).click();
     await expect(page).toHaveURL(p.url);
-    await expect(placeholderTitle(page)).toHaveText(p.placeholder);
-    await expect(page.getByText('此功能開發中')).toBeVisible();
+    await expectPageTitle(page);
   }
   // 任務群組：進入上次使用的檢視（Kanban），再走訪三個子項
   await nav.getByRole('link', { name: '任務', exact: true }).click();
@@ -84,7 +88,7 @@ test('登入 → 強制改密碼 → 走訪導覽 → 快速新增 → 另一瀏
   for (const v of TASK_VIEWS) {
     await nav.getByRole('link', { name: v.link, exact: true }).click();
     await expect(page).toHaveURL(v.url);
-    await expect(placeholderTitle(page)).toHaveText(v.placeholder);
+    await expectPageTitle(page);
   }
   // ViewTabs 切換保留 query
   await page.goto('/tasks/list?status=1');

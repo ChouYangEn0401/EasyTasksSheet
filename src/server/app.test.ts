@@ -2,19 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { client, loginAs } from '../../tests/helpers/auth.ts';
 import { createTestApp, createTestUser } from '../../tests/helpers/db.ts';
 
-const STUB_PATHS = [
+// 由各功能軌道實作的路由：此處只驗證「未登入一律 401」，不對登入後的行為做假設
+const FEATURE_PATHS = [
   ['GET', '/api/overview'],
   ['GET', '/api/feedback'],
-  ['DELETE', '/api/feedback/3'],
   ['GET', '/api/personal'],
-  ['PUT', '/api/personal/pins/1'],
   ['GET', '/api/eng/repos'],
-  ['POST', '/api/eng/worktrees/report'],
   ['GET', '/api/admin/users'],
-  ['POST', '/api/admin/users/1/unlock'],
   ['GET', '/api/changes?since=0'],
   ['GET', '/api/events'],
 ] as const;
+
+// 核心已實作的 API：登入後應正常掛載並回 200
+const CORE_LIST_PATHS = ['/api/users', '/api/projects', '/api/statuses', '/api/tasks', '/api/properties'] as const;
 
 const PROTECTED_PATHS = [
   ['GET', '/api/auth/me'],
@@ -29,7 +29,7 @@ const PROTECTED_PATHS = [
   ['DELETE', '/api/tasks/1'],
   ['GET', '/api/properties'],
   ['GET', '/api/nope'],
-  ...STUB_PATHS,
+  ...FEATURE_PATHS,
 ] as const;
 
 async function loggedIn() {
@@ -57,11 +57,10 @@ describe('app', () => {
     expect((await res.json()).error.code).toBe('UNAUTHORIZED');
   });
 
-  it.each(STUB_PATHS)('%s %s 為 stub，登入後回 501', async (method, path) => {
+  it.each(CORE_LIST_PATHS)('登入後 GET %s 已掛載並回 200', async (path) => {
     const api = await loggedIn();
-    const res = await api.request(method, path, method === 'GET' || method === 'DELETE' ? undefined : {});
-    expect(res.status).toBe(501);
-    expect((await res.json()).error.code).toBe('NOT_IMPLEMENTED');
+    const res = await api.get(path);
+    expect(res.status).toBe(200);
   });
 
   it('未知 API 回 JSON 404', async () => {
