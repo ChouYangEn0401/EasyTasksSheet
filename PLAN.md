@@ -4,13 +4,18 @@
 - 建立日期：2026-11-24
 - 適用流程：parallel-dev-orchestrator（core 先行 → worktree 平行軌道 → ff-only 合併 → 立即清理）
 
+> **更正（2026-11-25）：後端已改為 Python FastAPI。**
+> 後端由 TypeScript（Hono + Drizzle + better-sqlite3 + @node-rs/argon2）改寫為 **Python 3.11+（FastAPI + uvicorn、標準庫 `sqlite3`、argon2-cffi、pydantic）**，程式在 `server/app/`，migration 在 `server/migrations/`，測試為 pytest（`server/tests/`）。
+> TS 後端（`src/server/`、`drizzle/`、`drizzle.config.ts`、`scripts/db.ts`、`scripts/e2e-setup.ts`、`scripts/user-add.ts`）已移除；前端（React + Vite）與 `src/shared/` 的 zod schema / 型別維持不變，`src/shared/` 現在只供前端使用。
+> 下文中提到 Hono、Drizzle、`src/server/**`、`drizzle/` 等處為原始規劃的歷史紀錄，實際對應請見 `server/app/`；技術選型表已更正。
+
 ---
 
 ## 0. 摘要
 
 | 項目 | 內容 |
 |---|---|
-| 技術 | TypeScript 全端：React + Vite（前端）、Hono（後端）、SQLite + Drizzle（資料）——皆可調整 |
+| 技術 | 前端 TypeScript：React + Vite；後端 **Python：FastAPI + uvicorn**；資料 SQLite（標準庫 `sqlite3`、純 SQL migration）（原規劃 Hono + Drizzle，已更正） |
 | 核心 | 3 個序列分支：`core/foundation` → `core/auth-data` → `core/shell` |
 | 平行軌道 | 第一波 8 條（分 1A / 1B 兩批，各 4 條），第二波 1 條（即時同步 + 即時回饋） |
 | hotfix | `hotfix/<topic>`，隨時可開，獨立 ff-only 合併 |
@@ -25,13 +30,13 @@
 
 | 層 | 選擇 | 理由 | 可替代方案 |
 |---|---|---|---|
-| 語言 | TypeScript（前後端共用） | 前後端共用型別與驗證 schema，減少契約落差 | — |
-| 執行環境 | Node.js LTS（24 或 22） | 自架 server 最常見、部署單純 | Bun |
-| 後端框架 | **Hono** + `@hono/node-server` | 輕量、TS 原生、`app.request()` 可直接做整合測試、內建 SSE helper | Fastify、Express |
-| 驗證 | **Zod**（放在 `src/shared`） | 同一份 schema 同時做 API 驗證與前端表單型別 | Valibot |
-| 資料庫 | **SQLite**（`better-sqlite3`，WAL 模式） | 單檔、零維運、實驗室規模綽綽有餘、備份就是複製檔案 | PostgreSQL（人數或併發大幅成長時） |
-| ORM / migration | **Drizzle ORM** + drizzle-kit | 型別安全、貼近 SQL、migration 為純 SQL 檔好審查 | Kysely、Prisma |
-| 密碼雜湊 | **argon2id**（`@node-rs/argon2`，有預編譯檔免 node-gyp） | 現行建議演算法；Windows 開發 / Linux 部署都免編譯 | bcrypt |
+| 語言 | 前端 TypeScript；後端 **Python 3.11+**（更正：原為 TS 全端） | 後端改以 Python 維護 | — |
+| 執行環境 | 後端 Python（`.venv`）；Node.js 22.18+ 只用於建置前端與開發（更正） | 正式執行不需 Node | — |
+| 後端框架 | **FastAPI + uvicorn**（更正：原為 Hono + `@hono/node-server`） | 型別提示 + pydantic 驗證、TestClient 整合測試、StreamingResponse 做 SSE | Flask、Starlette |
+| 驗證 | 後端 **pydantic**；前端 **Zod**（`src/shared`，更正：不再前後端共用） | 前端型別與表單驗證沿用 zod；後端回應格式須與 `src/shared` 相符 | — |
+| 資料庫 | **SQLite**（Python 標準庫 `sqlite3`，WAL 模式；更正：原為 `better-sqlite3`） | 單檔、零維運、實驗室規模綽綽有餘、備份就是複製檔案 | PostgreSQL（人數或併發大幅成長時） |
+| ORM / migration | 不用 ORM：參數化 SQL + `server/migrations/*.sql` 純 SQL migration（更正：原為 Drizzle ORM + drizzle-kit；仍相容舊 `__drizzle_migrations` 紀錄） | 貼近 SQL、migration 好審查 | SQLAlchemy |
+| 密碼雜湊 | **argon2id**（`argon2-cffi`；更正：原為 `@node-rs/argon2`） | 現行建議演算法；有預編譯 wheel | bcrypt |
 | Session | 伺服器端 session 存 SQLite + httpOnly cookie | 可立即撤銷、可精確實作 9 小時與閒置逾時；比 JWT 單純 | JWT（不建議） |
 | 前端 | **React + Vite** | 生態最成熟，拖曳 / 甘特 / 日曆元件選擇多 | Vue、Svelte |
 | 路由 | React Router | 常見、足夠 | TanStack Router |
@@ -40,9 +45,9 @@
 | 拖曳 | **dnd-kit** | Kanban 與「拖到 Calendar」共用同一套 | pragmatic-drag-and-drop |
 | 甘特圖 | **自製輕量元件**（CSS grid / SVG） | 需求簡單（長條、進度、今日線），自製可完全貼合視覺；避免大型套件 | frappe-gantt |
 | 日曆 | **自製月曆格**（date-fns） | 只需月檢視 + 放置區，FullCalendar 過重 | FullCalendar |
-| 測試 | **Vitest**（單元 / API 整合）+ **Playwright**（E2E 冒煙） | Vite 生態原生；E2E 只保留少量關鍵流程 | — |
-| 品質 | ESLint + Prettier + `tsc --noEmit` | 業界標準 | Biome |
-| 部署 | 單一 Node 行程同時提供 API 與前端靜態檔；前面放反向代理（Caddy / nginx）做 HTTPS | 一個行程、一個 DB 檔，最容易維運 | Docker Compose |
+| 測試 | **Vitest**（前端單元）+ **pytest**（後端 API 整合）+ **Playwright**（E2E 冒煙）（更正：API 整合測試改為 pytest） | E2E 只保留少量關鍵流程 | — |
+| 品質 | ESLint + Prettier + `tsc --noEmit`（前端） | 業界標準 | Biome |
+| 部署 | 單一 Python（uvicorn）行程同時提供 API 與前端靜態檔（更正：原為 Node 行程）；前面放反向代理（Caddy / nginx）做 HTTPS | 一個行程、一個 DB 檔，最容易維運 | Docker Compose |
 
 刻意**不採用**：微服務、monorepo workspace、GraphQL、Redis、訊息佇列、CRDT 協作編輯。
 

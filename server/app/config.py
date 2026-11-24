@@ -1,4 +1,4 @@
-"""環境變數設定（名稱與預設值同 .env.example / src/server/config.ts）。"""
+"""環境變數設定（名稱與預設值見 .env.example；為唯一的設定來源）。"""
 
 from __future__ import annotations
 

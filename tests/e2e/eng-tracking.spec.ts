@@ -4,8 +4,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
 
 // 工程追蹤簡化版（手動輸入優先）：問題的新增 / 改狀態 / 結案；worktree 紀錄的新增 / 登記 / 刪除；
-// 各電腦回報快照的顯示與「未登記」「可能遺失」提示。此版本只由 Python 後端提供。
-test.skip(process.env.E2E_BACKEND !== 'py', '工程追蹤簡化版僅由 Python 後端（E2E_BACKEND=py）提供');
+// 各電腦回報快照的顯示與「未登記」「可能遺失」提示。
 test.describe.configure({ mode: 'serial' });
 
 const stamp = Date.now().toString(36);

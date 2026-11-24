@@ -2,7 +2,7 @@
 
 > 這是**紀錄工具**，不做自動連動；一切從簡。被追蹤的專案視為在**各人自己的電腦**上，
 > 伺服器不執行任何 git 指令。後端：Python（`server/app/features/eng.py`）。
-> 舊版（repo 管理、server 端 git 偵測、GitHub issue 快取）仍留在 TS 後端 `src/server/features/eng/`，最後切換時整體移除。
+> 舊版（repo 管理、server 端 git 偵測、GitHub issue 快取）已隨 TS 後端一併移除。
 
 適用：`src/web/features/eng/**`，路由 `/eng`。token 與基礎元件一律引用 `core-shell.md`，不新增 token、不新增基礎元件。
 

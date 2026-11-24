@@ -1,5 +1,5 @@
 /**
- * E2E 固定帳號（由 scripts/e2e-setup.ts 在每次 E2E 開始前建立於全新 DB）。
+ * E2E 固定帳號（由 server/e2e_setup.py 在每次 E2E 開始前建立於全新 DB）。
  * - admin / member：可直接登入
  * - newbie：首次登入需強制改密碼（core-shell 冒煙測試用，其他 spec 請勿使用）
  */
