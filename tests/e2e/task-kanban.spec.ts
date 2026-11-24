@@ -173,7 +173,11 @@ test('看板：拖曳改狀態與順序、點擊開詳情、欄尾新增、鍵�
   await reviewAdd.press('Enter');
   await expect(card(column(page, '審查中'), newTitle)).toBeVisible();
   await expect(reviewAdd).toBeFocused();
-  expect((await taskByTitle(req, newTitle)).statusId).toBe(review);
+  // 卡片先以樂觀更新出現（暫時 id），POST 完成前 API 還查不到：等伺服器端資料
+  await expect.poll(async () => (await taskByTitle(req, newTitle))?.statusId).toBe(review);
+  // 後續拖曳需等卡片換成伺服器 id（拖曳中途暫時卡片被替換會落空）
+  const created = await taskByTitle(req, newTitle);
+  await expect(card(column(page, '審查中'), newTitle)).toHaveAttribute('data-task-id', String(created.id));
 
   // 儲存失敗：卡片回原欄 + 錯誤提示列
   await page.route('**/api/tasks/*', (route) =>

@@ -41,7 +41,11 @@ describe('createChangeApplier', () => {
       });
       return obs.subscribe(() => {});
     };
-    const unsubs = [observe(queryKeys.tasks.detail(7)), observe(queryKeys.tasks.detail(8)), observe(queryKeys.tasks.lists())];
+    const unsubs = [
+      observe(queryKeys.tasks.detail(7)),
+      observe(queryKeys.tasks.detail(8)),
+      observe(queryKeys.tasks.lists()),
+    ];
     await vi.runAllTimersAsync();
     fetched.length = 0;
 
