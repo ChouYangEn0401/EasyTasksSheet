@@ -13,12 +13,30 @@ type Item = {
 };
 
 const pad = (n: number) => String(n).padStart(2, '0');
-const now = new Date();
-const monthKey = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
-const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-const nextMonthKey = `${nextMonth.getFullYear()}-${pad(nextMonth.getMonth() + 1)}`;
-const DAY_A = `${monthKey}-10`;
-const DAY_B = `${monthKey}-20`;
+
+/** 頁面（瀏覽器）實際的「今天」YYYY-MM-DD；月曆以瀏覽器本地日期決定本月 */
+const pageToday = (page: Page) =>
+  page.evaluate(() => {
+    const d = new Date();
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  });
+
+/** 由「今天」推出本月 / 下月與測試用日期（固定取 10、20 日，與今天是月初或月底無關） */
+function monthsOf(todayKey: string) {
+  const [y, m] = todayKey.split('-').map(Number) as [number, number];
+  const monthKey = `${y}-${pad(m)}`;
+  const next = new Date(y, m, 1); // m 為 1 起算 → 下個月 1 日
+  const nextMonthKey = `${next.getFullYear()}-${pad(next.getMonth() + 1)}`;
+  return {
+    monthKey,
+    heading: `${y} 年 ${m} 月`,
+    nextMonthKey,
+    nextHeading: `${next.getFullYear()} 年 ${next.getMonth() + 1} 月`,
+    DAY_A: `${monthKey}-10`,
+    DAY_B: `${monthKey}-20`,
+  };
+}
 
 async function findItem(page: Page, title: string): Promise<Item> {
   const res = await page.request.get('/api/feedback');
@@ -53,6 +71,8 @@ test('問題回饋：新增 → 篩選 → 拖曳排程 / 改期 / 取消 → �
   const list = page.getByRole('region', { name: '問題與回饋清單' });
   const calendar = page.getByRole('region', { name: '月曆' });
   await expect(calendar.getByRole('grid')).toBeVisible();
+  const { monthKey, heading, nextMonthKey, nextHeading, DAY_A, DAY_B } = monthsOf(await pageToday(page));
+  await expect(calendar.getByRole('heading')).toHaveText(heading);
 
   // 新增：Enter 建立後清空並保持 focus，可連續新增
   const stamp = Date.now();
@@ -120,18 +140,14 @@ test('問題回饋：新增 → 篩選 → 拖曳排程 / 改期 / 取消 → �
   await expect(today).toBeDisabled();
   await calendar.getByRole('button', { name: '下個月' }).click();
   await expect(page).toHaveURL(new RegExp(`month=${nextMonthKey}`));
-  await expect(calendar.getByRole('heading')).toHaveText(
-    `${nextMonth.getFullYear()} 年 ${nextMonth.getMonth() + 1} 月`,
-  );
+  await expect(calendar.getByRole('heading')).toHaveText(nextHeading);
   await expect(today).toBeEnabled();
   // 重整後保留月份
   await page.reload();
-  await expect(calendar.getByRole('heading')).toHaveText(
-    `${nextMonth.getFullYear()} 年 ${nextMonth.getMonth() + 1} 月`,
-  );
+  await expect(calendar.getByRole('heading')).toHaveText(nextHeading);
   await today.click();
   await expect(page).toHaveURL(new RegExp(`month=${monthKey}`));
-  await expect(calendar.getByRole('heading')).toHaveText(`${now.getFullYear()} 年 ${now.getMonth() + 1} 月`);
+  await expect(calendar.getByRole('heading')).toHaveText(heading);
 
   // 重整後排程保留
   await page.reload();
@@ -194,12 +210,22 @@ test('問題回饋：新增 → 篩選 → 拖曳排程 / 改期 / 取消 → �
   const after = (await (await page.request.get('/api/feedback')).json()) as Item[];
   expect(after.find((i) => i.id === p.id)).toBeUndefined();
 
-  // 鍵盤導覽月曆：PageDown 換月、T 回今天
+  // 鍵盤導覽月曆：PageDown 換月、T 回今天。
+  // 換月後原本 focus 的格子會被移除，新月份格子的 focus 在下一次 render 後才設定；
+  // 須等焦點落到新格子再按 T，否則按鍵會送到 body 而被忽略（先前偶發失敗的原因）。
   await cell(page, DAY_A).focus();
+  await expect(cell(page, DAY_A)).toBeFocused();
   await page.keyboard.press('PageDown');
   await expect(page).toHaveURL(new RegExp(`month=${nextMonthKey}`));
+  await expect(cell(page, `${nextMonthKey}-01`)).toBeFocused();
   await page.keyboard.press('t');
-  await expect(page).toHaveURL(new RegExp(`month=${monthKey}`));
+  // 以按鍵當下頁面的「今天」為準（跨午夜 / 跨月執行時仍正確）
+  const todayKey = await pageToday(page);
+  await expect(page).toHaveURL(new RegExp(`month=${todayKey.slice(0, 7)}(&|$)`));
+  await expect(cell(page, todayKey)).toBeFocused();
+
+  // 清掉本測試留下的項目，重複執行時 DAY_A 不會累積超過格內可顯示的 chip 數
+  expect((await page.request.delete(`/api/feedback/${f.id}`)).ok()).toBe(true);
 
   // 登入前的 /api/auth/me 探測回 401 屬預期
   expect(errors.filter((e) => !/status of 401/.test(e))).toEqual([]);

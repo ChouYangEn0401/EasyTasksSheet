@@ -339,28 +339,33 @@ export function MonthCalendar({
   const [cursor, setCursor] = useState(defaultCursor);
   const cursorKey = cursor >= first && cursor <= last ? cursor : defaultCursor;
   const gridRef = useRef<HTMLDivElement>(null);
-  const pendingFocus = useRef(false);
+  // 待 focus 的目標日期。換月時 setCursor 與 onMonthChange（URL）未必在同一次 render 生效；
+  // 若在月份尚未切換時就 focus（舊月曆格也可能含下月 1 日），切換後 .cal-body 以 monthKey
+  // 重新掛載會讓焦點掉回 body。因此等目標日期所在月份真正顯示後才 focus。
+  const pendingFocus = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!pendingFocus.current) return;
-    pendingFocus.current = false;
+    const target = pendingFocus.current;
+    if (target == null || target.slice(0, 7) !== monthKey || target !== cursorKey) return;
+    pendingFocus.current = null;
     gridRef.current?.querySelector<HTMLElement>(`[data-date="${cursorKey}"]`)?.focus();
   }, [cursorKey, monthKey]);
 
   const moveCursor = (key: string) => {
-    pendingFocus.current = true;
+    pendingFocus.current = key;
     setCursor(key);
     const d = fromDateKey(key);
     if (toMonthKey(d) !== monthKey) onMonthChange(shiftMonth(d, 0));
   };
   const goMonth = (delta: number, focus = false) => {
     const next = shiftMonth(month, delta);
-    pendingFocus.current = focus;
-    setCursor(`${toMonthKey(next)}-01`);
+    const key = `${toMonthKey(next)}-01`;
+    pendingFocus.current = focus ? key : null;
+    setCursor(key);
     onMonthChange(next);
   };
   const goToday = (focus = false) => {
-    pendingFocus.current = focus;
+    pendingFocus.current = focus ? today : null;
     setCursor(today);
     onMonthChange(shiftMonth(fromDateKey(today), 0));
   };

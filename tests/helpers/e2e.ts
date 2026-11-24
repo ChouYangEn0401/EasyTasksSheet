@@ -19,6 +19,5 @@ export function collectErrors(page: Page): string[] {
   page.on('console', (m) => {
     if (m.type() === 'error') errors.push(m.text());
   });
-  page.on('pageerror', (e) => errors.push(e.message));
-  return errors;
+  page.on('pageerror', (e) => errors.push(e.message));  return errors;
 }

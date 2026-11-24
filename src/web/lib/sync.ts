@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import type { QueryClient, QueryKey } from '@tanstack/react-query';
+import type { Query, QueryClient, QueryKey } from '@tanstack/react-query';
 import type { Change, EntityType } from '../../shared/sync.ts';
 import { api } from './api.ts';
 import { enterItem, flashItem, leaveItem, markRemote, taskFxKey } from './motion.ts';
@@ -38,6 +38,12 @@ export function keysForChanges(changes: Change[], meId: number | null): QueryKey
   return [...seen.values()];
 }
 
+/** queryKey 是否為 ids 中某任務的詳情查詢（['tasks', 'detail', id]） */
+export function isTaskDetailOf(queryKey: QueryKey, ids: ReadonlySet<number>): boolean {
+  const [scope, kind, id] = queryKey;
+  return scope === queryKeys.tasks.all[0] && kind === 'detail' && typeof id === 'number' && ids.has(id);
+}
+
 // ── 他人變更廣播 ─────────────────────────────────────
 
 export type RemoteChange = Change & { receivedAt: number };
@@ -64,6 +70,7 @@ export function createChangeApplier(qc: QueryClient, getMeId: () => number | nul
   let timer: ReturnType<typeof setTimeout> | null = null;
   let waitUntil = 0;
   let unsubscribeMutations: (() => void) | null = null;
+  const deletedTaskIds = new Set<number>();
 
   function flush() {
     timer = null;
@@ -85,7 +92,11 @@ export function createChangeApplier(qc: QueryClient, getMeId: () => number | nul
     }
     const keys = [...pending.values()];
     pending.clear();
-    for (const queryKey of keys) void qc.invalidateQueries({ queryKey });
+    // 已刪除任務的詳情查詢不重抓（抽屜可能仍開著，重抓只會得到 404）；關閉後由快取回收
+    const gone = new Set(deletedTaskIds);
+    deletedTaskIds.clear();
+    const refetchable = (q: Query) => !isTaskDetailOf(q.queryKey, gone);
+    for (const queryKey of keys) void qc.invalidateQueries({ queryKey, predicate: refetchable });
   }
 
   function schedule() {
@@ -98,6 +109,7 @@ export function createChangeApplier(qc: QueryClient, getMeId: () => number | nul
       for (const k of keysForChanges(changes, meId)) pending.set(JSON.stringify(k), k);
       const t = Date.now();
       for (const c of changes) {
+        if (c.entityType === 'task' && c.action === 'delete') deletedTaskIds.add(c.entityId);
         if (c.actorId != null && c.actorId === meId) continue;
         if (c.entityType === 'task') {
           const key = taskFxKey(c.entityId);

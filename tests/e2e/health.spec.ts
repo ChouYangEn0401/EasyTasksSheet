@@ -12,7 +12,7 @@ test('health 與首頁', async ({ request }) => {
     data: { username: E2E_USERS.admin.username, password: E2E_USERS.admin.password },
   });
   expect(login.status()).toBe(200);
-  const feature = await request.get('/api/eng/repos');
+  const feature = await request.get('/api/eng/issues');
   expect([401, 404]).not.toContain(feature.status());
 
   const page = await request.get('/some/spa/route');
