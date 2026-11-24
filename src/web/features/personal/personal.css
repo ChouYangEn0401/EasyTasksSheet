@@ -1,0 +1,453 @@
+/* 個人清單 + PinButton（docs/design/personal.md）；只用 core token，不新增色碼 */
+
+/* 本檔可能早於全域樣式載入：先宣告與 Tailwind 相同的 layer 順序，避免 components 被排到 base 之前 */
+@layer theme, base, components, utilities;
+
+@layer components {
+  /* ── PinButton ─────────────────────── */
+  .pin-wrap {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+  }
+  .pin-btn {
+    color: var(--color-text-tertiary);
+    transition:
+      color var(--duration-fast) var(--ease-standard),
+      background-color var(--duration-fast) var(--ease-standard);
+  }
+  .pin-btn svg path {
+    transition: fill var(--duration-fast) var(--ease-standard);
+  }
+  .pin-btn:hover:not(:disabled) {
+    background: var(--color-surface-hover);
+    color: var(--color-text);
+  }
+  .pin-btn.is-pinned {
+    color: var(--color-accent);
+  }
+  .pin-btn.is-pinned:hover:not(:disabled) {
+    background: var(--color-accent-soft);
+    color: var(--color-accent-hover);
+  }
+  .pin-btn[aria-busy='true'] {
+    cursor: progress;
+  }
+  .pin-live {
+    display: contents;
+  }
+  .pin-error.ui-tooltip {
+    background: var(--color-danger);
+    color: var(--color-text-on-accent);
+  }
+
+  /* ── 版面 ─────────────────────── */
+  .pl-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
+  }
+  .pl-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+  }
+  .pl-readonly {
+    flex: 1 1 360px;
+    min-width: 0;
+  }
+  .pl-link {
+    color: var(--color-accent-text);
+    font-weight: var(--font-medium);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    white-space: nowrap;
+  }
+  .pl-switch {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+  .pl-switch-select {
+    width: 200px;
+  }
+  .pl-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: var(--space-6);
+    align-items: start;
+  }
+  .pl-col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+    min-width: 0;
+  }
+
+  /* ── 區塊卡片 ─────────────────────── */
+  .pl-card {
+    min-width: 0;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .pl-card-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    height: 48px;
+    padding: 0 var(--space-4);
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .pl-card-title {
+    font-size: var(--text-lg);
+    line-height: var(--text-lg--line-height);
+    font-weight: var(--font-semibold);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    outline: none;
+  }
+  .pl-card-title:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+  .pl-card-count {
+    border-radius: var(--radius-full);
+  }
+  .pl-card-controls {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    font-size: var(--text-sm);
+  }
+  .pl-skeleton {
+    display: flex;
+    flex-direction: column;
+  }
+  .pl-skeleton-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    height: var(--row-height);
+    padding: 0 var(--space-4);
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .pl-skeleton-row:last-child {
+    border-bottom: 0;
+  }
+  .pl-field-error {
+    margin: var(--space-1) 0 0;
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
+    color: var(--color-danger-text);
+  }
+  .pl-section-error {
+    padding: 0 var(--space-4) var(--space-3);
+  }
+
+  /* ── 任務列 ─────────────────────── */
+  .pl-task-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .pl-task-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--row-height);
+    padding: 0 var(--space-3) 0 0;
+    border-bottom: 1px solid var(--color-border-subtle);
+    cursor: pointer;
+  }
+  .pl-task-row:last-child {
+    border-bottom: 0;
+  }
+  .pl-task-row:hover {
+    background: var(--color-surface-hover);
+  }
+  .pl-task-main {
+    flex: 1;
+    min-width: 0;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 0 0 0 var(--space-4);
+    outline: none;
+    border-radius: var(--radius-sm);
+  }
+  .pl-task-main:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: -2px;
+  }
+  .pl-task-main > .ui-status-badge {
+    flex: none;
+  }
+  .pl-task-title {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pl-task-row.is-done .pl-task-title {
+    color: var(--color-text-tertiary);
+    text-decoration: line-through;
+  }
+  .pl-task-assignee {
+    display: inline-flex;
+    flex: none;
+  }
+  .pl-task-project {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex: none;
+    max-width: 140px;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+  .pl-task-project-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pl-task-due {
+    flex: none;
+    width: 76px;
+    text-align: right;
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-secondary);
+  }
+  .pl-task-due.is-overdue {
+    color: var(--color-status-overdue-text);
+  }
+  .pl-task-updated {
+    flex: none;
+    width: 64px;
+    text-align: right;
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+  }
+  .pl-task-pin {
+    display: inline-flex;
+    flex: none;
+    min-width: 28px;
+  }
+
+  /* ── 自由待辦 ─────────────────────── */
+  .pl-add {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .pl-todo-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .pl-todo-row {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: var(--row-height);
+    padding: 0 var(--space-3);
+    border-bottom: 1px solid var(--color-border-subtle);
+    background: var(--color-surface);
+  }
+  .pl-todo-list > .pl-todo-row:last-child {
+    border-bottom: 0;
+  }
+  .pl-todo-row:hover,
+  .pl-todo-row:focus-within {
+    background: var(--color-surface-hover);
+  }
+  .pl-todo-row.is-placeholder {
+    opacity: 0.4;
+  }
+  .pl-todo-row.is-overlay {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    cursor: grabbing;
+  }
+  .pl-todo-line {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: calc(var(--row-height) - 2px);
+  }
+  .pl-todo-handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 20px;
+    height: 28px;
+    margin-left: calc(-1 * var(--space-1));
+    border-radius: var(--radius-sm);
+    color: var(--color-text-tertiary);
+    cursor: grab;
+    touch-action: none;
+    opacity: 0;
+  }
+  .pl-todo-handle:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: -2px;
+  }
+  .pl-todo-row.is-done .pl-todo-line {
+    padding-left: 0;
+  }
+  .pl-todo-title {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text);
+  }
+  .pl-todo-title--btn {
+    padding: 2px 4px;
+    margin: 0 -4px;
+    border-radius: var(--radius-sm);
+    cursor: text;
+  }
+  .pl-todo-title--btn:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: -2px;
+  }
+  .pl-todo-row.is-done .pl-todo-title {
+    color: var(--color-text-tertiary);
+    text-decoration: line-through;
+  }
+  .pl-todo-edit {
+    flex: 1;
+    min-width: 0;
+  }
+  .pl-todo-updated {
+    flex: none;
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+  }
+  .pl-todo-actions {
+    display: inline-flex;
+    flex: none;
+    opacity: 0;
+  }
+  .pl-todo-row:hover .pl-todo-handle,
+  .pl-todo-row:focus-within .pl-todo-handle,
+  .pl-todo-row.is-overlay .pl-todo-handle,
+  .pl-todo-row:hover .pl-todo-actions,
+  .pl-todo-row:focus-within .pl-todo-actions {
+    opacity: 1;
+  }
+  .pl-todo-note {
+    margin: 0 0 var(--space-2);
+    padding-left: 48px;
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
+    color: var(--color-text-secondary);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: pre-wrap;
+  }
+  .pl-todo-row.is-done .pl-todo-note {
+    padding-left: 24px;
+  }
+  .pl-todo-note-input {
+    margin: 0 0 var(--space-2) 48px;
+    width: calc(100% - 48px);
+  }
+  .pl-todo-row .pl-field-error {
+    margin: 0 0 var(--space-2);
+    padding-left: 48px;
+  }
+
+  /* 已完成群組 */
+  .pl-done {
+    border-top: 1px solid var(--color-border-subtle);
+  }
+  .pl-done-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 32px;
+    padding: 0 var(--space-2) 0 var(--space-3);
+    margin: var(--space-1) 0;
+  }
+  .pl-done-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    height: 28px;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+  .pl-done-toggle:hover {
+    color: var(--color-text);
+  }
+  .pl-done-toggle:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 0;
+  }
+
+  /* ── 響應式 ─────────────────────── */
+  @media (max-width: 1279px) {
+    .pl-grid {
+      grid-template-columns: minmax(0, 1fr) 320px;
+    }
+    .pl-task-project-name {
+      display: none;
+    }
+  }
+  @media (max-width: 1023px) {
+    .pl-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .pl-task-project {
+      display: none;
+    }
+    .pl-todo-handle,
+    .pl-todo-actions {
+      opacity: 1;
+    }
+    .pl-todo-handle {
+      width: 36px;
+      height: 36px;
+    }
+    .pl-todo-actions .ui-btn {
+      width: 36px;
+      height: 36px;
+    }
+  }
+  @media (max-width: 767px) {
+    .pl-task-due,
+    .pl-task-main > .ui-status-badge {
+      display: none;
+    }
+    .pl-switch {
+      margin-left: 0;
+    }
+  }
+}
