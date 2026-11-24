@@ -14,8 +14,11 @@ Type=oneshot
 User=tasks-sheets
 Group=tasks-sheets
 WorkingDirectory=/opt/tasks-sheets
-# 備份目錄與保留份數取自 .env 的 BACKUP_DIR / BACKUP_KEEP，也可在此加 --out / --keep 覆寫
-ExecStart=/usr/bin/node scripts/backup.mjs
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/opt/tasks-sheets/.env
+# 資料庫、備份目錄與保留份數取自 .env 的 DATABASE_PATH / BACKUP_DIR / BACKUP_KEEP，
+# 也可在此加 --db / --out / --keep 覆寫
+ExecStart=/opt/tasks-sheets/.venv/bin/python -m server.cli backup
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

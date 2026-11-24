@@ -1,12 +1,15 @@
-# TasksSheets systemd unit 範例
+# TasksSheets systemd unit 範例（Python：FastAPI + uvicorn）
 # 安裝：
 #   sudo cp deploy/tasks-sheets.service /etc/systemd/system/
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now tasks-sheets
 # 檢視紀錄：journalctl -u tasks-sheets -f
 #
-# 假設：程式放在 /opt/tasks-sheets，以系統帳號 tasks-sheets 執行，Node 位於 /usr/bin/node（>= 22.18）。
-# 設定一律寫在 /opt/tasks-sheets/.env（程式啟動時會從工作目錄讀取 .env）。
+# 假設：程式放在 /opt/tasks-sheets，以系統帳號 tasks-sheets 執行，
+#       虛擬環境在 /opt/tasks-sheets/.venv（python3 -m venv .venv && .venv/bin/pip install -r server/requirements.txt），
+#       前端已以 npm run build 產生 /opt/tasks-sheets/dist/web。
+# 設定寫在 /opt/tasks-sheets/.env（EnvironmentFile 載入；程式也會從工作目錄讀取 .env）。
+# 注意：EnvironmentFile 的值會覆寫下方 Environment=，因此 .env 內務必設 NODE_ENV=production。
 
 [Unit]
 Description=TasksSheets 任務管理
@@ -18,7 +21,15 @@ User=tasks-sheets
 Group=tasks-sheets
 WorkingDirectory=/opt/tasks-sheets
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/node src/server/index.ts
+Environment=PORT=3000
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/opt/tasks-sheets/.env
+# 只綁 127.0.0.1（不論 .env 的 HOST），由 Caddy 反向代理對外提供 HTTPS。
+# 必須單一 worker（不要加 --workers）：即時同步（SSE）的事件中樞與 SQLite 連線都在同一個行程內。
+# --timeout-graceful-shutdown：SSE 長連線不會讓停止 / 重啟卡住。
+ExecStart=/opt/tasks-sheets/.venv/bin/python -m uvicorn server.app.main:app \
+    --host 127.0.0.1 --port ${PORT} \
+    --no-proxy-headers --timeout-graceful-shutdown 3
 Restart=on-failure
 RestartSec=5
 # 停止時給進行中的請求與 SQLite 寫入一點時間

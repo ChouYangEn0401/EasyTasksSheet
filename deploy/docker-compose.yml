@@ -3,7 +3,11 @@
 #   cp .env.example .env   # 依 README 修改
 #   docker compose -f deploy/docker-compose.yml up -d --build
 # 備份（服務運行中）：
-#   docker compose -f deploy/docker-compose.yml exec app node scripts/backup.mjs
+#   docker compose -f deploy/docker-compose.yml exec app python -m server.cli backup
+# 還原（先停 app，再以一次性容器執行）：
+#   docker compose -f deploy/docker-compose.yml stop app
+#   docker compose -f deploy/docker-compose.yml run --rm app python -m server.cli restore /backups/app-YYYYMMDD-HHMMSS.db --yes
+#   docker compose -f deploy/docker-compose.yml start app
 # 備份檔位於 volume tasks-backups，可用 `docker cp` 取出或改成 bind mount 到備份磁碟。
 
 services:
