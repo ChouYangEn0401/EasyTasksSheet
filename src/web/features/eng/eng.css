@@ -1,0 +1,336 @@
+/* T6 工程追蹤（docs/design/eng-tracking.md）。只用 tokens.css 的變數，不新增 token。 */
+
+/* 先宣告與 Tailwind 相同的 layer 順序：本檔可能早於 index.css 載入，避免 components 被排到 base 之前 */
+@layer theme, base, components, utilities;
+
+@layer components {
+  .eng-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
+  }
+
+  /* ── 分頁列（沿用 core ViewTabs 外觀） ── */
+  .eng-tabs {
+    display: flex;
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    min-height: 44px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .eng-tabs .view-tab {
+    cursor: pointer;
+  }
+  .eng-tab-count {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    font-weight: var(--font-regular);
+  }
+  .eng-tabs-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .eng-repo-select {
+    width: 240px;
+    min-width: 0;
+  }
+  .eng-repo-value {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ── 區段與工具列 ── */
+  .eng-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-width: 0;
+  }
+  .eng-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-md);
+  }
+  .eng-toolbar-end {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex: none;
+  }
+  .eng-sync {
+    font-size: var(--text-sm);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    white-space: nowrap;
+  }
+  .eng-chips {
+    display: flex;
+    gap: var(--space-2);
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  .eng-chip[data-active='true'] {
+    background: var(--color-accent-soft);
+    border-color: var(--color-info-border);
+    color: var(--color-accent-text);
+  }
+  .eng-chip .tabular-nums {
+    color: var(--color-text-tertiary);
+  }
+  .eng-chip[data-active='true'] .tabular-nums {
+    color: inherit;
+  }
+
+  /* ── 表格卡片 ── */
+  .eng-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    min-width: 0;
+  }
+  .eng-scroll {
+    overflow-x: auto;
+  }
+  .eng-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+  }
+  .eng-table th {
+    height: 36px;
+    padding: 0 var(--space-3);
+    text-align: left;
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    color: var(--color-text-tertiary);
+    border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+  }
+  .eng-table td {
+    height: var(--row-height);
+    padding: var(--space-1) var(--space-3);
+    border-bottom: 1px solid var(--color-border-subtle);
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .eng-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+  .eng-table tbody tr:hover td {
+    background: var(--color-surface-hover);
+  }
+  .eng-col-num {
+    width: 64px;
+    font-family: var(--font-mono);
+    color: var(--color-text-secondary);
+  }
+  .eng-col-title {
+    max-width: 0;
+    width: 100%;
+  }
+  .eng-col-action {
+    width: 1%;
+    text-align: right;
+  }
+  .eng-issue-link {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text);
+    text-decoration: none;
+  }
+  .eng-issue-link:hover {
+    color: var(--color-accent-text);
+    text-decoration: underline;
+  }
+  .eng-labels {
+    display: inline-flex;
+    gap: var(--space-1);
+  }
+
+  /* Worktree 列為兩行，高 56 */
+  .eng-table--wt td {
+    height: 56px;
+  }
+  .eng-wt-row--missing td:first-child {
+    box-shadow: inset 2px 0 0 var(--color-danger);
+  }
+  .eng-wt-row--unplanned td:first-child {
+    box-shadow: inset 2px 0 0 var(--color-warning);
+  }
+  .eng-wt-row--merged td:first-child {
+    box-shadow: inset 2px 0 0 var(--color-info);
+  }
+  .eng-badges {
+    display: inline-flex;
+    gap: var(--space-1);
+  }
+  .eng-status--merged .ui-dot {
+    color: var(--color-info);
+  }
+  .eng-flag--dirty .ui-dot {
+    color: var(--color-tag-orange);
+  }
+  .eng-flag--stale .ui-dot {
+    color: var(--color-tag-gray);
+  }
+  .eng-two-line {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .eng-branch,
+  .eng-actual {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .eng-purpose {
+    display: inline-flex;
+    color: var(--color-text-tertiary);
+  }
+  .eng-path {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+  }
+  .eng-sub {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+  }
+  .eng-owner {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .eng-col-task {
+    max-width: 220px;
+  }
+  .eng-task-link {
+    display: block;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--color-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .eng-task-link:hover {
+    color: var(--color-accent-text);
+    text-decoration: underline;
+  }
+  .eng-counts {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
+  .eng-mono {
+    font-family: var(--font-mono);
+  }
+  .eng-text-secondary {
+    color: var(--color-text-secondary);
+  }
+  .eng-text-tertiary {
+    color: var(--color-text-tertiary);
+  }
+  .eng-danger-text {
+    color: var(--color-danger-text);
+  }
+
+  /* ── 對話框 ── */
+  .eng-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+  .eng-counter {
+    display: block;
+    text-align: right;
+  }
+  .eng-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+  }
+  .eng-dialog-text {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+  }
+  .eng-repo-list {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+  .eng-repo-list ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+  }
+  .eng-repo-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .eng-repo-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .eng-repo-info .eng-path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .eng-repo-name {
+    font-weight: var(--font-medium);
+  }
+  .eng-repo-actions {
+    display: inline-flex;
+    gap: var(--space-1);
+  }
+
+  /* ── 響應式（design §6） ── */
+  @media (max-width: 1023px) {
+    .eng-tabs-actions {
+      flex-basis: 100%;
+      margin-left: 0;
+      padding-bottom: var(--space-2);
+    }
+    .eng-owner-name {
+      display: none;
+    }
+    .eng-chips {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+    }
+    .eng-toolbar {
+      flex-wrap: wrap;
+    }
+  }
+}
