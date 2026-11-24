@@ -110,9 +110,6 @@
     background: var(--color-accent-soft);
     box-shadow: inset 2px 0 0 var(--color-accent);
   }
-  .tl-row--task[data-flash='true'] {
-    background: var(--color-accent-soft);
-  }
   .tl-row--task[data-done='true'] .tl-title-text {
     color: var(--color-text-tertiary);
     text-decoration: line-through;

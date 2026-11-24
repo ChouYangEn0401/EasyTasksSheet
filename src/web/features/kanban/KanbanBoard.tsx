@@ -25,8 +25,18 @@ import type { Task } from '../../../shared/tasks.ts';
 import type { TaskFilters } from '../../lib/filters.ts';
 import { useUpdateTask, useUsersById } from '../../lib/hooks.ts';
 import { openTask, readTaskParam } from '../../lib/openTask.ts';
+import {
+  isRecentRemote,
+  motionEasing,
+  motionMs,
+  taskFxKey,
+  useFlip,
+  useItemFx,
+  useReducedMotion,
+} from '../../lib/motion.ts';
 import { queryKeys } from '../../lib/queryClient.ts';
 import { suspendGlobalShortcuts } from '../../lib/shortcuts.ts';
+import { notifySuccess, truncate } from '../../lib/toast.ts';
 import { Alert, Button } from '../../ui/index.ts';
 import { KanbanCard, KanbanCardOverlay } from './KanbanCard.tsx';
 import { KanbanColumnFoot, KanbanColumnMain } from './KanbanColumn.tsx';
@@ -93,7 +103,9 @@ export function KanbanBoard({
   onClearFilters: () => void;
 }) {
   const qc = useQueryClient();
-  const update = useUpdateTask();
+  // 失敗由看板自己的提示列（含重試）呈現，不另發全域 toast
+  const update = useUpdateTask({ silentError: true });
+  const fx = useItemFx();
   const users = useUsersById();
   const [sp] = useSearchParams();
   const selectedId = readTaskParam(sp);
@@ -125,10 +137,7 @@ export function KanbanBoard({
   const [message, setMessage] = useState('');
   const [saveError, setSaveError] = useState<SaveError | null>(null);
   const [scrollTarget, setScrollTarget] = useState<{ statusId: number; id: number } | null>(null);
-  const reducedMotion = useMemo(
-    () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
-    [],
-  );
+  const reducedMotion = useReducedMotion();
 
   const columns = drag?.columns ?? liveColumns;
   const byId = drag?.byId ?? liveById;
@@ -140,6 +149,15 @@ export function KanbanBoard({
   const activeTask = drag ? byId.get(drag.activeId) : undefined;
   const activeColumn = drag ? findColumn(drag.columns, drag.activeId) : null;
   const statusName = (id: number | null) => (id != null ? (statusById.get(id)?.name ?? '') : '');
+
+  // 他人移動的卡片：跨欄位置移動 --duration-slow（拖曳中不更新，放下後才套用）
+  useFlip(boardRef, {
+    selector: '.kanban-card[data-task-id]',
+    attr: 'data-task-id',
+    enabled: drag == null,
+    shouldAnimate: (id) => isRecentRemote(taskFxKey(Number(id))),
+    token: '--duration-slow',
+  });
 
   // 錯誤提示列 8 秒後自動消失
   useEffect(() => {
@@ -192,16 +210,21 @@ export function KanbanBoard({
           ...(p.id === move.taskId && statusChanged ? { statusId: move.statusId } : {}),
         }),
       ),
-    ).catch(() => {
-      qc.setQueryData<Task[]>(key, (old) =>
-        old?.map((t) => {
-          const o = move.original.get(t.id);
-          return o ? { ...t, ...o } : t;
-        }),
-      );
-      void qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
-      setSaveError({ key: Date.now(), title: move.title, retry: () => commit(move) });
-    });
+    ).then(
+      () => {
+        if (statusChanged) notifySuccess(`已移至「${truncate(statusName(move.statusId))}」`);
+      },
+      () => {
+        qc.setQueryData<Task[]>(key, (old) =>
+          old?.map((t) => {
+            const o = move.original.get(t.id);
+            return o ? { ...t, ...o } : t;
+          }),
+        );
+        void qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
+        setSaveError({ key: Date.now(), title: move.title, retry: () => commit(move) });
+      },
+    );
   };
 
   // ── dnd-kit ───────────────────────────────────────────
@@ -480,6 +503,7 @@ export function KanbanBoard({
                       selected={t.id === selectedId}
                       keyboardActive={!!drag?.keyboard && drag.activeId === t.id}
                       reducedMotion={reducedMotion}
+                      fx={fx.get(taskFxKey(t.id))}
                       onOpen={onOpen}
                       onFocusCard={setCursor}
                       onNavKey={onNavKey}
@@ -511,7 +535,13 @@ export function KanbanBoard({
             );
           })}
         </div>
-        <DragOverlay dropAnimation={null}>
+        <DragOverlay
+          dropAnimation={
+            reducedMotion
+              ? null
+              : { duration: motionMs('--duration-base'), easing: motionEasing('--ease-standard') }
+          }
+        >
           {activeTask ? (
             <KanbanCardOverlay
               task={activeTask}

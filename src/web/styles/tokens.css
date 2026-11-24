@@ -164,14 +164,22 @@
   --z-popover: 50;
   --z-toast: 60;
 
-  /* 動態 */
+  /* 動態（core 兩個 + realtime-feedback.md §1 新增；--ease-standard 定義於 @theme） */
   --duration-fast: 120ms;
   --duration-base: 200ms;
+  --duration-exit: 150ms;
+  --duration-slow: 320ms;
+  --duration-highlight: 1200ms;
+  --ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
   :root {
     --duration-fast: 0ms;
     --duration-base: 0ms;
+    --duration-exit: 0ms;
+    --duration-slow: 0ms;
+    --duration-highlight: 0ms;
   }
 }

@@ -84,6 +84,8 @@ function onAuthenticated(res: MeResponse) {
 
 export function useLogin() {
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: (input: LoginInput) => api.post<MeResponse>('/auth/login', input),
     onSuccess: onAuthenticated,
   });
@@ -91,6 +93,8 @@ export function useLogin() {
 
 export function useChangePassword() {
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: (input: ChangePasswordInput) => api.post<MeResponse>('/auth/password', input),
     onSuccess: onAuthenticated,
   });

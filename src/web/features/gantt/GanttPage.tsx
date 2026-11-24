@@ -56,7 +56,8 @@ export function GanttPage() {
   const { filters } = useTaskFilters();
   const tasksQuery = useTasks(filters);
   const users = useUsers();
-  const update = useUpdateTask();
+  // 失敗由頁面頂部提示列（含重試）呈現，不另發全域 toast
+  const update = useUpdateTask({ silentError: true });
   const [today] = useState(() => todayString());
   const ganttRef = useRef<GanttHandle>(null);
 

@@ -6,11 +6,13 @@ import type { Task, TaskCreateInput, TaskUpdateInput } from '../../shared/tasks.
 import type { PublicUser } from '../../shared/users.ts';
 import { api } from './api.ts';
 import { emptyFilters, toTaskQueryString, type TaskFilters } from './filters.ts';
-import { LIST_POLL_MS, queryKeys } from './queryClient.ts';
+import { queryKeys } from './queryClient.ts';
+import { listPollInterval } from './sync.ts';
 
 /*
  * 共用資料 hooks（tasks / users / projects / statuses / properties）。
- * 清單類查詢每 30 秒輪詢 + 視窗 focus 重抓；輪詢不刷新後端閒置計時（GET 不算活動）。
+ * 即時同步（SSE）正常時由事件觸發重抓；中斷時退回每 30 秒輪詢。另有視窗 focus 重抓。
+ * 輪詢不刷新後端閒置計時（GET 不算活動）。
  */
 
 /** 任務清單；filters 通常來自 useTaskFilters()（URL 驅動） */
@@ -18,7 +20,7 @@ export function useTasks(filters: TaskFilters = emptyFilters(), options: { enabl
   return useQuery({
     queryKey: queryKeys.tasks.list(filters),
     queryFn: ({ signal }) => api.get<Task[]>(`/tasks${toTaskQueryString(filters)}`, { signal }),
-    refetchInterval: LIST_POLL_MS,
+    refetchInterval: listPollInterval,
     placeholderData: (prev) => prev,
     enabled: options.enabled,
   });
@@ -30,7 +32,7 @@ export function useTask(id: number | null | undefined) {
     queryKey: queryKeys.tasks.detail(id ?? 0),
     queryFn: ({ signal }) => api.get<Task>(`/tasks/${id}`, { signal }),
     enabled: id != null && id > 0,
-    refetchInterval: LIST_POLL_MS,
+    refetchInterval: listPollInterval,
   });
 }
 
@@ -45,9 +47,11 @@ export function useCreateTask() {
   });
 }
 
-export function useUpdateTask() {
+/** silentError：呼叫端自行顯示失敗（含重試）時設為 true，不發全域失敗 toast */
+export function useUpdateTask({ silentError = false }: { silentError?: boolean } = {}) {
   const qc = useQueryClient();
   return useMutation({
+    meta: silentError ? { errorToast: false } : undefined,
     mutationFn: ({ id, ...patch }: TaskUpdateInput & { id: number }) =>
       api.patch<Task>(`/tasks/${id}`, patch),
     onSuccess: (task) => {
@@ -73,7 +77,7 @@ export function useUsers() {
   return useQuery({
     queryKey: queryKeys.users,
     queryFn: ({ signal }) => api.get<PublicUser[]>('/users', { signal }),
-    refetchInterval: LIST_POLL_MS,
+    refetchInterval: listPollInterval,
   });
 }
 
@@ -82,7 +86,7 @@ export function useProjects() {
   return useQuery({
     queryKey: queryKeys.projects,
     queryFn: ({ signal }) => api.get<Project[]>('/projects', { signal }),
-    refetchInterval: LIST_POLL_MS,
+    refetchInterval: listPollInterval,
   });
 }
 
@@ -91,7 +95,7 @@ export function useStatuses() {
   return useQuery({
     queryKey: queryKeys.statuses,
     queryFn: ({ signal }) => api.get<Status[]>('/statuses', { signal }),
-    refetchInterval: LIST_POLL_MS,
+    refetchInterval: listPollInterval,
   });
 }
 
@@ -100,7 +104,7 @@ export function useProperties() {
   return useQuery({
     queryKey: queryKeys.properties,
     queryFn: ({ signal }) => api.get<PropertyDef[]>('/properties', { signal }),
-    refetchInterval: LIST_POLL_MS,
+    refetchInterval: listPollInterval,
   });
 }
 

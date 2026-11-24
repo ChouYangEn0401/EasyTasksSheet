@@ -3,11 +3,16 @@ import { useSearchParams } from 'react-router';
 import type { Task } from '../../../shared/tasks.ts';
 import { ApiError } from '../../lib/api.ts';
 import { useCurrentUser } from '../../lib/auth.ts';
-import { useProperties, useTask } from '../../lib/hooks.ts';
+import { useProperties, useTask, useUsersById } from '../../lib/hooks.ts';
+import { fxAttr, motionMs, prefersReducedMotion, useItemFx, type ItemFx } from '../../lib/motion.ts';
 import { closeTask, readTaskParam } from '../../lib/openTask.ts';
+import { noticeText, useRemoteTaskChanges } from '../../lib/remoteNotice.ts';
 import { isEditableTarget } from '../../lib/shortcuts.ts';
+import { notifySuccess, quoteName } from '../../lib/toast.ts';
 import { useTaskFilters } from '../../lib/useTaskFilters.ts';
 import {
+  Alert,
+  Avatar,
   Button,
   Dialog,
   EmptyState,
@@ -34,8 +39,21 @@ import './tasks.css';
 export function TaskDrawer() {
   const [sp] = useSearchParams();
   const id = readTaskParam(sp);
-  if (id == null) return null;
-  return <TaskDrawerPanel key={id} id={id} />;
+  // 關閉時保留最後一個面板播放離場動畫（reduced motion 時直接移除）
+  const [lastId, setLastId] = useState(id);
+  const [closing, setClosing] = useState<number | null>(null);
+  if (id !== lastId) {
+    setLastId(id);
+    setClosing(id == null && lastId != null && !prefersReducedMotion() ? lastId : null);
+  }
+  useEffect(() => {
+    if (closing == null) return;
+    const t = window.setTimeout(() => setClosing(null), motionMs('--duration-exit'));
+    return () => window.clearTimeout(t);
+  }, [closing]);
+  if (id != null) return <TaskDrawerPanel key={id} id={id} />;
+  if (closing != null) return <TaskDrawerPanel key={closing} id={closing} leaving />;
+  return null;
 }
 
 const FIELDS: FieldCol[] = [
@@ -50,18 +68,24 @@ const FIELDS: FieldCol[] = [
 const TITLE: FieldCol = { key: 'title', label: '標題', kind: 'title' };
 const STATUS: FieldCol = { key: 'status', label: '狀態', kind: 'status' };
 
-function TaskDrawerPanel({ id }: { id: number }) {
+function TaskDrawerPanel({ id, leaving = false }: { id: number; leaving?: boolean }) {
   const query = useTask(id);
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const del = useDeleteTaskOptimistic();
+  const usersById = useUsersById();
+  const properties = useProperties().data;
+  const nameOf = (uid: number | null) =>
+    (uid != null ? usersById.get(uid)?.displayName : undefined) ?? '其他成員';
+  const remote = useRemoteTaskChanges(id, query.data, { properties, nameOf });
 
   useEffect(() => {
     closeRef.current?.focus();
   }, []);
 
   useEffect(() => {
+    if (leaving) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'F6') {
         // 非 modal 時在清單與 Drawer 間切換 focus
@@ -83,13 +107,25 @@ function TaskDrawerPanel({ id }: { id: number }) {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, []);
+  }, [leaving]);
 
   const notFound = query.error instanceof ApiError && query.error.status === 404;
-  const task = query.data;
+  const deletedByOther = remote.deletedBy !== undefined;
+  const task = deletedByOther ? undefined : query.data;
 
   let body: ReactNode;
-  if (query.isPending) body = <DrawerSkeleton />;
+  if (deletedByOther)
+    body = (
+      <EmptyState
+        title={`此任務已被 ${nameOf(remote.deletedBy ?? null)} 刪除`}
+        action={
+          <Button variant="secondary" onClick={closeTask}>
+            關閉
+          </Button>
+        }
+      />
+    );
+  else if (query.isPending) body = <DrawerSkeleton />;
   else if (notFound)
     body = (
       <EmptyState
@@ -110,6 +146,9 @@ function TaskDrawerPanel({ id }: { id: number }) {
       <div className="task-drawer-backdrop" onClick={closeTask} aria-hidden="true" />
       <aside
         className="task-drawer"
+        data-leaving={leaving || undefined}
+        inert={leaving || undefined}
+        aria-hidden={leaving || undefined}
         role="dialog"
         aria-modal="false"
         aria-labelledby={task ? titleId : undefined}
@@ -152,6 +191,16 @@ function TaskDrawerPanel({ id }: { id: number }) {
             onClick={closeTask}
           />
         </div>
+        {task && remote.notice && (
+          <div className="rt-notice tl-rt-notice">
+            <Alert tone="info" onClose={remote.dismiss}>
+              {remote.notice.actorIds[0] != null && (
+                <Avatar userId={remote.notice.actorIds[0]} size="xs" tooltip={false} />
+              )}
+              <span>{noticeText(remote.notice, nameOf)}</span>
+            </Alert>
+          </div>
+        )}
         <div className="task-drawer-body">{body}</div>
         {task && (
           <div className="task-drawer-foot tl-drawer-foot">
@@ -179,6 +228,7 @@ function TaskDrawerPanel({ id }: { id: number }) {
                   onSuccess: () => {
                     setConfirmDelete(false);
                     closeTask();
+                    notifySuccess(`已刪除${quoteName(task.title)}`);
                   },
                 })
               }
@@ -189,15 +239,14 @@ function TaskDrawerPanel({ id }: { id: number }) {
         }
       >
         <p className="m-0">刪除後將從所有檢視中移除。</p>
-        {del.isError && <p className="ui-field-error">{del.error.message}</p>}
       </Dialog>
     </>
   );
 }
 
-function FieldRow({ label, children }: { label: string; children: ReactNode }) {
+function FieldRow({ label, fx, children }: { label: string; fx?: ItemFx; children: ReactNode }) {
   return (
-    <div className="task-field tl-drawer-field">
+    <div className="task-field tl-drawer-field" {...fxAttr(fx)}>
       <span className="task-field-label">{label}</span>
       {children}
     </div>
@@ -210,6 +259,9 @@ function TaskDetail({ task, titleId }: { task: Task; titleId: string }) {
   const { filters } = useTaskFilters();
   const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
   const custom = applicableProperties(properties ?? [], task.projectId).map(propertyColumn);
+  // 他人變更的欄位值播更新高亮（lib/remoteNotice.ts）
+  const fxMap = useItemFx();
+  const fieldFx = (key: string) => fxMap.get(`taskfield:${task.id}:${key}`);
 
   const field = (col: FieldCol, className = '', ariaLabel: string | null = col.label) => (
     <EditableField
@@ -227,13 +279,13 @@ function TaskDetail({ task, titleId }: { task: Task; titleId: string }) {
   return (
     <>
       {/* 標題欄不設 aria-label，讓 Drawer 的名稱即為任務標題 */}
-      <h2 id={titleId} className="task-drawer-title tl-drawer-title">
+      <h2 id={titleId} className="task-drawer-title tl-drawer-title" {...fxAttr(fieldFx('title'))}>
         {field(TITLE, 'tl-drawer-title-field', null)}
       </h2>
-      {field(STATUS, 'tl-drawer-status')}
+      <div {...fxAttr(fieldFx('status'))}>{field(STATUS, 'tl-drawer-status')}</div>
       <div className="task-drawer-section" style={{ marginTop: 16 }}>
         {FIELDS.map((f) => (
-          <FieldRow key={f.key} label={f.label}>
+          <FieldRow key={f.key} label={f.label} fx={fieldFx(f.key)}>
             {field(f)}
           </FieldRow>
         ))}
@@ -242,7 +294,7 @@ function TaskDetail({ task, titleId }: { task: Task; titleId: string }) {
         <div className="tl-section-title">自訂欄位</div>
         {custom.length === 0 && <div className="tl-empty tl-drawer-none">尚未建立自訂欄位</div>}
         {custom.map((c) => (
-          <FieldRow key={c.key} label={c.label}>
+          <FieldRow key={c.key} label={c.label} fx={fieldFx(c.key)}>
             {field(c)}
           </FieldRow>
         ))}
@@ -264,7 +316,7 @@ function TaskDetail({ task, titleId }: { task: Task; titleId: string }) {
           </Popover>
         )}
       </div>
-      <Description task={task} />
+      <Description task={task} fx={fieldFx('description')} />
     </>
   );
 }
@@ -272,7 +324,7 @@ function TaskDetail({ task, titleId }: { task: Task; titleId: string }) {
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 /** 描述：失焦或 Ctrl+Enter 儲存；關閉 / 切換任務前先送出未存內容 */
-function Description({ task }: { task: Task }) {
+function Description({ task, fx }: { task: Task; fx?: ItemFx }) {
   const update = useOptimisticUpdate();
   const me = useCurrentUser();
   const [draft, setDraft] = useState(task.description);
@@ -325,7 +377,7 @@ function Description({ task }: { task: Task }) {
   }, [draft]);
 
   return (
-    <div className="task-drawer-section">
+    <div className="task-drawer-section" {...fxAttr(fx)}>
       <div className="tl-section-title">
         <span>描述</span>
         <span className="tl-save-state" aria-live="polite">

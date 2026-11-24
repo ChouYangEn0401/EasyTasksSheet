@@ -15,7 +15,7 @@ import { readStorage, writeStorage } from '../../lib/storage.ts';
 import { useTaskFilters } from '../../lib/useTaskFilters.ts';
 import { NoFilterResults } from '../../shell/FilterBar.tsx';
 import { ViewTabsActions } from '../../shell/ViewTabs.tsx';
-import { Alert, EmptyState, ErrorState, Skeleton } from '../../ui/index.ts';
+import { EmptyState, ErrorState, Skeleton } from '../../ui/index.ts';
 import { ListTable } from './ListTable.tsx';
 import { ListToolbar } from './ListToolbar.tsx';
 import {
@@ -50,7 +50,6 @@ export function ListPage() {
   const group = parseGroup(sp);
   const sort = parseSort(sp);
   const [hidden, setHidden] = useState<string[]>(() => parseHidden(readStorage(COLUMNS_KEY)));
-  const [saveError, setSaveError] = useState<string | null>(null);
   const [announce, setAnnounce] = useState('');
   const [deleting, setDeleting] = useState<PropertyDef | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -105,14 +104,10 @@ export function ListPage() {
     );
   };
 
+  // 失敗由全域 toast 呈現（lib/queryClient.ts，已還原並可重試）；此處只做螢幕閱讀器播報
   const onSaved = useCallback((r: CommitResult) => {
-    if (!r.ok) {
-      setSaveError(r.error);
-      setAnnounce('儲存失敗');
-    } else if (!('skipped' in r)) {
-      setSaveError(null);
-      setAnnounce('已儲存');
-    }
+    if (!r.ok) setAnnounce('儲存失敗');
+    else if (!('skipped' in r)) setAnnounce('已儲存');
   }, []);
 
   const scopeProjectId = filters.project.length === 1 ? filters.project[0]! : null;
@@ -177,11 +172,6 @@ export function ListPage() {
           onPropertyCreated={onPropertyCreated}
         />
       </ViewTabsActions>
-      {saveError && (
-        <Alert tone="danger" onClose={() => setSaveError(null)} className="tl-save-error">
-          未能儲存變更：{saveError}
-        </Alert>
-      )}
       {body}
       <div className="tl-sr-only" aria-live="polite" role="status">
         {announce}

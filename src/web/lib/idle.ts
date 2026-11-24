@@ -120,6 +120,14 @@ export function createIdleTracker({
     extend: heartbeat,
     /** 立即視為逾時 */
     expire,
+    /**
+     * 其他分頁回報的閒置期限（同一 session）：較晚者為準。只更新本地期限，不送 heartbeat。
+     */
+    syncDeadline(idleDeadline: number) {
+      if (snapshot.expired || snapshot.idleDeadline == null) return;
+      if (idleDeadline <= snapshot.idleDeadline) return;
+      set({ idleDeadline });
+    },
     setPaused(value: boolean) {
       paused = value;
       if (value) pending = false;

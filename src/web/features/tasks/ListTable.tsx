@@ -14,11 +14,12 @@ import type { Status } from '../../../shared/projects.ts';
 import type { PropertyDef } from '../../../shared/properties.ts';
 import type { Task } from '../../../shared/tasks.ts';
 import { useProjectsById, useStatuses, useStatusesById, useUsersById } from '../../lib/hooks.ts';
+import { fxAttr, isRecentRemote, taskFxKey, useFlip, useItemFx, type ItemFx } from '../../lib/motion.ts';
 import { openTask } from '../../lib/openTask.ts';
 import { readStorage, writeStorage } from '../../lib/storage.ts';
 import { Avatar, Badge, ColorDot, Button, Icon, Input, Spinner, StatusBadge } from '../../ui/index.ts';
 import { PinButton } from '../personal/PinButton.tsx';
-import { flashTask, useFlashed, useUpdateProperty } from './data.ts';
+import { flashTask, useUpdateProperty } from './data.ts';
 import { EditableField, type EditState } from './EditableField.tsx';
 import { useValueText } from './fieldText.ts';
 import {
@@ -98,7 +99,15 @@ export function ListTable(props: ListTableProps) {
   const gridRef = useRef<HTMLDivElement>(null);
   const focusInGrid = useRef(false);
   const lastCol = useRef(1);
-  const flashed = useFlashed();
+  const fx = useItemFx();
+  // 他人變更造成的重新排序 / 換群組：以 FLIP 播位置移動。
+  // 自己的編輯不移動畫面（避免點擊中的列滑走），只以更新高亮確認。
+  useFlip(gridRef, {
+    selector: '.tl-row--task[data-task-id]',
+    attr: 'data-task-id',
+    enabled: !editing,
+    shouldAnimate: (id) => isRecentRemote(taskFxKey(Number(id))),
+  });
   const statuses = useStatuses().data ?? [];
   const nCols = columns.length;
 
@@ -313,7 +322,7 @@ export function ListTable(props: ListTableProps) {
               columns={columns}
               statuses={statuses}
               selected={selectedId === r.task.id}
-              flashed={flashed.has(r.task.id)}
+              fx={fx.get(taskFxKey(r.task.id))}
               editing={editing?.row === r.key ? editing : null}
               setEditing={(col, next, move) => {
                 if (next) setEditing({ row: r.key, col, ...next });
@@ -690,7 +699,7 @@ function TaskRow({
   columns,
   statuses,
   selected,
-  flashed,
+  fx,
   editing,
   setEditing,
   cellProps,
@@ -701,7 +710,7 @@ function TaskRow({
   columns: ColumnDef[];
   statuses: Status[];
   selected: boolean;
-  flashed: boolean;
+  fx: ItemFx | undefined;
   editing: Editing;
   setEditing: (col: number, next: EditState, move?: 1 | -1) => void;
   cellProps: CellPropsFn;
@@ -729,7 +738,7 @@ function TaskRow({
       className="tl-row tl-row--task"
       data-selected={selected || undefined}
       data-done={done || undefined}
-      data-flash={flashed || undefined}
+      {...fxAttr(fx)}
       data-temp={temp || undefined}
       data-task-id={task.id}
     >

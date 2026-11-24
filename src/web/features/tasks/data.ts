@@ -2,42 +2,20 @@
  * T1 的資料層：任務欄位樂觀更新、樂觀新增、自訂 property CRUD、「剛建立 / 剛移動」高亮。
  * 共用查詢鍵沿用 lib/queryClient.ts；不修改 lib。
  */
-import { useCallback, useSyncExternalStore } from 'react';
+import { useCallback } from 'react';
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { PropertyCreateInput, PropertyDef, PropertyUpdateInput } from '../../../shared/properties.ts';
 import type { Task, TaskCreateInput, TaskUpdateInput } from '../../../shared/tasks.ts';
 import { api } from '../../lib/api.ts';
 import type { TaskFilters } from '../../lib/filters.ts';
+import { enterItem, flashItem, leaveItem, taskFxKey } from '../../lib/motion.ts';
 import { queryKeys } from '../../lib/queryClient.ts';
 import { applyPatch, matchesFilters } from './model.ts';
 
-// ── 高亮（剛建立 / 剛因編輯而移動）─────────────────
-
-const FLASH_MS = 1200;
-let flashed = new Set<number>();
-const flashListeners = new Set<() => void>();
-const emitFlash = () => flashListeners.forEach((fn) => fn());
+// ── 高亮（剛建立 / 剛因編輯而移動）：共用 lib/motion.ts 的項目效果 ──
 
 export function flashTask(id: number) {
-  flashed = new Set(flashed).add(id);
-  emitFlash();
-  window.setTimeout(() => {
-    if (!flashed.has(id)) return;
-    const next = new Set(flashed);
-    next.delete(id);
-    flashed = next;
-    emitFlash();
-  }, FLASH_MS);
-}
-
-export function useFlashed(): Set<number> {
-  return useSyncExternalStore(
-    (fn) => {
-      flashListeners.add(fn);
-      return () => flashListeners.delete(fn);
-    },
-    () => flashed,
-  );
+  flashItem(taskFxKey(id));
 }
 
 // ── 快取工具 ───────────────────────────────────────
@@ -126,7 +104,7 @@ export function useOptimisticCreate() {
           const without = list.filter((t) => t.id !== tempId);
           return !f || matchesFilters(task, f) ? [...without, task] : without;
         });
-        flashTask(task.id);
+        enterItem(taskFxKey(task.id));
         void qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
         return { task, matches: matchesFilters(task, current) };
       } catch (err) {
@@ -144,7 +122,10 @@ export function useDeleteTaskOptimistic() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.delete<{ ok: true }>(`/tasks/${id}`),
-    onSuccess: (_r, id) => {
+    onSuccess: async (_r, id) => {
+      // 清單列先播離場動畫，再從快取移除
+      const ms = leaveItem(taskFxKey(id));
+      if (ms > 0) await new Promise((r) => window.setTimeout(r, ms));
       updateLists(qc, (list) => list.filter((t) => t.id !== id));
       // Drawer 仍開著時不移除（否則會立即重抓而得到 404）；關閉後由快取回收
       const detail = qc.getQueryCache().find({ queryKey: queryKeys.tasks.detail(id) });
@@ -159,6 +140,8 @@ export function useDeleteTaskOptimistic() {
 export function useCreateProperty() {
   const qc = useQueryClient();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: (input: PropertyCreateInput) => api.post<PropertyDef>('/properties', input),
     onSuccess: (p) => {
       qc.setQueryData<PropertyDef[]>(queryKeys.properties, (prev) => (prev ? [...prev, p] : [p]));
@@ -170,6 +153,8 @@ export function useCreateProperty() {
 export function useUpdateProperty() {
   const qc = useQueryClient();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: ({ id, ...input }: PropertyUpdateInput & { id: number }) =>
       api.patch<PropertyDef>(`/properties/${id}`, input),
     onMutate: async ({ id, ...input }) => {
@@ -190,6 +175,8 @@ export function useUpdateProperty() {
 export function useDeleteProperty() {
   const qc = useQueryClient();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: (id: number) => api.delete<{ ok: true }>(`/properties/${id}`),
     onSuccess: (_r, id) => {
       qc.setQueryData<PropertyDef[]>(queryKeys.properties, (list) => list?.filter((p) => p.id !== id));

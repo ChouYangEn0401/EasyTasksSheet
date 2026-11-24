@@ -3,6 +3,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Project } from '../../../shared/projects.ts';
 import type { Task } from '../../../shared/tasks.ts';
+import { fxAttr, motionEasing, motionMs, type ItemFx } from '../../lib/motion.ts';
 import { Avatar, ColorDot, UpdatedAt } from '../../ui/index.ts';
 import { PinButton } from '../personal/PinButton.tsx';
 import { cardAriaLabel, dueDisplay, formatHours } from './kanbanModel.ts';
@@ -94,6 +95,8 @@ export type KanbanCardProps = CardViewProps & {
   /** 鍵盤拖曳中的卡片：重新掛載後維持 focus */
   keyboardActive: boolean;
   reducedMotion: boolean;
+  /** 項目效果（他人更新 / 新增的高亮） */
+  fx?: ItemFx;
   onOpen: (id: number) => void;
   onFocusCard: (id: number) => void;
   onNavKey: (e: KeyboardEvent<HTMLDivElement>, id: number) => void;
@@ -108,6 +111,7 @@ export function KanbanCard(props: KanbanCardProps) {
     selected,
     keyboardActive,
     reducedMotion,
+    fx,
     onOpen,
     onFocusCard,
     onNavKey,
@@ -115,7 +119,10 @@ export function KanbanCard(props: KanbanCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     attributes: { role: 'listitem', roleDescription: '可拖曳的任務卡片', tabIndex: tabbable ? 0 : -1 },
-    transition: reducedMotion ? null : { duration: 200, easing: 'cubic-bezier(.2,0,0,1)' },
+    // 讓位：--duration-base / --ease-standard
+    transition: reducedMotion
+      ? null
+      : { duration: motionMs('--duration-base'), easing: motionEasing('--ease-standard') },
   });
   const nodeRef = useRef<HTMLDivElement | null>(null);
 
@@ -154,6 +161,7 @@ export function KanbanCard(props: KanbanCardProps) {
       aria-label={cardAriaLabel(task, assigneeName)}
       aria-current={selected ? 'true' : undefined}
       data-task-id={task.id}
+      {...fxAttr(isDragging ? undefined : fx)}
       className={[
         'kanban-card',
         selected && 'is-selected',

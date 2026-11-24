@@ -51,6 +51,8 @@ export function useCreateTodo() {
   const qc = useQueryClient();
   const key = useMyTodoKey();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: (input: PersonalCreateInput) => api.post<PersonalItem>('/personal', input),
     onSuccess: (item) => {
       qc.setQueryData<PersonalItem[]>(key, (prev) => [item, ...(prev ?? [])]);
@@ -68,6 +70,8 @@ export function useUpdateTodo() {
   const qc = useQueryClient();
   const key = useMyTodoKey();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: ({ id, ...patch }: TodoPatch) => api.patch<PersonalItem>(`/personal/${id}`, patch),
     onMutate: async ({ id, ...patch }) => {
       await qc.cancelQueries({ queryKey: key });
@@ -93,6 +97,8 @@ export function useDeleteTodo() {
   const qc = useQueryClient();
   const key = useMyTodoKey();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: (id: number) => api.delete<{ ok: true }>(`/personal/${id}`),
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: key });
@@ -111,6 +117,8 @@ export function useClearDoneTodos() {
   const qc = useQueryClient();
   const key = useMyTodoKey();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: () => api.delete<{ ok: true; deleted: number }>('/personal/done'),
     onSuccess: () => {
       qc.setQueryData<PersonalItem[]>(key, (list) => list?.filter((i) => !i.isDone));

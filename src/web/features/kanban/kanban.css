@@ -178,9 +178,24 @@
     outline-offset: 2px;
   }
   /* 拖曳中 — 浮層 */
+  /* 拖起：scale(1.02) + --shadow-sm（realtime-feedback.md §3） */
   .kanban-card.is-overlay {
     box-shadow: var(--shadow-sm);
     cursor: grabbing;
+    transform: scale(1.02);
+    animation: kanban-lift var(--duration-fast) var(--ease-standard);
+  }
+  @keyframes kanban-lift {
+    from {
+      transform: scale(1);
+      box-shadow: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .kanban-card.is-overlay {
+      transform: none;
+      animation: none;
+    }
   }
   .kanban-card.is-overlay.is-keyboard {
     outline: 2px solid var(--color-accent);

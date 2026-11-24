@@ -44,6 +44,8 @@ function useApplyUser() {
 export function useCreateAdminUser() {
   const apply = useApplyUser();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: (input: AdminUserCreateInput) => api.post<AdminTempPasswordResponse>('/admin/users', input),
     onSuccess: (res) => apply(res.user),
     gcTime: 0,
@@ -53,6 +55,8 @@ export function useCreateAdminUser() {
 export function useResetPassword() {
   const apply = useApplyUser();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: (id: number) => api.post<AdminTempPasswordResponse>(`/admin/users/${id}/reset-password`),
     onSuccess: (res) => apply(res.user),
     gcTime: 0,
@@ -62,6 +66,8 @@ export function useResetPassword() {
 export function useUpdateAdminUser() {
   const apply = useApplyUser();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: ({ id, ...patch }: AdminUserUpdateInput & { id: number }) =>
       api.patch<AdminUser>(`/admin/users/${id}`, patch),
     onSuccess: apply,
@@ -71,6 +77,8 @@ export function useUpdateAdminUser() {
 export function useUnlockUser() {
   const apply = useApplyUser();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: (id: number) => api.post<AdminUser>(`/admin/users/${id}/unlock`),
     onSuccess: apply,
   });

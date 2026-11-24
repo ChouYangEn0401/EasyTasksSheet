@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import type { Task, TaskCreateInput } from '../../../shared/tasks.ts';
-import { errorMessage } from '../../lib/api.ts';
 import { useCurrentUser } from '../../lib/auth.ts';
+import { notifyError } from '../../lib/errorToast.ts';
 import { useProjects, useStatuses } from '../../lib/hooks.ts';
 import { openTask } from '../../lib/openTask.ts';
 import { GLOBAL_QUICKADD_ATTR } from '../../lib/shortcuts.ts';
+import { notifyTaskCreated } from '../../lib/toast.ts';
 import { useTaskFilters } from '../../lib/useTaskFilters.ts';
 import { Icon, Input, Kbd } from '../../ui/index.ts';
 import { useOptimisticCreate } from './data.ts';
@@ -29,8 +30,7 @@ export type QuickAddProps = {
   label?: string;
 };
 
-type Notice =
-  { kind: 'created' } | { kind: 'outside'; id: number } | { kind: 'error'; message: string } | null;
+type Notice = { kind: 'outside'; id: number } | { kind: 'error'; message: string } | null;
 
 /**
  * 插槽：快速新增任務（T1 升級版）。
@@ -64,7 +64,7 @@ export function QuickAdd({
 
   useEffect(() => {
     if (!notice || notice.kind === 'error') return;
-    const t = window.setTimeout(() => setNotice(null), notice.kind === 'outside' ? 5000 : 1200);
+    const t = window.setTimeout(() => setNotice(null), 5000);
     return () => window.clearTimeout(t);
   }, [notice]);
   useEffect(() => {
@@ -116,16 +116,24 @@ export function QuickAdd({
     setNotice(null);
     setPending((n) => n + 1);
     inputRef.current?.focus();
+    // 「重試」以相同參數重送（toast 動作）
+    const retry = (): Promise<unknown> =>
+      create(input, temp, filters).then(
+        ({ task }) => notifyTaskCreated(task, openTask),
+        (err: unknown) => notifyError(err, retry),
+      );
     create(input, temp, filters)
       .then(({ task, matches }) => {
         setSuccess(true);
-        setNotice(matches ? { kind: 'created' } : { kind: 'outside', id: task.id });
+        // 建立成功由 toast 告知（連續新增時合併）；不在篩選範圍時另於輸入框下方提示
+        setNotice(matches ? null : { kind: 'outside', id: task.id });
+        notifyTaskCreated(task, openTask);
         onCreated?.(task);
       })
       .catch((err: unknown) => {
-        // 失敗：還原輸入內容（若使用者尚未輸入新內容）
+        // 失敗：暫時列已移除；還原輸入內容（若使用者尚未輸入新內容），再出現 toast
         setTitle((cur) => cur || typed);
-        setNotice({ kind: 'error', message: errorMessage(err) });
+        notifyError(err, retry);
       })
       .finally(() => setPending((n) => n - 1));
   };
@@ -213,8 +221,6 @@ export function QuickAdd({
               開啟
             </button>
           </span>
-        ) : notice?.kind === 'created' ? (
-          <span style={{ color: 'var(--color-success-text)' }}>已建立</span>
         ) : null}
       </div>
     </div>

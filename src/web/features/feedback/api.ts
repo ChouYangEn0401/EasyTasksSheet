@@ -21,6 +21,8 @@ export function useFeedbackItems() {
 export function useCreateFeedback() {
   const qc = useQueryClient();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: (input: FeedbackCreateInput) => api.post<FeedbackItem>('/feedback', input),
     onSuccess: (item) => {
       qc.setQueryData<FeedbackItem[]>(feedbackKeys.list(), (prev) => (prev ? [item, ...prev] : [item]));
@@ -35,6 +37,8 @@ export type FeedbackPatch = FeedbackUpdateInput & { id: number };
 export function useUpdateFeedback() {
   const qc = useQueryClient();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: ({ id, ...patch }: FeedbackPatch) => api.patch<FeedbackItem>(`/feedback/${id}`, patch),
     onMutate: async ({ id, ...patch }) => {
       await qc.cancelQueries({ queryKey: feedbackKeys.list() });
@@ -59,6 +63,8 @@ export function useUpdateFeedback() {
 export function useDeleteFeedback() {
   const qc = useQueryClient();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: (id: number) => api.delete<{ ok: true }>(`/feedback/${id}`),
     onSuccess: (_res, id) => {
       qc.setQueryData<FeedbackItem[]>(feedbackKeys.list(), (list) => list?.filter((i) => i.id !== id));

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent, type SyntheticEvent } from 'react';
 import { useCurrentUser } from '../../lib/auth.ts';
+import { notifySuccess } from '../../lib/toast.ts';
 import { Button, Tooltip } from '../../ui/index.ts';
 import { usePins, useTogglePin } from './api.ts';
 import { BookmarkIcon } from './icons.tsx';
@@ -41,6 +42,7 @@ export function PinButton({ taskId, size = 'sm' }: { taskId: number; size?: 'sm'
     toggle.mutate(
       { taskId, pinned: !pinned },
       {
+        onSuccess: (_r, vars) => notifySuccess(vars.pinned ? '已加入我的標記' : '已移出我的標記'),
         onError: () => {
           setFailed(true);
           failTimer.current = window.setTimeout(() => setFailed(false), 3000);

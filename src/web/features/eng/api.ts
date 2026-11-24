@@ -41,6 +41,8 @@ export function useIssues(repoId: number | null) {
 export function useRefreshIssues() {
   const qc = useQueryClient();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: (repoId: number) => api.post<IssuesResponse>('/eng/issues/refresh', { repoId }),
     onSuccess: (data) => qc.setQueryData(engKeys.issues(data.repoId), data),
   });
@@ -59,6 +61,8 @@ export function useWorktrees(repoId: number | null) {
 export function useRedetect() {
   const qc = useQueryClient();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: (repoId: number) => api.get<WorktreesResponse>(`/eng/worktrees?repo=${repoId}&refresh=1`),
     onSuccess: (data) => qc.setQueryData(engKeys.worktrees(data.repoId), data),
   });
@@ -67,6 +71,8 @@ export function useRedetect() {
 export function useSavePlan() {
   const qc = useQueryClient();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: ({ id, ...input }: WorktreePlanInput & { id?: number }) =>
       id
         ? api.patch<WorktreePlan>(`/eng/worktree-plans/${id}`, input satisfies WorktreePlanUpdateInput)
@@ -78,6 +84,8 @@ export function useSavePlan() {
 export function useDeletePlan() {
   const qc = useQueryClient();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: (id: number) => api.delete<{ ok: true }>(`/eng/worktree-plans/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['eng', 'worktrees'] }),
   });
@@ -86,6 +94,8 @@ export function useDeletePlan() {
 export function useSaveRepo() {
   const qc = useQueryClient();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: ({ id, ...input }: RepoInput & { id?: number }) =>
       id
         ? api.patch<Repo>(`/eng/repos/${id}`, input satisfies RepoUpdateInput)
@@ -97,6 +107,8 @@ export function useSaveRepo() {
 export function useDeleteRepo() {
   const qc = useQueryClient();
   return useMutation({
+    // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
+    meta: { errorToast: false },
     mutationFn: (id: number) => api.delete<{ ok: true }>(`/eng/repos/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.all }),
   });
