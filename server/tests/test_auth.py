@@ -148,7 +148,6 @@ def test_get_polling_does_not_refresh_idle():
     for _ in range(59):
         clock.advance(MIN)
         assert api.get("/api/tasks").status_code == 200
-        api.get("/api/events")  # SSE（目前為 stub）同樣不刷新
     clock.advance(MIN)
     res = api.get("/api/tasks")
     assert res.status_code == 401

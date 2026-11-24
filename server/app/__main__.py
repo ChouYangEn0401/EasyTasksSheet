@@ -15,4 +15,6 @@ if __name__ == "__main__":
         reload=reload,
         reload_dirs=["server"] if reload else None,
         proxy_headers=False,
+        # SSE 長連線不應讓關機卡住：最多等 3 秒就強制結束
+        timeout_graceful_shutdown=3,
     )
