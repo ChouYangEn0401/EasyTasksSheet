@@ -65,6 +65,9 @@
     "db:setup": "node scripts/db.ts setup",
     "user:add": "node scripts/user-add.ts",
     "backup": "node scripts/backup.mjs",
-    "backup:self-test": "node scripts/backup.mjs --self-test"
+    "backup:self-test": "node scripts/backup.mjs --self-test",
+    "py:install": "node scripts/py.mjs install",
+    "py:test": "node scripts/py.mjs -m pytest server",
+    "dev:py": "node scripts/py.mjs -m server.app --reload"
   }
 }

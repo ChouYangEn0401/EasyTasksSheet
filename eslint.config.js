@@ -7,7 +7,7 @@ import globals from 'globals';
 
 export default tseslint.config(
   {
-    ignores: ['dist', 'drizzle', 'data', 'coverage', 'playwright-report', 'test-results'],
+    ignores: ['dist', 'drizzle', 'data', 'coverage', 'playwright-report', 'test-results', '.venv', 'server'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
