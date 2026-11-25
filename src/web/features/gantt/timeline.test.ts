@@ -3,12 +3,23 @@ import { buildGroups, groupSpan, parseGroupBy } from './grouping.ts';
 import {
   addDays,
   applyDrag,
+  autoScale,
+  barGeometry,
   computeRange,
+  DAY_WIDTH,
   datePatch,
+  formatDateRange,
+  formatDayRange,
   formatSpan,
   fromDay,
   headerCells,
+  initialScrollLeft,
+  overdueDays,
+  pickScale,
+  tailDays,
   taskSpan,
+  todayCellMode,
+  todayEdge,
   toDay,
   weekdayIndex,
 } from './timeline.ts';
@@ -37,15 +48,133 @@ describe('timeline', () => {
     expect(taskSpan({ startDate: null, dueDate: null })).toBeNull();
   });
 
-  it('繪製範圍：至少今天 −14 至 +56，對齊整週 / 整月', () => {
+  it('每日寬與後邊界：週 16px、tail = ceil(240 / dw)', () => {
+    expect(DAY_WIDTH).toEqual({ day: 32, week: 16, month: 4 });
+    expect([tailDays('day'), tailDays('week'), tailDays('month')]).toEqual([8, 15, 60]);
+  });
+
+  it('繪製範圍：今天 − lead 至 今天 + tail，對齊整週 / 整月', () => {
     const today = '2026-11-24'; // 週二
     const r = computeRange([], today, 'week');
-    expect(fromDay(r.start)).toBe('2026-11-09'); // 11/10 所在週的週一
+    expect(fromDay(r.start)).toBe('2026-11-16'); // 11/17 所在週的週一
     expect(weekdayIndex(r.end)).toBe(0);
-    expect(r.end).toBeGreaterThan(d(today) + 56);
+    expect(r.end).toBeGreaterThanOrEqual(d(today) + 15);
+    expect(r.end - (d(today) + 15)).toBeLessThan(7);
+    const day = computeRange([], today, 'day');
+    expect(fromDay(day.start)).toBe('2026-11-16'); // 11/21 所在週
+    expect(day.end).toBeGreaterThanOrEqual(d(today) + 8);
     const withTask = computeRange([{ startDate: '2026-06-03', dueDate: '2027-03-01' }], today, 'month');
-    expect(fromDay(withTask.start)).toBe('2026-06-01');
-    expect(fromDay(withTask.end)).toBe('2027-04-01');
+    expect(fromDay(withTask.start)).toBe('2026-05-01'); // 6/3 − 31 天
+    expect(fromDay(withTask.end)).toBe('2027-05-01'); // 3/1 + 60 天 → 4/30 所在月
+  });
+
+  it('後邊界保證最晚到期日右側至少 tail 天（外側標題不被裁切）', () => {
+    const r = computeRange([{ startDate: '2026-11-24', dueDate: '2026-12-20' }], '2026-11-24', 'week');
+    expect(r.end - (d('2026-12-20') + 1)).toBeGreaterThanOrEqual(tailDays('week') - 1);
+  });
+
+  it('填滿：總天數 ≥ minDays，只往後延伸、起點不變', () => {
+    const today = '2026-11-24';
+    const base = computeRange([], today, 'week');
+    const filled = computeRange([], today, 'week', 120);
+    expect(filled.start).toBe(base.start);
+    expect(filled.end - filled.start).toBeGreaterThanOrEqual(120);
+    expect(weekdayIndex(filled.end)).toBe(0); // 以整週延伸
+    const month = computeRange([], today, 'month', 400);
+    expect(month.end - month.start).toBeGreaterThanOrEqual(400);
+    expect(fromDay(month.end).endsWith('-01')).toBe(true); // 以整月延伸
+  });
+
+  it('填滿：今天之後至少 ceil(minDays × 2/3) 天（今天可置於左側 1/3）', () => {
+    const today = '2026-11-24';
+    // 有很早的任務時總天數已足夠，但今天右側仍需延伸
+    const r = computeRange([{ startDate: '2026-06-01', dueDate: '2026-06-10' }], today, 'week', 90);
+    expect(r.end).toBeGreaterThanOrEqual(d(today) + 60);
+    expect(r.end - r.start).toBeGreaterThanOrEqual(90);
+  });
+
+  it('自動刻度：跨度 ≤ 28 → 日；≤ 182 → 週；其餘 → 月（含今天）', () => {
+    const today = '2026-11-24';
+    expect(autoScale([], today)).toBe('day');
+    // 今天 ~ 12/21 共 28 天
+    expect(autoScale([{ startDate: '2026-11-24', dueDate: '2026-12-21' }], today)).toBe('day');
+    expect(autoScale([{ startDate: '2026-11-24', dueDate: '2026-12-22' }], today)).toBe('week');
+    // 今天 ~ 2027-05-24 共 182 天
+    expect(autoScale([{ startDate: null, dueDate: '2027-05-24' }], today)).toBe('week');
+    expect(autoScale([{ startDate: null, dueDate: '2027-05-25' }], today)).toBe('month');
+    // 過去的任務也納入跨度
+    expect(autoScale([{ startDate: '2026-01-01', dueDate: '2026-01-02' }], today)).toBe('month');
+    // 優先序：URL > localStorage > 自動；無效值略過
+    expect(pickScale('month', 'day', [], today)).toBe('month');
+    expect(pickScale(null, 'week', [], today)).toBe('week');
+    expect(pickScale('x', null, [], today)).toBe('day');
+  });
+
+  it('長條外觀：一般 / 窄長條、標題在內或外、單日寬度', () => {
+    const one = { start: 100, end: 100 };
+    // 日刻度單日 = 32px：一般長條、標題在外
+    expect(barGeometry(one, 32, true)).toMatchObject({
+      w: 32,
+      visualWidth: 32,
+      offset: 0,
+      narrow: false,
+      labelInside: false,
+    });
+    // 週刻度單日 = 16px：窄長條；單一日期固定 10px 並置中
+    expect(barGeometry(one, 16, true)).toMatchObject({ w: 16, visualWidth: 10, offset: 3, narrow: true });
+    // 有起訖的 1 天窄長條維持實際寬
+    expect(barGeometry(one, 16)).toMatchObject({ visualWidth: 16, narrow: true });
+    // 月刻度 1 天 = 4px → 最小 8px
+    expect(barGeometry(one, 4)).toMatchObject({ visualWidth: 8, offset: -2, narrow: true });
+    // 6 天 × 16 = 96：標題在內；140 起顯示百分比；200 起顯示逾期
+    expect(barGeometry({ start: 0, end: 5 }, 16)).toMatchObject({ labelInside: true, pctInside: false });
+    expect(barGeometry({ start: 0, end: 8 }, 16)).toMatchObject({ pctInside: true, overdueInside: false });
+    expect(barGeometry({ start: 0, end: 12 }, 16)).toMatchObject({ overdueInside: true });
+    expect(barGeometry({ start: 0, end: 4 }, 16).labelInside).toBe(false);
+  });
+
+  it('今天：表頭格呈現、可視範圍外的邊緣膠囊', () => {
+    expect(todayCellMode('day', 32)).toBe('fill');
+    expect(todayCellMode('week', 112)).toBe('both');
+    expect(todayCellMode('month', 120)).toBe('both');
+    expect(todayCellMode('week', 64)).toBe('chip');
+    expect(todayEdge(500, 0, 800)).toBeNull();
+    expect(todayEdge(500, 600, 800)).toBe('left');
+    expect(todayEdge(500, 0, 400)).toBe('right');
+    const cells = headerCells({ start: d('2026-11-16'), end: d('2026-12-07') }, 'week', d('2026-11-24'));
+    expect(cells.bottom.filter((c) => c.today).map((c) => c.label)).toEqual(['11/23']);
+  });
+
+  it('進頁定位：今天在左側 1/3；視窗內無長條則對最近的長條', () => {
+    expect(initialScrollLeft(900, 600, [{ x: 800, w: 100 }])).toBe(700);
+    expect(initialScrollLeft(100, 600, [])).toBe(0);
+    // 視窗 [700, 1300) 內沒有長條 → 最近的長條起點 2000 置於左側 1/3
+    expect(
+      initialScrollLeft(900, 600, [
+        { x: 2000, w: 50 },
+        { x: 3000, w: 50 },
+      ]),
+    ).toBe(1800);
+    // 過去的長條較近
+    expect(
+      initialScrollLeft(2000, 600, [
+        { x: 200, w: 100 },
+        { x: 4000, w: 10 },
+      ]),
+    ).toBe(0);
+  });
+
+  it('左欄日期區間與逾期天數', () => {
+    const today = '2026-11-25';
+    expect(formatDateRange('2026-11-24', '2026-11-26', today)).toBe('11/24–11/26');
+    expect(formatDateRange('2026-11-24', '2026-11-24', today)).toBe('11/24');
+    expect(formatDateRange(null, '2026-11-26', today)).toBe('到期 11/26');
+    expect(formatDateRange('2026-11-24', null, today)).toBe('開始 11/24');
+    expect(formatDateRange('2026-12-28', '2027-01-04', today)).toBe('12/28–2027/1/4');
+    expect(formatDayRange(d('2026-11-20'), d('2026-12-05'))).toBe('11/20–12/5');
+    expect(overdueDays('2026-11-20', today)).toBe(5);
+    expect(overdueDays('2026-11-26', today)).toBe(0);
+    expect(overdueDays(null, today)).toBe(0);
   });
 
   it('表頭：日 / 週 / 月', () => {
@@ -105,7 +234,7 @@ describe('grouping', () => {
     userName: (id: number) => (id === 99 ? '停用者' : undefined),
   };
 
-  it('負責人分組：保留成員順序、無排程成員仍列出、未指派最後、未排程不納入', () => {
+  it('負責人分組：保留成員順序、無排程成員仍回傳（由 Gantt 移到摘要列）、未指派最後、未排程不納入', () => {
     const g = buildGroups(tasks, 'assignee', ctx);
     expect(g.map((x) => [x.label, x.tasks.map((t) => t.id)])).toEqual([
       ['無排程', []],

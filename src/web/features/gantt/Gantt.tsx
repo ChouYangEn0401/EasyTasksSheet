@@ -14,22 +14,31 @@ import {
 import { useSearchParams } from 'react-router';
 import type { Task } from '../../../shared/tasks.ts';
 import { statusStyle, statusTone } from '../../lib/colors.ts';
+import { formatRelative } from '../../lib/format.ts';
 import { useProjects, useStatusesById, useUsersById } from '../../lib/hooks.ts';
+import { prefersReducedMotion } from '../../lib/motion.ts';
 import { openTask, readTaskParam } from '../../lib/openTask.ts';
 import { isEditableTarget } from '../../lib/shortcuts.ts';
 import { readStorage, writeStorage } from '../../lib/storage.ts';
-import { Avatar, Badge, ColorDot, Icon, UpdatedAt } from '../../ui/index.ts';
+import { Avatar, Badge, ColorDot, Icon, Tooltip } from '../../ui/index.ts';
 import { buildGroups, groupSpan, type GanttGroup, type GroupBy } from './grouping.ts';
 import {
   applyDrag,
+  barGeometry,
   computeRange,
   DAY_WIDTH,
   datePatch,
+  formatDateRange,
+  formatDayRange,
   formatSpan,
   formatSpanSpoken,
   headerCells,
+  initialScrollLeft,
+  overdueDays,
   SCALES,
   taskSpan,
+  todayCellMode,
+  todayEdge,
   toDay,
   weekdayIndex,
   type DragMode,
@@ -40,10 +49,13 @@ import './gantt.css';
 export type DatePatch = { startDate?: string; dueDate?: string };
 
 export type GanttHandle = {
+  /** 捲到今天（預設平滑；prefers-reduced-motion 時瞬間） */
   scrollToToday: () => void;
   /** 前後捲動一個可視寬度 */
   scrollPage: (dir: -1 | 1) => void;
   scrollToTask: (id: number) => void;
+  /** 該任務列以 accent-soft 底標示 1.5 秒 */
+  flashTask: (id: number) => void;
 };
 
 export type GanttProps = {
@@ -51,7 +63,7 @@ export type GanttProps = {
   groupBy: GroupBy;
   scale: Scale;
   today: string;
-  /** 負責人分組時的成員順序（沒有排程任務的成員仍顯示群組列） */
+  /** 負責人分組時的成員順序（沒有排程任務的成員集中到「無排程任務」摘要列） */
   members: { id: number; displayName: string }[];
   /** 精簡版：唯讀、列高 28、左欄窄 */
   compact?: boolean;
@@ -64,6 +76,10 @@ export type GanttProps = {
   /** 群組收合狀態的 localStorage 鍵 */
   storageKey?: string;
   ariaLabel?: string;
+  /** 各負責人的未排程任務數（空分組摘要列顯示「· 未排程 M」） */
+  unscheduledCountByAssignee?: Map<number, number>;
+  /** 點空分組摘要列中的成員：展開未排程區並標示該成員 */
+  onShowUnscheduled?: (assigneeId: number) => void;
 };
 
 type Row =
@@ -81,9 +97,12 @@ type DragState = {
   moved: boolean;
 };
 
+type Range = { start: number; end: number };
+
 const DRAG_THRESHOLD = 4;
 const EDGE = 40;
 const KEY_COMMIT_MS = 500;
+const FLASH_MS = 1500;
 
 function readCollapsed(key: string): Set<string> {
   try {
@@ -95,8 +114,8 @@ function readCollapsed(key: string): Set<string> {
 }
 
 /**
- * 甘特圖（完整版與總覽精簡版共用）。
- * 單一捲動容器：表頭 sticky top、左欄 sticky left，時間軸隨容器水平捲動。
+ * 甘特圖（完整版與總覽精簡版共用；docs/design/gantt-polish.md）。
+ * 單一捲動容器：表頭 sticky top、左欄 sticky left，時間軸隨容器水平捲動；範圍至少填滿可視寬度。
  */
 export function Gantt({
   tasks,
@@ -111,6 +130,8 @@ export function Gantt({
   handleRef,
   storageKey = compact ? 'gantt.compact.collapsed' : 'gantt.collapsed',
   ariaLabel = '甘特圖',
+  unscheduledCountByAssignee,
+  onShowUnscheduled,
 }: GanttProps) {
   const editable = !compact && !!onChangeDates;
   const statusesById = useStatusesById();
@@ -139,13 +160,31 @@ export function Gantt({
   const [drag, setDrag] = useState<DragState | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const [hoverBar, setHoverBar] = useState<number | null>(null);
+  const [flashId, setFlashId] = useState<number | null>(null);
+  const flashTimer = useRef<number | undefined>(undefined);
 
+  /* ── 範圍（填滿可視寬度；拖曳中凍結） ───────────── */
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [viewW, setViewW] = useState(0);
   const dw = DAY_WIDTH[scale];
-  const range = useMemo(() => computeRange(tasks, today, scale), [tasks, today, scale]);
+  const minDays = viewW > 0 ? Math.ceil(viewW / dw) : 0;
+  const computedRange = useMemo(
+    () => computeRange(tasks, today, scale, minDays),
+    [tasks, today, scale, minDays],
+  );
+  const [dragRange, setDragRange] = useState<Range | null>(null);
+  const range = dragRange ?? computedRange;
   const totalWidth = (range.end - range.start) * dw;
-  const header = useMemo(() => headerCells(range, scale), [range, scale]);
   const todayDay = toDay(today);
-  const todayX = (todayDay - range.start) * dw;
+  const header = useMemo(() => headerCells(range, scale, todayDay), [range, scale, todayDay]);
+  /** 今天那一天的中心 x */
+  const todayX = (todayDay - range.start) * dw + dw / 2;
+  const todayInRange = todayDay >= range.start && todayDay < range.end;
+
+  const isOverdue = useCallback(
+    (t: Task) => !!t.dueDate && t.dueDate < today && statusesById.get(t.statusId)?.category !== 'done',
+    [today, statusesById],
+  );
 
   const groups = useMemo(
     () =>
@@ -156,6 +195,11 @@ export function Gantt({
       }),
     [tasks, groupBy, members, projects, usersById],
   );
+  // 沒有已排程任務的成員不佔列，集中到摘要列
+  const emptyGroups = useMemo(
+    () => groups.filter((g) => g.kind === 'user' && g.tasks.length === 0),
+    [groups],
+  );
 
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
@@ -164,6 +208,7 @@ export function Gantt({
         for (const t of g.tasks) out.push({ type: 'task', key: `t${t.id}`, task: t, grouped: false });
         continue;
       }
+      if (g.tasks.length === 0) continue;
       const isCollapsed = collapsed.has(g.key);
       out.push({ type: 'group', key: g.key, group: g, collapsed: isCollapsed });
       if (!isCollapsed)
@@ -179,8 +224,9 @@ export function Gantt({
   );
 
   /* ── 捲動 ─────────────────────────────── */
-  const scrollRef = useRef<HTMLDivElement>(null);
   const layoutRef = useRef<{ start: number; dw: number } | null>(null);
+  const [scrolledX, setScrolledX] = useState(false);
+  const [edge, setEdge] = useState<'left' | 'right' | null>(null);
 
   const leftWidth = () =>
     (scrollRef.current?.querySelector('.gantt-head-corner') as HTMLElement | null)?.offsetWidth ?? 0;
@@ -189,25 +235,58 @@ export function Gantt({
     return el ? Math.max(0, el.clientWidth - leftWidth()) : 0;
   }, []);
 
-  const scrollToToday = useCallback(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollLeft = Math.max(0, todayX - visibleWidth() / 3);
-  }, [todayX, visibleWidth]);
-
-  // 首次進頁捲到今天；之後刻度或範圍變動時保持可視中心日期不變
+  // 量測可視時間軸寬（首次 + ResizeObserver）
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    const measure = () => setViewW(visibleWidth());
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [visibleWidth]);
+
+  const syncScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setScrolledX(el.scrollLeft > 0);
+    setEdge(todayInRange ? todayEdge(todayX, el.scrollLeft, visibleWidth()) : null);
+  }, [todayInRange, todayX, visibleWidth]);
+
+  const scrollToToday = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({
+      left: Math.max(0, todayX - visibleWidth() / 3),
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+    });
+  }, [todayX, visibleWidth]);
+
+  const barsPx = useMemo(() => {
+    const out: { x: number; w: number }[] = [];
+    for (const t of tasks) {
+      const s = taskSpan(t);
+      if (s) out.push({ x: (s.start - range.start) * dw, w: (s.end - s.start + 1) * dw });
+    }
+    return out;
+  }, [tasks, range.start, dw]);
+
+  // 量測後首次定位（今天在左側 1/3，視窗內無長條則改對最近的長條）；之後刻度或範圍起點變動時保持可視中心日期
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || viewW <= 0) return;
     const prev = layoutRef.current;
     if (!prev) {
-      el.scrollLeft = Math.max(0, todayX - visibleWidth() / 3);
+      el.scrollLeft = initialScrollLeft(todayX, viewW, barsPx);
     } else if (prev.start !== range.start || prev.dw !== dw) {
-      const half = visibleWidth() / 2;
+      const half = viewW / 2;
       const center = prev.start + (el.scrollLeft + half) / prev.dw;
       el.scrollLeft = Math.max(0, (center - range.start) * dw - half);
     }
     layoutRef.current = { start: range.start, dw };
-  }, [range.start, dw, todayX, visibleWidth]);
+    syncScroll();
+  }, [range.start, dw, viewW, todayX, barsPx, syncScroll]);
 
   const scrollToTask = useCallback(
     (id: number) => {
@@ -223,23 +302,36 @@ export function Gantt({
     [tasks, range.start, dw, visibleWidth],
   );
 
+  const flashTask = useCallback((id: number) => {
+    window.clearTimeout(flashTimer.current);
+    setFlashId(id);
+    flashTimer.current = window.setTimeout(() => setFlashId(null), FLASH_MS);
+  }, []);
+  useEffect(() => () => window.clearTimeout(flashTimer.current), []);
+
   useImperativeHandle(
     handleRef,
     () => ({
       scrollToToday,
       scrollPage: (dir) => {
         const el = scrollRef.current;
-        if (el) el.scrollBy({ left: dir * visibleWidth(), behavior: 'smooth' });
+        if (el)
+          el.scrollBy({
+            left: dir * visibleWidth(),
+            behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+          });
       },
       scrollToTask,
+      flashTask,
     }),
-    [scrollToToday, scrollToTask, visibleWidth],
+    [scrollToToday, scrollToTask, visibleWidth, flashTask],
   );
 
   /* ── 拖曳 ─────────────────────────────── */
   const endDrag = useCallback(() => {
     dragRef.current = null;
     setDrag(null);
+    setDragRange(null);
   }, []);
 
   useEffect(() => {
@@ -275,6 +367,7 @@ export function Gantt({
     };
     dragRef.current = state;
     setDrag(state);
+    setDragRange(range);
   };
 
   const onBarPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -412,24 +505,52 @@ export function Gantt({
     return s && { start: s.start, end: s.end };
   };
 
+  // 格線：刻度單位線（淡）+ 月份 / 年邊界（深）；日刻度每日線以背景漸層繪製
   const gridLines = useMemo(() => {
-    if (scale === 'day') return null; // 日刻度以背景漸層繪製每日格線
-    return header.bottom.map((c) => (
-      <span key={c.key} className="gantt-gridline" style={{ left: (c.start - range.start) * dw }} />
-    ));
+    const out = [];
+    if (scale !== 'day')
+      for (const c of header.bottom)
+        if (c.start > range.start)
+          out.push(
+            <span key={c.key} className="gantt-gridline" style={{ left: (c.start - range.start) * dw }} />,
+          );
+    for (const c of header.top)
+      if (c.start > range.start)
+        out.push(
+          <span
+            key={c.key}
+            className="gantt-gridline gantt-gridline--major"
+            style={{ left: (c.start - range.start) * dw }}
+          />,
+        );
+    return out;
   }, [header, scale, range.start, dw]);
 
-  const weekendBands = useMemo(() => {
-    if (scale !== 'day') return null;
+  // 週末帶（日 / 週刻度）與今天帶
+  const bands = useMemo(() => {
+    if (scale === 'month') return null;
     const out = [];
     for (let d = range.start; d < range.end; d++) {
-      if (weekdayIndex(d) === 5)
+      const wd = weekdayIndex(d);
+      if (wd === 5 || (d === range.start && wd === 6))
         out.push(
-          <span key={d} className="gantt-weekend" style={{ left: (d - range.start) * dw, width: 2 * dw }} />,
+          <span
+            key={d}
+            className="gantt-weekend"
+            style={{ left: (d - range.start) * dw, width: (wd === 5 ? 2 : 1) * dw }}
+          />,
         );
     }
+    if (todayInRange)
+      out.push(
+        <span
+          key="today"
+          className="gantt-today-band"
+          style={{ left: (todayDay - range.start) * dw, width: dw }}
+        />,
+      );
     return out;
-  }, [scale, range, dw]);
+  }, [scale, range, dw, todayDay, todayInRange]);
 
   const rootStyle = {
     '--gantt-total': `${totalWidth}px`,
@@ -440,19 +561,27 @@ export function Gantt({
 
   return (
     <div
-      className={`gantt${compact ? ' gantt--compact' : ''}${drag?.moved ? ' gantt--dragging' : ''}`}
+      className={[
+        'gantt',
+        compact && 'gantt--compact',
+        drag?.moved && 'gantt--dragging',
+        scrolledX && 'is-scrolled-x',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       style={rootStyle}
       onKeyDown={onRootKeyDown}
+      data-scale={scale}
     >
-      <div className="gantt-scroll" ref={scrollRef}>
+      <div className="gantt-scroll" ref={scrollRef} onScroll={syncScroll}>
         <div className="gantt-inner">
           <div className="gantt-head">
             <div className="gantt-head-corner">
               <span>任務</span>
-              <span>更新</span>
+              <span>起訖</span>
             </div>
             <div className="gantt-head-time" aria-hidden="true">
-              <div className="gantt-head-row">
+              <div className="gantt-head-row gantt-head-row--top">
                 {header.top.map((c) => (
                   <span
                     key={c.key}
@@ -463,22 +592,37 @@ export function Gantt({
                   </span>
                 ))}
               </div>
-              <div className="gantt-head-row">
-                {header.bottom.map((c) => (
-                  <span
-                    key={c.key}
-                    className={`gantt-head-cell${c.weekend ? ' gantt-head-cell--weekend' : ''}`}
-                    style={{ left: (c.start - range.start) * dw, width: c.days * dw }}
-                  >
-                    <span className="gantt-head-label">{c.label}</span>
-                  </span>
-                ))}
+              <div className="gantt-head-row gantt-head-row--bottom">
+                {header.bottom.map((c) => {
+                  const mode = c.today ? todayCellMode(scale, c.days * dw) : null;
+                  return (
+                    <span
+                      key={c.key}
+                      className={[
+                        'gantt-head-cell',
+                        c.weekend && 'gantt-head-cell--weekend',
+                        mode && `is-today is-today--${mode}`,
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      style={{ left: (c.start - range.start) * dw, width: c.days * dw }}
+                    >
+                      {scale === 'day' ? (
+                        // 日刻度格寬 32px：日期與星期緊排置中
+                        <span className="gantt-head-day">
+                          {c.label.split(' ').map((part) => (
+                            <span key={part}>{part}</span>
+                          ))}
+                        </span>
+                      ) : (
+                        mode !== 'chip' && <span className="gantt-head-label">{c.label}</span>
+                      )}
+                      {(mode === 'both' || mode === 'chip') && <span className="gantt-today-chip">今天</span>}
+                    </span>
+                  );
+                })}
               </div>
-              {todayDay >= range.start && todayDay < range.end && (
-                <span className="gantt-today-pill" style={{ left: todayX + dw / 2 }}>
-                  今天
-                </span>
-              )}
+              {todayInRange && !edge && <span className="gantt-today-dot" style={{ left: todayX }} />}
             </div>
           </div>
 
@@ -489,12 +633,14 @@ export function Gantt({
             onKeyDown={onTreeKeyDown}
             data-scale={scale}
           >
+            {bands && (
+              <div className="gantt-bands" aria-hidden="true">
+                {bands}
+              </div>
+            )}
             <div className="gantt-overlay" aria-hidden="true">
-              {weekendBands}
               {gridLines}
-              {todayDay >= range.start && todayDay < range.end && (
-                <span className="gantt-today-line" style={{ left: todayX + dw / 2 }} />
-              )}
+              {todayInRange && <span className="gantt-today-line" style={{ left: todayX }} />}
             </div>
 
             {rows.map((row, idx) => {
@@ -502,6 +648,7 @@ export function Gantt({
               if (row.type === 'group') {
                 const g = row.group;
                 const span = groupSpan(g.tasks);
+                const overdueCount = g.tasks.filter(isOverdue).length;
                 return (
                   <div
                     key={row.key}
@@ -510,7 +657,7 @@ export function Gantt({
                     role="treeitem"
                     aria-level={1}
                     aria-expanded={!row.collapsed}
-                    aria-label={`${g.label}，${g.tasks.length} 筆`}
+                    aria-label={`${g.label}，${g.tasks.length} 筆${overdueCount ? `，逾期 ${overdueCount} 筆` : ''}`}
                     tabIndex={tabIndex}
                     onFocus={() => setFocusKey(row.key)}
                   >
@@ -528,10 +675,17 @@ export function Gantt({
                         <Avatar user={null} size="sm" tooltip={false} />
                       )}
                       <span className="gantt-group-name">{g.label}</span>
-                      <Badge count>{g.tasks.length}</Badge>
+                      <Tooltip content={`${g.tasks.length} 筆已排程任務`}>
+                        <Badge count>{g.tasks.length}</Badge>
+                      </Tooltip>
+                      {overdueCount > 0 && (
+                        <span className="gantt-group-overdue">
+                          <Badge tone="danger">逾期 {overdueCount}</Badge>
+                        </span>
+                      )}
                     </div>
                     <div className="gantt-cell-time" aria-hidden="true">
-                      {span ? (
+                      {span && !row.collapsed && (
                         <span
                           className="gantt-group-line"
                           style={{
@@ -539,10 +693,35 @@ export function Gantt({
                             width: (span.end - span.start + 1) * dw,
                           }}
                         />
-                      ) : (
-                        <span className="gantt-group-empty" style={{ left: Math.max(0, todayX - 120) }}>
-                          無排程任務
-                        </span>
+                      )}
+                      {span && row.collapsed && (
+                        <>
+                          {g.tasks.map((t) => {
+                            const s = taskSpan(t);
+                            if (!s) return null;
+                            const tone = (() => {
+                              const st = statusesById.get(t.statusId);
+                              return st ? statusTone(st) : 'todo';
+                            })();
+                            return (
+                              <span
+                                key={t.id}
+                                className="gantt-group-mini"
+                                style={{
+                                  left: (s.start - range.start) * dw,
+                                  width: Math.max(4, (s.end - s.start + 1) * dw),
+                                  ...statusStyle(tone),
+                                }}
+                              />
+                            );
+                          })}
+                          <span
+                            className="gantt-group-summary"
+                            style={{ left: (span.end - range.start + 1) * dw + 10 }}
+                          >
+                            {g.tasks.length} 筆 · {formatDayRange(span.start, span.end)}
+                          </span>
+                        </>
                       )}
                     </div>
                   </div>
@@ -553,23 +732,35 @@ export function Gantt({
               const status = statusesById.get(t.statusId);
               const tone = status ? statusTone(status) : 'todo';
               const done = status?.category === 'done';
-              const overdue = !!t.dueDate && t.dueDate < today && !done;
+              const overdue = isOverdue(t);
+              const odDays = overdue ? overdueDays(t.dueDate, today) : 0;
               const real = taskSpan(t);
               const span = spanOf(t);
               const isDragging = drag?.taskId === t.id && drag.moved;
-              const left = span ? (span.start - range.start) * dw : 0;
-              const width = span ? (span.end - span.start + 1) * dw : 0;
-              const ariaLabel = `${t.title}，${t.startDate ?? '未設定'} 至 ${t.dueDate ?? '未設定'}，進度 ${t.progress}%，${status?.name ?? ''}，負責人 ${userLabel(t.assigneeId)}`;
+              const geo = span && barGeometry(span, dw, !!real?.single);
+              const left = span && geo ? (span.start - range.start) * dw + geo.offset : 0;
+              const showInside = !!geo && geo.labelInside && !compact;
+              const showOutside = !!geo && !geo.labelInside && (!compact || geo.narrow);
+              const showPct = t.progress > 0 && t.progress < 100;
+              const rowLabel = `${t.title}，${t.startDate ?? '未設定'} 至 ${t.dueDate ?? '未設定'}，進度 ${t.progress}%，${status?.name ?? ''}${overdue ? `，已逾期 ${odDays} 天` : ''}，負責人 ${userLabel(t.assigneeId)}`;
+              const updaterName = t.updatedBy != null ? usersById.get(t.updatedBy)?.displayName : undefined;
+              const dates = formatDateRange(t.startDate, t.dueDate, today);
               return (
                 <div
                   key={row.key}
                   data-row-key={row.key}
                   data-task-id={t.id}
-                  className={`gantt-row gantt-row--task${selectedId === t.id ? ' is-selected' : ''}`}
+                  className={[
+                    'gantt-row gantt-row--task',
+                    selectedId === t.id && 'is-selected',
+                    flashId === t.id && 'is-flash',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
                   role="treeitem"
                   aria-level={row.grouped ? 2 : 1}
                   aria-selected={selectedId === t.id}
-                  aria-label={ariaLabel}
+                  aria-label={rowLabel}
                   tabIndex={tabIndex}
                   onFocus={(e) => {
                     if (e.target === e.currentTarget) setFocusKey(row.key);
@@ -579,27 +770,33 @@ export function Gantt({
                     className={`gantt-cell-left${row.grouped ? ' gantt-cell-left--indent' : ''}`}
                     onClick={() => openTask(t.id)}
                   >
+                    <Tooltip content={status?.name}>
+                      <span className="gantt-status-dot" style={statusStyle(tone)} />
+                    </Tooltip>
                     <span className="gantt-task-title" title={t.title}>
                       {t.title}
                     </span>
-                    {overdue && <Badge tone="danger">逾期</Badge>}
-                    <span className="gantt-task-updated" onClick={(e) => e.stopPropagation()}>
-                      <UpdatedAt at={t.updatedAt} by={t.updatedBy} />
-                    </span>
+                    {dates && (
+                      <span className={`gantt-task-dates${overdue ? ' is-overdue' : ''}`}>
+                        {overdue ? <Tooltip content={`已逾期 ${odDays} 天`}>{dates}</Tooltip> : dates}
+                      </span>
+                    )}
                   </div>
                   <div className="gantt-cell-time">
-                    {span && (
+                    {span && geo && (
                       <div
                         className={[
                           'gantt-bar',
+                          geo.narrow && 'gantt-bar--narrow',
                           real?.single && 'gantt-bar--single',
                           overdue && 'gantt-bar--overdue',
+                          done && 'gantt-bar--done',
                           isDragging && 'is-dragging',
                           editable && 'is-editable',
                         ]
                           .filter(Boolean)
                           .join(' ')}
-                        style={{ left, width, ...statusStyle(tone) }}
+                        style={{ left, width: geo.visualWidth, ...statusStyle(tone) }}
                         data-testid={`gantt-bar-${t.id}`}
                         onPointerDown={(e) => onBarPointerDown(e, t, 'move')}
                         onPointerMove={onBarPointerMove}
@@ -615,13 +812,21 @@ export function Gantt({
                           }
                         }}
                       >
-                        <span className="gantt-bar-fill" style={{ width: `${t.progress}%` }} />
-                        {width >= 44 && (
-                          <span
-                            className={`gantt-bar-pct${t.progress >= 100 ? ' gantt-bar-pct--on-fill' : ''}`}
-                          >
-                            {t.progress}%
+                        {showInside && (
+                          <span className="gantt-bar-label gantt-bar-label--in" aria-hidden="true">
+                            {done && <Icon name="check" size={12} className="gantt-bar-check" />}
+                            <span className="gantt-bar-title">{t.title}</span>
+                            {overdue && geo.overdueInside && (
+                              <span className="gantt-bar-overdue">逾期 {odDays} 天</span>
+                            )}
+                            {showPct && geo.pctInside && <span className="gantt-bar-pct">{t.progress}%</span>}
                           </span>
+                        )}
+                        {!done && !geo.narrow && t.progress > 0 && (
+                          <span
+                            className="gantt-bar-progress"
+                            style={{ width: `${Math.min(100, t.progress)}%` }}
+                          />
                         )}
                         {editable && (
                           <>
@@ -637,14 +842,20 @@ export function Gantt({
                             />
                           </>
                         )}
-                        {isDragging && span ? (
+                        {showOutside && (
+                          <span className="gantt-bar-label gantt-bar-label--out" aria-hidden="true">
+                            <span className="gantt-bar-title">{t.title}</span>
+                            {t.progress > 0 && <span className="gantt-bar-meta"> · {t.progress}%</span>}
+                            {overdue && <span className="gantt-bar-overdue"> · 逾期 {odDays} 天</span>}
+                          </span>
+                        )}
+                        {isDragging ? (
                           <span className="ui-tooltip" role="status">
                             {formatSpan(span.start, span.end)}
                           </span>
                         ) : (
                           hoverBar === t.id &&
-                          !drag &&
-                          span && (
+                          !drag && (
                             <span
                               className={`ui-tooltip gantt-tip${idx < 2 ? ' ui-tooltip--bottom' : ''}`}
                               role="tooltip"
@@ -652,7 +863,10 @@ export function Gantt({
                               <strong>{t.title}</strong>
                               {'\n'}
                               {formatSpan(span.start, span.end)}
+                              {overdue ? ` · 已逾期 ${odDays} 天` : ''}
                               {'\n'}進度 {t.progress}% · {status?.name ?? '—'} · {userLabel(t.assigneeId)}
+                              {'\n'}更新於 {formatRelative(t.updatedAt)}
+                              {updaterName ? ` · 由 ${updaterName}` : ''}
                             </span>
                           )
                         )}
@@ -674,6 +888,49 @@ export function Gantt({
           </div>
         </div>
       </div>
+
+      {edge && (
+        <button
+          type="button"
+          className={`gantt-today-edge gantt-today-edge--${edge}`}
+          aria-label="捲動到今天"
+          onClick={scrollToToday}
+        >
+          {edge === 'left' ? '‹ 今天' : '今天 ›'}
+        </button>
+      )}
+
+      {emptyGroups.length > 0 && (
+        <div className="gantt-empty-groups" role="group" aria-label="無排程任務的成員">
+          <span className="gantt-empty-groups-label">無排程任務（{emptyGroups.length}）</span>
+          {emptyGroups.map((g) => {
+            const id = g.refId!;
+            const count = unscheduledCountByAssignee?.get(id) ?? 0;
+            const inner = (
+              <>
+                <Avatar user={{ id, displayName: g.label }} size="xs" tooltip={false} />
+                <span className="gantt-empty-groups-name">{g.label}</span>
+              </>
+            );
+            return count > 0 && onShowUnscheduled ? (
+              <button
+                key={g.key}
+                type="button"
+                className="gantt-empty-groups-item gantt-empty-groups-item--button"
+                onClick={() => onShowUnscheduled(id)}
+              >
+                {inner}
+                <span className="gantt-empty-groups-extra">· 未排程 {count}</span>
+              </button>
+            ) : (
+              <span key={g.key} className="gantt-empty-groups-item">
+                {inner}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
       <span className="sr-only" aria-live="polite">
         {announce}
       </span>

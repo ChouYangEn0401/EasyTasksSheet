@@ -1,10 +1,14 @@
 # 設計規格 — feat/gantt-overview（T3）
 
+> **改版**：甘特圖外觀與時間軸範圍已由 `gantt-polish.md` 覆寫（§A1–A4、§B4、§C、§D 中標「改版」處）；兩者衝突時以 `gantt-polish.md` 為準。
+
 路由：Gantt `/tasks/gantt`、總覽 `/`。token 與基礎元件一律引用 `core-shell.md`（標「core §n」），本文件不新增色碼、尺寸變數或基礎元件。兩個畫面共用同一個 `Gantt` 元件：完整版（Gantt 頁）與精簡版（總覽，`compact`）。
 
 ## A. Gantt 檢視
 
 ### A1. 版面線框
+
+（舊版線框，保留供對照；現行線框見 `gantt-polish.md` §0）
 
 ```
  ViewTabs： List  Kanban  [Gantt]            [分組：負責人 ▾]  [日│週│月]  [‹] [今天] [›]
@@ -23,27 +27,28 @@
 
 ### A2. 控制項（ViewTabs 的 `actions` 插槽，控制項皆 `sm`）
 
-- **分組**：Select 單選「不分組 / 專案 / 負責人」（預設負責人），URL 參數 `group=none|project|assignee`。**刻度**：三段相連切換鈕（secondary 外觀，選取段 `--color-surface-active` 底 + `--color-text` 字），URL 參數 `scale=day|week|month`，預設 `week`。
-- **‹ / ›**：ghost iconOnly，前後捲動一個可視寬度。**今天**：secondary，把今日線捲到可視寬度左側 1/3；進頁時自動執行一次。
+- **分組**：Select 單選「不分組 / 專案 / 負責人」（預設負責人），URL 參數 `group=none|project|assignee`。**刻度**：三段相連切換鈕（secondary 外觀，選取段 `--color-surface-active` 底 + `--color-text` 字），URL 參數 `scale=day|week|month`。**改版**：預設刻度優先序 URL > `localStorage['gantt.scale']`（手動切換時寫入）> 自動（已排程跨度 ≤ 28 天 → 日、≤ 182 → 週、其餘 → 月；不寫入 URL）。
+- **‹ / ›**：ghost iconOnly，前後捲動一個可視寬度。**今天**：secondary，把今日線平滑捲到可視寬度左側 1/3（reduced motion 時瞬間）；進頁時瞬間定位一次（視窗內無長條時改對最近的長條）。
 
 | 刻度 | 每日寬 | 表頭上層 / 下層 | 格線 |
 |---|---|---|---|
-| 日 | 32px | 年月 / 日 + 星期 | 每日一條 `--color-border-subtle`；週六日整欄底 `--color-bg` |
-| 週 | 12px（每週 84px） | 年月 / 該週週一日期 `11/23` | 每週一條 |
+| 日 | 32px | 年月 / 日 + 星期 | 每日一條 `--color-border-subtle`；週末帶 `--color-bg` |
+| 週 | **16px（每週 112px）** | 年月 / 該週週一日期 `11/23` | 每週一條；週末帶 |
 | 月 | 4px | 年 / 月份 | 每月一條 |
 
-繪製範圍：`min(最早開始日, 今天 − 14 天)` 至 `max(最晚到期日, 今天 + 56 天)`，對齊到整週 / 整月，週一為每週起始。表頭 `--text-xs` text-secondary、高 2 × 24px、`position: sticky`。
+**改版**：繪製範圍見 `gantt-polish.md` §1——`min(最早開始, 今天) − lead` 至 `max(最晚到期, 今天) + tail`，對齊整週 / 整月後再往後延伸到填滿可視寬度（且今天右側至少 2/3 可視寬）。月份 / 年邊界線用 `--color-border`。表頭上層 28px（`--text-sm` 600）、下層 24px，`position: sticky`。
 
 ### A3. 列與長條
 
 - 左欄 300px 不水平捲動，右側時間軸水平捲動，整體垂直捲動。列高：完整版 `--row-height`（40）、精簡版 28；列以 `--color-border-subtle` 分隔。
-- **任務列（左欄）**：有分組時縮排 `--space-6`；標題 `--text-sm` 單行截斷；右側 `UpdatedAt`（永遠顯示）；逾期時標題後加 `danger` Badge「逾期」。
-- **群組列**：chevron + 專案色點或 `Avatar sm` + 名稱 `--text-sm` 600 + 計數 Badge（neutral），底 `--color-bg`；時間軸側以 2px `--color-border-strong` 細線標示該群組最早開始到最晚到期。負責人分組含「未指派」（排最後）；**沒有已排程任務的成員仍顯示群組列**，時間軸側寫「無排程任務」`--text-xs` text-tertiary。
-- **長條**：高 20（精簡 14）、`--radius-sm`、垂直置中；左緣 = 開始日，右緣 = 到期日當日結束。
-  - 底 `--color-status-<category>-soft` + 1px 內框 `--color-status-<category>`；進度填色為該本色，寬 = `progress`%（取色規則同 StatusBadge，含審查中）。
-  - 寬 ≥ 44px 時內部靠右顯示 `40%`（`--text-xs`；落在填色上用 `--color-text-on-accent`，否則用對應 `-text`）。逾期（到期日早於今天且 category ≠ done）：右端加 3px `--color-status-overdue` 色蓋。
-  - 只有單一日期：畫成 1 天寬、內框改虛線；拖任一端即補上缺的日期。兩個日期皆無 → 進未排程區。
-- **今日線**：1.5px `--color-danger` 垂直線貫穿所有列，表頭處膠囊「今天」（`--color-danger-soft` 底、`--color-danger-text` 字、`--radius-full`）。長條 **Tooltip**：標題、`11/20 → 11/28（9 天）`、進度、狀態、負責人。
+- **任務列（左欄）**（**改版**，`gantt-polish.md` §5）：有分組時縮排 `--space-6`；狀態色點（tooltip 狀態名）→ 標題 `--text-sm` 單行截斷 → 靠右日期區間（`11/24–11/26`、`到期 11/26`、`開始 11/24`，逾期改 `--color-status-overdue-text`）。不再顯示 `UpdatedAt`（移到長條 Tooltip）與「逾期」Badge；表頭為「任務 / 起訖」。
+- **群組列**（**改版**，§6）：chevron + 專案色點或 `Avatar sm` + 名稱 `--text-sm` 600 + 計數 Badge（neutral）+ 有逾期時靠右 danger Badge「逾期 N」，底 `--color-bg`；展開時時間軸側為 2px `--color-border-strong` 起訖線加端蓋；收合時畫各任務的摘要條與「N 筆 · 11/20–12/5」。負責人分組含「未指派」（排最後）；**沒有已排程任務的成員不佔列**，集中到圖表下方「無排程任務（N）」摘要列（有未排程任務時可點，展開並標示未排程區中該成員的列）。
+- **長條**（**改版**，§4）：高 24（精簡 14）、`--radius-sm`、垂直置中；左緣 = 開始日，右緣 = 到期日當日結束。
+  - 寬 ≥ 24px：底 `--status-soft` + 1px 內框 `--status-dot`；寬 < 24px 為窄長條（實心、視覺最小 8px、點擊區 ≥ 24px、把手在條外）。
+  - 標題：寬 ≥ 96px 在條內（≥ 140px 另顯示 `40%`），否則在條右側外（接「 · 40%」「 · 逾期 N 天」）；精簡版只有窄長條顯示外側標題。
+  - 進度改為底部 3px 進度帶；done 不畫進度帶、條內標題前加勾勾。逾期：內框改 `--color-status-overdue` 並保留右端 3px 色蓋。
+  - 只有單一日期：1 天寬、`--color-surface` 底 + 1.5px 虛線框；拖任一端即補上缺的日期。兩個日期皆無 → 進未排程區。
+- **今日線**（**改版**，§3）：1.5px `--color-danger` 垂直線（頂端 7px 圓點）貫穿所有列、位於長條之下；表頭下層含今天的格子內「刻度文字 + 今天膠囊」並排（日刻度改整格淡底），不遮擋刻度；今天不在可視範圍時於邊緣顯示「‹ 今天」/「今天 ›」膠囊。日 / 週刻度另畫今天欄淡底。長條 **Tooltip**：標題、`11/20 → 11/28（9 天）`、進度、狀態、負責人、「更新於 3 小時前 · 由 王小明」。
 
 | 狀態 | 表現 |
 |---|---|
@@ -55,8 +60,8 @@
 
 ### A4. 未排程區
 
-- 圖表下方獨立區塊（surface、1px border、`--radius-lg`）；標題列「未排程（N）」可收合（預設展開，存 `localStorage`）；N = 0 時整區不顯示。列（高 40）：標題、`Avatar sm`、唯讀 `StatusBadge`、`UpdatedAt`、右側 secondary `sm` 鈕「排入日期」；超過 10 列時區內捲動。
-- 「排入日期」→ Popover（寬 280）：開始日、到期日兩個日期輸入 +「儲存」primary /「取消」ghost；到期日早於開始日時顯示欄位錯誤並停用儲存。儲存後該列移入圖表並捲到其長條。次要（可延後）：把未排程列拖進時間軸，放下處即開始日與到期日（1 天）。
+- **改版**（`gantt-polish.md` §8）：與甘特圖、空分組摘要列同在一張卡片 `.gantt-stack`，區塊間 1px 分隔、無間距。標題列（高 36、`--color-bg` 底）：chevron +「未排程」+ 計數 Badge，右側說明「尚未設定日期，不會出現在時間軸」；可收合（預設展開，存 `localStorage`）；N = 0 時整區不顯示。列（高 40）：第一欄與左欄同寬（狀態色點 + 標題），其後 `Avatar sm` + 負責人名稱、`UpdatedAt prefix="更新於"`、右側 secondary `sm` 鈕「排入日期」；超過 10 列時區內捲動。
+- 「排入日期」→ Popover（寬 280）：開始日、到期日兩個日期輸入（皆未設定時預填今天）+「儲存」primary /「取消」ghost；到期日早於開始日時顯示欄位錯誤並停用儲存。儲存後該列移入圖表、捲到其長條並以 `--color-accent-soft` 標示 1.5 秒。次要（可延後）：把未排程列拖進時間軸，放下處即開始日與到期日（1 天）。
 
 ### A5. 互動
 
@@ -67,7 +72,7 @@
 ### A6. 頁面狀態
 
 - 載入中：左欄 8 列 Skeleton 文字條，時間軸每列一條 Skeleton 長條。錯誤：`ErrorState` +「重試」。篩選無結果：core §6.2 的 EmptyState。
-- 無任何任務：`EmptyState`「還沒有任務」+ 說明「按 N 快速新增任務」。有任務但皆未排程：圖表區 `EmptyState`「尚無已排程的任務」+ 說明「設定開始日與到期日後會顯示在這裡」，下方未排程區照常。
+- 無任何任務：`EmptyState`「還沒有任務」+ 說明「按 N 快速新增任務」。有任務但皆未排程：卡片上半 `EmptyState`「尚無已排程的任務」+ 說明「設定開始日與到期日後會顯示在這裡」+ secondary 鈕「查看未排程（N）」，下半未排程區照常。載入中骨架表頭高 52px、骨架長條高 24px。
 
 ## B. 總覽主畫面（`/`）
 
@@ -120,7 +125,7 @@
 
 ### B4. 精簡版 Gantt 與頁面狀態、資料
 
-- `<Gantt compact />` 固定：負責人分組、週刻度、唯讀、列高 28、左欄 220px、無未排程區；只顯示未完成且已排程的任務；進頁捲到今天；群組順序同成員卡片（無任務成員在最上，顯示「無排程任務」）。右上連結「開啟完整 Gantt →」到 `/tasks/gantt?group=assignee`。
+- `<Gantt compact />` 固定：負責人分組、週刻度、唯讀、列高 28、左欄 220px、無未排程區；只顯示未完成且已排程的任務；進頁捲到今天；群組順序同成員卡片。**改版**：沒有已排程任務的成員不佔列，集中到圖表下方「無排程任務（N）」摘要列；長條不顯示條內標題，只有窄長條顯示外側標題。右上連結「開啟完整 Gantt →」到 `/tasks/gantt?group=assignee`。
 - 載入中：統計數字與卡片皆 Skeleton（4 格 + 6 張卡 + Gantt 骨架）。錯誤：「統計 + 成員」與「Gantt」兩塊各自顯示 `ErrorState`。無任務：統計為 0、成員區 `EmptyState`「還沒有任務」。統計與成員卡來自 `GET /api/overview`，精簡 Gantt 用 core 的 tasks hook；皆沿用 30 秒輪詢與 focus 重抓，靜默更新。
 - `/api/overview` 需提供：`totals.by_status[]`（status_id、name、category、color、count）、`totals.overdue`、`totals.done_this_week`、`week_range`；`members[]`（user、`doing[]` 含 id / title / status_id / due_date / updated_at / updated_by、`counts.todo|doing|done`、`overdue`、`remaining_hours`、`unestimated_count`、`last_updated_at`）；`unassigned`（open_count、remaining_hours）。
 - 定義：無任務 = category `doing` 的任務數為 0；逾期 = 到期日早於今天且 category ≠ done；未完成預估 = category ≠ done 的 `estimate_hours` 合計；本週完成 = category `done` 且 `completed_at`（狀態類別轉為 done 的時刻；改回非 done 時清空；既有資料以 `updated_at` 回填）落在本週（Asia/Taipei 週一 00:00 起），不含已刪除任務。
@@ -133,7 +138,8 @@
 | 群組列 / 任務列 | `←` `→`（群組）；`Enter` | 群組收合 / 展開；任務列 `openTask(id)`（群組列則切換收合） |
 | 任務列（完整版） | `Shift + ←/→`；`Alt + ←/→`；`Alt + Shift + ←/→` | 整條前後移 1 天；到期日 ∓ 1 天；開始日 ∓ 1 天 |
 | 任務列（完整版） | `D` | 開啟日期 Popover（同「排入日期」） |
-| Gantt 任一處 | `T`；`1` / `2` / `3` | 回到今天；切換日 / 週 / 月 |
+| Gantt 任一處 | `T`；`1` / `2` / `3` | 平滑捲回今天；切換日 / 週 / 月 |
+| Gantt 頁 | `U` | 展開未排程區並聚焦其標題列 |
 | 未排程列 | `Enter`；`Tab` | 開啟詳情；移到「排入日期」鈕 |
 | 總覽 | `Tab` | 依序：統計格 → 無任務卡 → 進行中卡 → Gantt |
 
@@ -145,5 +151,5 @@
 |---|---|---|
 | ≥ 1280px | 左欄 300px；控制項在 ViewTabs 右側單列 | 統計一列（狀態分佈佔兩格寬）；成員卡 3–4 欄 |
 | 1024–1279px | 左欄 260px | 統計兩列（前三格一列、狀態分佈獨佔一列）；成員卡 2–3 欄 |
-| 768–1023px | 左欄 180px，`UpdatedAt` 移到標題下第二行、列高 48；‹ › 隱藏只留「今天」 | 前三格一列等寬、狀態分佈滿寬；成員卡 2 欄；精簡 Gantt 左欄 160px |
+| 768–1023px | **改版**：左欄 200px，日期區間移到標題下第二行、列高 48；外側標題最寬 140px；‹ › 隱藏只留「今天」；未排程列只留負責人 Avatar、隱藏標題列說明 | 前三格一列等寬、狀態分佈滿寬；成員卡 2 欄；精簡 Gantt 左欄 160px |
 | < 768px | 不在支援範圍：左欄 140px；Gantt 一律在自身容器內水平捲動（core §9） | 全部單欄 |

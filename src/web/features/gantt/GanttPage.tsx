@@ -1,11 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { useSearchParams } from 'react-router';
 import type { Task } from '../../../shared/tasks.ts';
 import { errorMessage } from '../../lib/api.ts';
+import { statusStyle, statusTone } from '../../lib/colors.ts';
 import { hasActiveFilters } from '../../lib/filters.ts';
 import { todayString } from '../../lib/format.ts';
-import { useTasks, useUpdateTask, useUsers } from '../../lib/hooks.ts';
+import { useStatusesById, useTasks, useUpdateTask, useUsers, useUsersById } from '../../lib/hooks.ts';
 import { openTask } from '../../lib/openTask.ts';
+import { isEditableTarget } from '../../lib/shortcuts.ts';
 import { readStorage, writeStorage } from '../../lib/storage.ts';
 import { useTaskFilters } from '../../lib/useTaskFilters.ts';
 import { NoFilterResults } from '../../shell/FilterBar.tsx';
@@ -13,25 +22,25 @@ import { ViewTabsActions } from '../../shell/ViewTabs.tsx';
 import {
   Alert,
   Avatar,
+  Badge,
   Button,
   EmptyState,
   ErrorState,
   Icon,
   Select,
   Skeleton,
-  StatusBadge,
   UpdatedAt,
 } from '../../ui/index.ts';
 import { DatePopover, type DatePopoverState } from './DatePopover.tsx';
 import { Gantt, type DatePatch, type GanttHandle } from './Gantt.tsx';
 import { GROUP_OPTIONS, parseGroupBy, type GroupBy } from './grouping.ts';
-import { isScheduled, SCALE_LABEL, SCALES, type Scale } from './timeline.ts';
+import { autoScale, isScheduled, parseScale, SCALE_LABEL, SCALES, type Scale } from './timeline.ts';
 import './gantt.css';
 
 const UNSCHEDULED_KEY = 'gantt.unscheduled.collapsed';
+const SCALE_KEY = 'gantt.scale';
 const ERROR_HIDE_MS = 8000;
-
-const parseScale = (raw: string | null): Scale => (raw === 'day' || raw === 'month' ? raw : 'week');
+const FLASH_MS = 1500;
 
 type SaveError = { task: Task; patch: DatePatch; message: string };
 
@@ -39,7 +48,6 @@ type SaveError = { task: Task; patch: DatePatch; message: string };
 export function GanttPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const groupBy = parseGroupBy(searchParams.get('group'));
-  const scale = parseScale(searchParams.get('scale'));
   const setParam = useCallback(
     (key: string, value: string) =>
       setSearchParams(
@@ -56,6 +64,7 @@ export function GanttPage() {
   const { filters } = useTaskFilters();
   const tasksQuery = useTasks(filters);
   const users = useUsers();
+  const usersById = useUsersById();
   // 失敗由頁面頂部提示列（含重試）呈現，不另發全域 toast
   const update = useUpdateTask({ silentError: true });
   const [today] = useState(() => todayString());
@@ -70,6 +79,13 @@ export function GanttPage() {
     () => readStorage(UNSCHEDULED_KEY) === '1',
   );
 
+  const statusesById = useStatusesById();
+  const [storedScale, setStoredScale] = useState(() => parseScale(readStorage(SCALE_KEY)));
+  const [autoPicked, setAutoPicked] = useState<Scale | null>(null);
+  const [flashAssignee, setFlashAssignee] = useState<number | null>(null);
+  const flashTimer = useRef<number | undefined>(undefined);
+  const unscheduledHeadRef = useRef<HTMLButtonElement>(null);
+
   const tasks = useMemo(() => {
     const list = tasksQuery.data ?? [];
     if (!overrides.size) return list;
@@ -81,6 +97,56 @@ export function GanttPage() {
 
   const scheduled = useMemo(() => tasks.filter(isScheduled), [tasks]);
   const unscheduled = useMemo(() => tasks.filter((t) => !isScheduled(t)), [tasks]);
+  const unscheduledByAssignee = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const t of unscheduled)
+      if (t.assigneeId != null) m.set(t.assigneeId, (m.get(t.assigneeId) ?? 0) + 1);
+    return m;
+  }, [unscheduled]);
+
+  // 預設刻度：URL > localStorage（手動切換時寫入）> 自動（依首次載入的排程跨度，之後不隨資料跳動；不寫入 URL）
+  if (autoPicked === null && tasksQuery.data) setAutoPicked(autoScale(scheduled, today));
+  const scale: Scale = parseScale(searchParams.get('scale')) ?? storedScale ?? autoPicked ?? 'week';
+  const changeScale = useCallback(
+    (s: Scale) => {
+      setParam('scale', s);
+      setStoredScale(s);
+      writeStorage(SCALE_KEY, s);
+    },
+    [setParam],
+  );
+
+  const setUnscheduledOpen = useCallback((open: boolean) => {
+    setUnscheduledCollapsed(!open);
+    writeStorage(UNSCHEDULED_KEY, open ? '0' : '1');
+  }, []);
+
+  /** 展開未排程區並聚焦其標題列（U、「查看未排程」） */
+  const revealUnscheduled = useCallback(() => {
+    setUnscheduledOpen(true);
+    window.requestAnimationFrame(() => {
+      const el = unscheduledHeadRef.current;
+      el?.scrollIntoView({ block: 'nearest' });
+      el?.focus({ preventScroll: true });
+    });
+  }, [setUnscheduledOpen]);
+
+  /** 空分組摘要列：展開未排程區並標示該成員的列 1.5 秒 */
+  const showUnscheduledOf = useCallback(
+    (assigneeId: number) => {
+      revealUnscheduled();
+      window.clearTimeout(flashTimer.current);
+      setFlashAssignee(assigneeId);
+      flashTimer.current = window.setTimeout(() => setFlashAssignee(null), FLASH_MS);
+      window.requestAnimationFrame(() =>
+        document
+          .querySelector(`.gantt-unscheduled-row[data-assignee="${assigneeId}"]`)
+          ?.scrollIntoView({ block: 'nearest' }),
+      );
+    },
+    [revealUnscheduled],
+  );
+  useEffect(() => () => window.clearTimeout(flashTimer.current), []);
 
   const members = useMemo(() => {
     const active = (users.data ?? []).filter((u) => u.isActive);
@@ -124,6 +190,7 @@ export function GanttPage() {
     if (id != null && scheduled.some((t) => t.id === id)) {
       pendingScrollId.current = null;
       ganttRef.current?.scrollToTask(id);
+      ganttRef.current?.flashTask(id);
     }
   }, [scheduled]);
 
@@ -151,7 +218,7 @@ export function GanttPage() {
         />
         <div className="gantt-scale" role="group" aria-label="時間刻度">
           {SCALES.map((s) => (
-            <button key={s} type="button" aria-pressed={s === scale} onClick={() => setParam('scale', s)}>
+            <button key={s} type="button" aria-pressed={s === scale} onClick={() => changeScale(s)}>
               {SCALE_LABEL[s]}
             </button>
           ))}
@@ -210,8 +277,16 @@ export function GanttPage() {
     );
   }
 
+  const onPageKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.defaultPrevented || isEditableTarget(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+    if ((e.key === 'u' || e.key === 'U') && unscheduled.length > 0) {
+      e.preventDefault();
+      revealUnscheduled();
+    }
+  };
+
   return (
-    <div className="gantt-page">
+    <div className="gantt-page" onKeyDown={onPageKeyDown}>
       {controls}
       {saveError && (
         <Alert
@@ -234,68 +309,110 @@ export function GanttPage() {
         </Alert>
       )}
 
-      {scheduled.length === 0 ? (
-        <div className="gantt-unscheduled">
-          <EmptyState icon="gantt" title="尚無已排程的任務" description="設定開始日與到期日後會顯示在這裡" />
-        </div>
-      ) : (
-        <Gantt
-          tasks={scheduled}
-          groupBy={groupBy}
-          scale={scale}
-          today={today}
-          members={members}
-          onChangeDates={changeDates}
-          onRequestDates={requestDates}
-          onScaleChange={(s) => setParam('scale', s)}
-          handleRef={ganttRef}
-        />
-      )}
+      <div className="gantt-stack">
+        {scheduled.length === 0 ? (
+          <EmptyState
+            icon="gantt"
+            title="尚無已排程的任務"
+            description="設定開始日與到期日後會顯示在這裡"
+            action={
+              <Button variant="secondary" onClick={revealUnscheduled}>
+                查看未排程（{unscheduled.length}）
+              </Button>
+            }
+          />
+        ) : (
+          <Gantt
+            tasks={scheduled}
+            groupBy={groupBy}
+            scale={scale}
+            today={today}
+            members={members}
+            onChangeDates={changeDates}
+            onRequestDates={requestDates}
+            onScaleChange={changeScale}
+            handleRef={ganttRef}
+            unscheduledCountByAssignee={unscheduledByAssignee}
+            onShowUnscheduled={showUnscheduledOf}
+          />
+        )}
 
-      {unscheduled.length > 0 && (
-        <section className="gantt-unscheduled" aria-label="未排程">
-          <button
-            type="button"
-            className="gantt-unscheduled-head"
-            aria-expanded={!unscheduledCollapsed}
-            onClick={() => {
-              const next = !unscheduledCollapsed;
-              setUnscheduledCollapsed(next);
-              writeStorage(UNSCHEDULED_KEY, next ? '1' : '0');
-            }}
-          >
-            <Icon name={unscheduledCollapsed ? 'chevronRight' : 'chevronDown'} />
-            未排程（{unscheduled.length}）
-          </button>
-          {!unscheduledCollapsed && (
-            <div className="gantt-unscheduled-list">
-              {unscheduled.map((t) => (
-                <div key={t.id} className="gantt-unscheduled-row" data-testid={`unscheduled-${t.id}`}>
-                  <button type="button" className="gantt-unscheduled-title" onClick={() => openTask(t.id)}>
-                    {t.title}
-                  </button>
-                  <Avatar userId={t.assigneeId} size="sm" />
-                  <StatusBadge statusId={t.statusId} />
-                  <UpdatedAt at={t.updatedAt} by={t.updatedBy} />
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={(e) => openPopover(t, e.currentTarget)}
-                    aria-haspopup="dialog"
-                  >
-                    排入日期
-                  </Button>
-                </div>
-              ))}
+        {unscheduled.length > 0 && (
+          <section className="gantt-unscheduled" aria-label="未排程">
+            <div className="gantt-unscheduled-head">
+              <button
+                ref={unscheduledHeadRef}
+                type="button"
+                className="gantt-unscheduled-toggle"
+                aria-expanded={!unscheduledCollapsed}
+                onClick={() => setUnscheduledOpen(unscheduledCollapsed)}
+              >
+                <Icon name={unscheduledCollapsed ? 'chevronRight' : 'chevronDown'} size={16} />
+                未排程
+                <Badge count>{unscheduled.length}</Badge>
+              </button>
+              <span className="gantt-unscheduled-desc">尚未設定日期，不會出現在時間軸</span>
             </div>
-          )}
-        </section>
-      )}
+            {!unscheduledCollapsed && (
+              <div className="gantt-unscheduled-list">
+                {unscheduled.map((t) => {
+                  const status = statusesById.get(t.statusId);
+                  const name =
+                    t.assigneeId == null ? '未指派' : (usersById.get(t.assigneeId)?.displayName ?? '—');
+                  return (
+                    <div
+                      key={t.id}
+                      className={`gantt-unscheduled-row${
+                        flashAssignee != null && flashAssignee === t.assigneeId ? ' is-flash' : ''
+                      }`}
+                      data-testid={`unscheduled-${t.id}`}
+                      data-assignee={t.assigneeId ?? 'none'}
+                    >
+                      <div className="gantt-unscheduled-main">
+                        <span
+                          className="gantt-status-dot"
+                          style={statusStyle(status ? statusTone(status) : 'todo')}
+                          title={status?.name}
+                        />
+                        <button
+                          type="button"
+                          className="gantt-unscheduled-title"
+                          onClick={() => openTask(t.id)}
+                          title={t.title}
+                        >
+                          {t.title}
+                        </button>
+                      </div>
+                      <div className="gantt-unscheduled-rest">
+                        <span className="gantt-unscheduled-assignee">
+                          <Avatar userId={t.assigneeId} size="sm" />
+                          <span className="gantt-unscheduled-assignee-name">{name}</span>
+                        </span>
+                        <UpdatedAt at={t.updatedAt} by={t.updatedBy} prefix="更新於" />
+                        <Button
+                          className="gantt-unscheduled-action"
+                          variant="secondary"
+                          size="sm"
+                          onClick={(e) => openPopover(t, e.currentTarget)}
+                          aria-haspopup="dialog"
+                        >
+                          排入日期
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+      </div>
 
       {popover && (
         <DatePopover
           key={popover.task.id}
           state={popover}
+          today={today}
           saving={update.isPending}
           onClose={closePopover}
           onSave={(patch) => {
@@ -327,12 +444,13 @@ export function GanttPage() {
 function GanttSkeleton() {
   return (
     <div className="gantt" aria-label="載入中">
+      <div className="gantt-skeleton-head" />
       {Array.from({ length: 8 }, (_, i) => (
         <div key={i} className="gantt-skeleton-row">
           <span>
             <Skeleton width={`${50 + ((i * 17) % 40)}%`} />
           </span>
-          <Skeleton width={80 + ((i * 53) % 160)} height={16} style={{ marginLeft: 20 + ((i * 37) % 200) }} />
+          <Skeleton width={80 + ((i * 53) % 160)} height={24} style={{ marginLeft: 20 + ((i * 37) % 200) }} />
         </div>
       ))}
     </div>

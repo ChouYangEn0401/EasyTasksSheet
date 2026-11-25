@@ -4,21 +4,27 @@ import { Button, Field, Input } from '../../ui/index.ts';
 
 export type DatePopoverState = { task: Task; anchor: DOMRect };
 
-/** 「排入日期」Popover：開始日、到期日；到期日早於開始日時顯示錯誤並停用儲存 */
+/**
+ * 「排入日期」Popover：開始日、到期日；到期日早於開始日時顯示錯誤並停用儲存。
+ * 兩個日期皆未設定時都預填今天，可直接按「儲存」。
+ */
 export function DatePopover({
   state,
+  today,
   saving,
   onSave,
   onClose,
 }: {
   state: DatePopoverState;
+  today?: string;
   saving?: boolean;
   onSave: (patch: { startDate: string | null; dueDate: string | null }) => void;
   onClose: () => void;
 }) {
   const { task, anchor } = state;
-  const [start, setStart] = useState(task.startDate ?? '');
-  const [due, setDue] = useState(task.dueDate ?? '');
+  const blank = !task.startDate && !task.dueDate;
+  const [start, setStart] = useState(task.startDate ?? (blank ? (today ?? '') : ''));
+  const [due, setDue] = useState(task.dueDate ?? (blank ? (today ?? '') : ''));
   const ref = useRef<HTMLDivElement>(null);
   const firstRef = useRef<HTMLInputElement>(null);
 

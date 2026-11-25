@@ -79,12 +79,23 @@ test('總覽：目前無任務的成員排前並標示；Gantt：刻度、今日
   await expect(page).toHaveURL(new RegExp(`[?&]task=${scheduled.id}`));
 
   /* ── Gantt ── */
-  await page.goto('/tasks/gantt');
+  await page.goto('/tasks/gantt?scale=week');
   const bar = page.getByTestId(`gantt-bar-${scheduled.id}`);
   await expect(bar).toBeVisible();
-  await expect(bar).toContainText('40%');
-  await expect(page.locator('.gantt-today-pill')).toHaveText('今天');
+  // 週刻度 8 天 = 128px：標題在條內
+  await expect(bar.locator('.gantt-bar-label--in')).toContainText(SCHEDULED);
+  // 今天膠囊與刻度文字並排（不蓋住刻度）、今日線一條
+  await expect(page.locator('.gantt-head-cell.is-today .gantt-today-chip')).toHaveText('今天');
+  await expect(page.locator('.gantt-head-cell.is-today .gantt-head-label')).toBeVisible();
   await expect(page.locator('.gantt-today-line')).toHaveCount(1);
+  // 左欄：無「更新」欄，改為起訖日期區間
+  await expect(page.locator('.gantt-head-corner')).toHaveText(/任務\s*起訖/);
+  const row = page.locator(`[data-row-key="t${scheduled.id}"]`);
+  await expect(row.locator('.gantt-task-dates')).toBeVisible();
+  await expect(row.locator('.ui-updated-at')).toHaveCount(0);
+  // 時間軸填滿容器寬
+  const fill = await page.locator('.gantt-scroll').evaluate((el) => el.scrollWidth >= el.clientWidth);
+  expect(fill).toBeTruthy();
 
   // 刻度切換
   const scaleGroup = page.getByRole('group', { name: '時間刻度' });
@@ -98,13 +109,19 @@ test('總覽：目前無任務的成員排前並標示；Gantt：刻度、今日
     await expect(scaleGroup.getByRole('button', { name: label })).toHaveAttribute('aria-pressed', 'true');
     await expect(bar).toBeVisible();
   }
+  // 手動切換的刻度記在 localStorage：不帶 scale 參數重新進頁仍為日刻度
+  await page.goto('/tasks/gantt');
+  await expect(scaleGroup.getByRole('button', { name: '日' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(bar).toBeVisible();
 
-  // 未排程區：沒有日期的任務不會消失，可排入日期
+  // 未排程區：沒有日期的任務不會消失，可排入日期（開始日與到期日預填今天）
   const unscheduledRow = page.getByTestId(`unscheduled-${unscheduled.id}`);
-  await expect(page.getByRole('button', { name: /未排程（\d+）/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^未排程\s*\d+$/ })).toBeVisible();
   await expect(unscheduledRow).toContainText(UNSCHEDULED);
   await unscheduledRow.getByRole('button', { name: '排入日期' }).click();
   const dialog = page.getByRole('dialog', { name: `設定「${UNSCHEDULED}」的日期` });
+  await expect(dialog.getByLabel('開始日')).toHaveValue(day(0));
+  await expect(dialog.getByLabel('到期日')).toHaveValue(day(0));
   await dialog.getByLabel('開始日').fill(day(3));
   await dialog.getByLabel('到期日').fill(day(1));
   await expect(dialog.getByText('到期日不可早於開始日')).toBeVisible();

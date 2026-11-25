@@ -1,12 +1,18 @@
-/* Gantt（docs/design/gantt-overview.md §A）。只用 tokens.css 的變數。 */
+@layer theme, base, components, utilities;
+/* Gantt（docs/design/gantt-overview.md §A、gantt-polish.md）。只用 tokens.css 的變數。 */
 /* main.tsx 先載入 App 再載入 styles/index.css，此檔可能先於 Tailwind 輸出；先宣告層級順序以免 components 層被排到 base 之前 */
-@layer properties, theme, base, components, utilities;
 @layer components {
-  .gantt {
+  .gantt,
+  .gantt-stack {
     --gantt-left: 300px;
+  }
+  .gantt {
     --gantt-row: var(--row-height);
-    --gantt-bar-h: 20px;
-    --gantt-head-row: 24px;
+    --gantt-bar-h: 24px;
+    --gantt-head-top: 28px;
+    --gantt-head-bottom: 24px;
+    --gantt-label-gap: 10px;
+    --gantt-label-max: 220px;
     position: relative;
     min-width: 0;
     background: var(--color-surface);
@@ -22,18 +28,33 @@
   .gantt-scroll {
     overflow: auto;
     max-height: calc(100vh - 260px);
-    min-height: 160px;
   }
   .gantt--compact .gantt-scroll {
     max-height: 420px;
-    min-height: 0;
   }
   .gantt-inner {
     width: calc(var(--gantt-left) + var(--gantt-total));
+    min-width: 100%;
     position: relative;
   }
 
-  /* 表頭 */
+  /* ── 卡片：甘特圖 + 空分組摘要 + 未排程 ── */
+  .gantt-stack {
+    min-width: 0;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .gantt-stack > * + * {
+    border-top: 1px solid var(--color-border);
+  }
+  .gantt-stack > .gantt {
+    border: 0;
+    border-radius: 0;
+  }
+
+  /* ── 表頭 ── */
   .gantt-head {
     position: sticky;
     top: 0;
@@ -48,11 +69,11 @@
     z-index: 5;
     flex: none;
     width: var(--gantt-left);
-    height: calc(var(--gantt-head-row) * 2);
+    height: calc(var(--gantt-head-top) + var(--gantt-head-bottom));
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
-    padding: 0 var(--space-3) var(--space-1);
+    padding: 0 var(--space-3) 5px;
     background: var(--color-surface);
     border-right: 1px solid var(--color-border);
     font-size: var(--text-xs);
@@ -61,12 +82,17 @@
   }
   .gantt-head-time {
     position: relative;
-    flex: none;
-    width: var(--gantt-total);
+    flex: 1 0 var(--gantt-total);
   }
   .gantt-head-row {
     position: relative;
-    height: var(--gantt-head-row);
+  }
+  .gantt-head-row--top {
+    height: var(--gantt-head-top);
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .gantt-head-row--bottom {
+    height: var(--gantt-head-bottom);
   }
   .gantt-head-cell {
     position: absolute;
@@ -74,6 +100,8 @@
     height: 100%;
     display: flex;
     align-items: center;
+    justify-content: flex-start;
+    gap: var(--space-1);
     padding: 0 6px;
     overflow: clip;
     white-space: nowrap;
@@ -83,45 +111,141 @@
     border-left: 1px solid var(--color-border-subtle);
     font-variant-numeric: tabular-nums;
   }
-  [data-scale='day'] .gantt-head-cell,
-  .gantt-head-row + .gantt-head-row .gantt-head-cell {
-    justify-content: flex-start;
+  .gantt-head-row--top .gantt-head-cell {
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+    border-left-color: var(--color-border);
+  }
+  [data-scale='day'] .gantt-head-row--bottom .gantt-head-cell {
+    justify-content: center;
+    padding: 0;
+  }
+  .gantt-head-day {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 1px;
+    letter-spacing: -0.02em;
+  }
+  .gantt-head-cell.is-today .gantt-head-day {
+    color: var(--color-danger-text);
+    font-weight: var(--font-semibold);
   }
   .gantt-head-cell--weekend {
-    background: var(--color-bg);
+    color: var(--color-text-tertiary);
   }
-  .gantt-today-pill {
-    position: absolute;
-    bottom: 2px;
-    transform: translateX(-50%);
+  .gantt-head-label {
+    position: sticky;
+    left: calc(var(--gantt-left) + 6px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .gantt-head-cell.is-today .gantt-head-label {
+    color: var(--color-danger-text);
+    font-weight: var(--font-semibold);
+  }
+  .gantt-head-cell.is-today--fill {
+    background: var(--color-danger-soft);
+  }
+  .gantt-head-cell.is-today--both {
+    justify-content: space-between;
+  }
+  .gantt-head-cell.is-today--chip {
+    justify-content: center;
+    padding: 0 2px;
+  }
+  .gantt-today-chip {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
     padding: 0 6px;
     border-radius: var(--radius-full);
     background: var(--color-danger-soft);
     color: var(--color-danger-text);
     font-size: var(--text-xs);
-    line-height: 18px;
     font-weight: var(--font-medium);
-    white-space: nowrap;
+    line-height: 1;
+  }
+  .gantt-today-dot {
+    position: absolute;
+    bottom: -4px;
+    width: 7px;
+    height: 7px;
+    transform: translateX(-50%);
+    border-radius: var(--radius-full);
+    background: var(--color-danger);
     z-index: 1;
   }
+  /* 今天不在可視範圍：邊緣膠囊（捲動容器外） */
+  .gantt-today-edge {
+    position: absolute;
+    top: calc(var(--gantt-head-top) + (var(--gantt-head-bottom) - 20px) / 2);
+    z-index: 6;
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 6px;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: var(--color-danger-soft);
+    color: var(--color-danger-text);
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .gantt-today-edge::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+  }
+  .gantt-today-edge--left {
+    left: calc(var(--gantt-left) + 8px);
+  }
+  .gantt-today-edge--right {
+    right: 8px;
+  }
+  .gantt-today-edge:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
 
-  /* 內容 */
+  /* ── 內容：底帶、格線、今日線 ── */
   .gantt-body {
     position: relative;
     outline: none;
   }
+  .gantt-bands,
   .gantt-overlay {
     position: absolute;
     top: 0;
     bottom: 0;
     left: var(--gantt-left);
-    width: var(--gantt-total);
+    right: 0;
     pointer-events: none;
     z-index: 1;
+  }
+  /* 疊在 hover / 群組列底色上仍看得出列狀態 */
+  .gantt-bands {
+    mix-blend-mode: multiply;
   }
   .gantt-body[data-scale='day'] .gantt-overlay {
     background-image: linear-gradient(to right, var(--color-border-subtle) 1px, transparent 1px);
     background-size: var(--gantt-dw) 100%;
+  }
+  .gantt-weekend,
+  .gantt-today-band {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+  }
+  .gantt-weekend {
+    background: var(--color-bg);
+  }
+  .gantt-today-band {
+    background: var(--color-danger-soft);
   }
   .gantt-gridline {
     position: absolute;
@@ -130,12 +254,8 @@
     width: 1px;
     background: var(--color-border-subtle);
   }
-  .gantt-weekend {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    background: var(--color-bg);
-    opacity: 0.7;
+  .gantt-gridline--major {
+    background: var(--color-border);
   }
   .gantt-today-line {
     position: absolute;
@@ -147,18 +267,29 @@
     z-index: 2;
   }
 
+  /* ── 列 ── */
   .gantt-row {
     display: flex;
     height: var(--gantt-row);
-    border-bottom: 1px solid var(--color-border-subtle);
     outline: none;
+  }
+  /* 分隔線畫在儲存格上：左欄 sticky 時可完整蓋住底下的今日線 / 格線 */
+  .gantt-row > .gantt-cell-left,
+  .gantt-row > .gantt-cell-time {
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .gantt-row > .gantt-cell-left,
+  .gantt-row > .gantt-cell-time {
+    transition: background-color var(--duration-fast) var(--ease-standard);
   }
   .gantt-row:hover > .gantt-cell-left,
   .gantt-row:hover > .gantt-cell-time {
     background-color: var(--color-surface-hover);
   }
   .gantt-row.is-selected > .gantt-cell-left,
-  .gantt-row.is-selected > .gantt-cell-time {
+  .gantt-row.is-selected > .gantt-cell-time,
+  .gantt-row.is-flash > .gantt-cell-left,
+  .gantt-row.is-flash > .gantt-cell-time {
     background-color: var(--color-accent-soft);
   }
   .gantt-row:focus-visible > .gantt-cell-left {
@@ -181,13 +312,29 @@
     cursor: pointer;
     min-width: 0;
   }
+  /* 水平捲動後左欄右緣陰影（只露出右側） */
+  .gantt-cell-left::after,
+  .gantt-head-corner::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    box-shadow: var(--shadow-sm);
+    clip-path: inset(0 -8px 0 100%);
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+  .gantt.is-scrolled-x .gantt-cell-left::after,
+  .gantt.is-scrolled-x .gantt-head-corner::after {
+    opacity: 1;
+  }
   .gantt-cell-left--indent {
     padding-left: calc(var(--space-3) + var(--space-6));
   }
   .gantt-cell-time {
     position: relative;
-    flex: none;
-    width: var(--gantt-total);
+    flex: 1 0 var(--gantt-total);
+    overflow-x: clip;
   }
   .gantt-row--group > .gantt-cell-left,
   .gantt-row--group > .gantt-cell-time {
@@ -204,6 +351,10 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .gantt-group-overdue {
+    margin-left: auto;
+    display: inline-flex;
+  }
   .gantt-group-line {
     position: absolute;
     top: 50%;
@@ -212,14 +363,50 @@
     background: var(--color-border-strong);
     z-index: 2;
   }
-  .gantt-group-empty {
+  .gantt-group-line::before,
+  .gantt-group-line::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    width: 2px;
+    height: 8px;
+    background: var(--color-border-strong);
+  }
+  .gantt-group-line::before {
+    left: 0;
+  }
+  .gantt-group-line::after {
+    right: 0;
+  }
+  .gantt-group-mini {
+    position: absolute;
+    top: 50%;
+    height: 6px;
+    transform: translateY(-50%);
+    border-radius: var(--radius-full);
+    background: var(--status-dot);
+    opacity: 0.55;
+    z-index: 2;
+  }
+  .gantt-group-summary {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
     font-size: var(--text-xs);
     color: var(--color-text-tertiary);
     white-space: nowrap;
+    font-variant-numeric: tabular-nums;
     z-index: 2;
+  }
+
+  /* 任務列左欄：狀態點 → 標題 → 日期區間 */
+  .gantt-status-dot {
+    display: inline-block;
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--status-dot);
   }
   .gantt-task-title {
     flex: 1;
@@ -228,22 +415,25 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .gantt-task-updated {
+  .gantt-task-dates {
     flex: none;
     margin-left: auto;
-    cursor: default;
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .gantt-task-dates.is-overdue {
+    color: var(--color-status-overdue-text);
   }
 
-  /* 長條 */
+  /* ── 長條 ── */
   .gantt-bar {
     position: absolute;
     top: 50%;
     height: var(--gantt-bar-h);
     transform: translateY(-50%);
     z-index: 2;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
     border-radius: var(--radius-sm);
     background: var(--status-soft);
     box-shadow: inset 0 0 0 1px var(--status-dot);
@@ -254,18 +444,18 @@
   .gantt-bar.is-editable {
     cursor: grab;
   }
-  .gantt-bar--single {
-    box-shadow: none;
-    outline: 1px dashed var(--status-dot);
-    outline-offset: -1px;
+  .gantt-bar:hover {
+    box-shadow: inset 0 0 0 2px var(--status-dot);
   }
-  .gantt-bar-fill {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    border-radius: var(--radius-sm);
-    background: var(--status-dot);
+  .gantt-row:focus-visible .gantt-bar {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  .gantt-bar--overdue {
+    box-shadow: inset 0 0 0 1px var(--color-status-overdue);
+  }
+  .gantt-bar--overdue:hover {
+    box-shadow: inset 0 0 0 2px var(--color-status-overdue);
   }
   .gantt-bar--overdue::after {
     content: '';
@@ -277,21 +467,109 @@
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
     background: var(--color-status-overdue);
   }
-  .gantt-bar-pct {
-    position: relative;
-    padding: 0 6px;
+  .gantt-bar--single {
+    background: var(--color-surface);
+    box-shadow: none;
+    border: 1.5px dashed var(--status-dot);
+  }
+  .gantt-bar--single:hover {
+    box-shadow: none;
+    border-width: 2px;
+  }
+  .gantt-bar--narrow {
+    background: var(--status-dot);
+    box-shadow: none;
+  }
+  .gantt-bar--narrow:hover {
+    box-shadow: 0 0 0 1px var(--status-dot);
+  }
+  .gantt-bar--narrow.gantt-bar--single {
+    background: var(--color-surface);
+  }
+  /* 窄長條點擊區至少 24px */
+  .gantt-bar--narrow::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+
+  .gantt-bar-label {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
     font-size: var(--text-xs);
-    line-height: 1;
-    color: var(--status-text);
-    font-variant-numeric: tabular-nums;
+    line-height: var(--text-xs--line-height);
+    font-weight: var(--font-medium);
+    white-space: nowrap;
     pointer-events: none;
   }
-  .gantt-bar-pct--on-fill {
-    color: var(--color-text-on-accent);
+  .gantt-bar-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .gantt--compact .gantt-bar-pct {
-    font-size: 10px;
+  .gantt-bar-label--in {
+    left: 0;
+    right: 0;
+    padding: 0 8px;
+    color: var(--status-text);
+    overflow: hidden;
   }
+  .gantt-bar-label--in .gantt-bar-title {
+    flex: 0 1 auto;
+  }
+  .gantt-bar-label--in .gantt-bar-overdue {
+    flex: none;
+    color: var(--color-status-overdue-text);
+  }
+  .gantt-bar-label--in .gantt-bar-overdue::before {
+    content: '· ';
+  }
+  .gantt-bar-check {
+    flex: none;
+  }
+  .gantt-bar-pct {
+    flex: none;
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+  }
+  .gantt-bar-label--out {
+    left: calc(100% + var(--gantt-label-gap));
+    max-width: var(--gantt-label-max);
+    color: var(--color-text-secondary);
+    gap: 0;
+  }
+  .gantt-bar-label--out .gantt-bar-meta,
+  .gantt-bar-label--out .gantt-bar-overdue {
+    flex: none;
+    white-space: pre;
+    font-variant-numeric: tabular-nums;
+  }
+  .gantt-bar-label--out .gantt-bar-meta {
+    color: var(--color-text-tertiary);
+  }
+  .gantt-bar-label--out .gantt-bar-overdue {
+    color: var(--color-status-overdue-text);
+  }
+  .gantt-bar.is-dragging .gantt-bar-label--out {
+    display: none;
+  }
+  .gantt-bar-progress {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 3px;
+    border-bottom-left-radius: var(--radius-sm);
+    background: var(--status-dot);
+    pointer-events: none;
+  }
+  .gantt--compact .gantt-bar-progress {
+    height: 2px;
+  }
+
   .gantt-handle {
     position: absolute;
     top: 0;
@@ -301,6 +579,7 @@
     opacity: 0;
     background: var(--status-dot);
     z-index: 1;
+    transition: opacity var(--duration-fast) var(--ease-standard);
   }
   .gantt-handle--start {
     left: 0;
@@ -309,6 +588,17 @@
   .gantt-handle--end {
     right: 0;
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  }
+  /* 窄長條：把手移到條外 */
+  .gantt-bar--narrow .gantt-handle {
+    width: 8px;
+    border-radius: var(--radius-sm);
+  }
+  .gantt-bar--narrow .gantt-handle--start {
+    left: -8px;
+  }
+  .gantt-bar--narrow .gantt-handle--end {
+    right: -8px;
   }
   .gantt-row:hover .gantt-handle,
   .gantt-bar.is-dragging .gantt-handle {
@@ -338,12 +628,51 @@
     white-space: pre;
     text-align: left;
   }
-  .gantt-head-label {
-    position: sticky;
-    left: calc(var(--gantt-left) + 6px);
+
+  /* ── 無排程任務的成員（摘要列） ── */
+  .gantt-empty-groups {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-3);
+    min-height: 32px;
+    padding: 6px 12px;
+    border-top: 1px solid var(--color-border-subtle);
+    background: var(--color-bg);
+    font-size: var(--text-xs);
+  }
+  .gantt-empty-groups-label {
+    color: var(--color-text-tertiary);
+  }
+  .gantt-empty-groups-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 24px;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+  }
+  .gantt-empty-groups-item--button {
+    padding: 0 6px 0 2px;
+    margin: 0 -6px 0 -2px;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: none;
+    font: inherit;
+    cursor: pointer;
+  }
+  .gantt-empty-groups-item--button:hover {
+    background: var(--color-surface-hover);
+  }
+  .gantt-empty-groups-item--button:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+  .gantt-empty-groups-extra {
+    color: var(--color-accent-text);
   }
 
-  /* 頁面：控制項、未排程區 */
+  /* ── 頁面：控制項 ── */
   .gantt-scale {
     display: inline-flex;
     border: 1px solid var(--color-border);
@@ -390,30 +719,46 @@
     gap: var(--space-4);
     min-width: 0;
   }
-  .gantt-unscheduled {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-  }
+
+  /* ── 未排程區（與甘特圖同卡片，第一欄對齊左欄） ── */
   .gantt-unscheduled-head {
+    display: flex;
+    align-items: stretch;
+    height: 36px;
+    background: var(--color-bg);
+  }
+  .gantt-unscheduled-toggle {
+    flex: none;
+    width: var(--gantt-left);
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    width: 100%;
-    height: 44px;
-    padding: 0 var(--space-4);
+    padding: 0 var(--space-3);
     background: none;
     border: 0;
+    border-right: 1px solid var(--color-border);
     font-size: var(--text-sm);
     font-weight: var(--font-semibold);
     color: var(--color-text);
     cursor: pointer;
     text-align: left;
   }
-  .gantt-unscheduled-head:focus-visible {
+  .gantt-unscheduled-toggle .ui-icon,
+  .gantt-unscheduled-toggle svg {
+    color: var(--color-text-tertiary);
+  }
+  .gantt-unscheduled-toggle:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: -2px;
-    border-radius: var(--radius-lg);
+  }
+  .gantt-unscheduled-desc {
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space-4);
+    margin-left: auto;
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
   }
   .gantt-unscheduled-list {
     max-height: calc(40px * 10);
@@ -422,18 +767,59 @@
   }
   .gantt-unscheduled-row {
     display: flex;
-    align-items: center;
-    gap: var(--space-3);
+    align-items: stretch;
     height: 40px;
-    padding: 0 var(--space-4);
     border-bottom: 1px solid var(--color-border-subtle);
     font-size: var(--text-sm);
+    transition: background-color var(--duration-fast) var(--ease-standard);
   }
   .gantt-unscheduled-row:last-child {
     border-bottom: 0;
   }
   .gantt-unscheduled-row:hover {
     background: var(--color-surface-hover);
+  }
+  .gantt-unscheduled-row.is-flash {
+    background: var(--color-accent-soft);
+  }
+  .gantt-unscheduled-main {
+    flex: none;
+    width: var(--gantt-left);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0 var(--space-3) 0 calc(var(--space-3) + var(--space-6));
+    border-right: 1px solid var(--color-border);
+    min-width: 0;
+  }
+  .gantt-unscheduled-rest {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 0 var(--space-4) 0 var(--space-3);
+    min-width: 0;
+  }
+  .gantt-unscheduled-assignee {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+  }
+  .gantt-unscheduled-assignee-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .gantt-unscheduled-rest .ui-updated-at {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+  }
+  .gantt-unscheduled-action {
+    margin-left: auto;
+    flex: none;
   }
   .gantt-unscheduled-title {
     flex: 1;
@@ -484,6 +870,11 @@
     gap: var(--space-2);
   }
 
+  /* 載入中骨架 */
+  .gantt-skeleton-head {
+    height: 52px;
+    border-bottom: 1px solid var(--color-border);
+  }
   .gantt-skeleton-row {
     display: flex;
     align-items: center;
@@ -497,36 +888,52 @@
   }
 
   @media (max-width: 1279px) {
-    .gantt {
+    .gantt,
+    .gantt-stack {
       --gantt-left: 260px;
+    }
+    .gantt--compact {
+      --gantt-left: 220px;
     }
   }
   @media (max-width: 1023px) {
+    .gantt,
+    .gantt-stack {
+      --gantt-left: 200px;
+    }
     .gantt {
-      --gantt-left: 180px;
       --gantt-row: 48px;
+      --gantt-label-max: 140px;
     }
     .gantt--compact {
       --gantt-left: 160px;
       --gantt-row: 28px;
     }
+    /* 標題第一行、日期區間第二行 */
     .gantt:not(.gantt--compact) .gantt-row--task .gantt-cell-left {
       flex-wrap: wrap;
       align-content: center;
       row-gap: 0;
     }
-    .gantt:not(.gantt--compact) .gantt-task-title {
-      flex-basis: 100%;
+    .gantt:not(.gantt--compact) .gantt-row--task .gantt-task-title {
+      flex: 1 1 calc(100% - 16px);
     }
-    .gantt:not(.gantt--compact) .gantt-task-updated {
+    .gantt:not(.gantt--compact) .gantt-row--task .gantt-task-dates {
+      flex-basis: 100%;
       margin-left: 0;
+      padding-left: 16px;
     }
     .gantt-page-nav {
+      display: none;
+    }
+    .gantt-unscheduled-desc,
+    .gantt-unscheduled-assignee-name {
       display: none;
     }
   }
   @media (max-width: 767px) {
     .gantt,
+    .gantt-stack,
     .gantt--compact {
       --gantt-left: 140px;
     }
