@@ -41,6 +41,7 @@ import {
 } from '@dnd-kit/core';
 import type { Task } from '../../../shared/tasks.ts';
 import { useProjectsById, useStatusesById, useUpdateTask, useUsersById } from '../../lib/hooks.ts';
+import { newUndoGroup } from '../../lib/taskUndo.ts';
 import { motionEasing, motionMs, useReducedMotion } from '../../lib/motion.ts';
 import { useCan } from '../../lib/permissions.ts';
 import { queryKeys } from '../../lib/queryClient.ts';
@@ -259,12 +260,18 @@ export function ListDnd({
     });
     flashTask(plan.taskId);
     setSaveError(null);
+    // 同一次放下的多筆 PATCH 合併成一筆復原紀錄；快取已先改寫，前值由 original 提供（見 docs/design/undo.md §3）
+    const undoGroup = newUndoGroup('list');
+    const undoLabel = plan.groupChanged
+      ? `把『${truncate(title)}』移到『${truncate(label)}』`
+      : `調整『${truncate(title)}』的順序`;
     Promise.all(
       [...ids].map((id) =>
         update.mutateAsync({
           id,
           ...(id === plan.taskId ? plan.fields : {}),
           ...(sortMap.has(id) ? { sortOrder: sortMap.get(id)! } : {}),
+          undo: { group: undoGroup, label: undoLabel, before: original.get(id) },
         }),
       ),
     ).then(

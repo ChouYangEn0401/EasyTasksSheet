@@ -282,7 +282,7 @@
 | `Ctrl+Enter`、`Esc` | 複製任務對話框 | 建立、取消 |
 
 
-## 13. 清單拖曳（feat/list-dnd）
+## 14. 清單拖曳（feat/list-dnd）
 
 把任務直接拖到別的群組（改狀態 / 負責人 / 專案）或調整順序。程式：`ListDnd.tsx`（DndContext、浮層、播報、錯誤提示列與列內小元件）、`listDndModel.ts`（純函式，`listDndModel.test.ts`）、`listDndContext.ts`、`listDnd.css`；`ListTable.tsx` 只接入三個小元件與把手欄。sort_order 沿用看板的 `planSortOrders`（前後取中值；鄰居同值時整組重新編號）。
 
