@@ -44,6 +44,7 @@
   }
   .eng-toolbar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
     min-height: var(--control-md);
@@ -164,6 +165,7 @@
   /* ── GitHub 連動（選配） ── */
   .eng-toolbar-end {
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-1);
     margin-left: auto;
@@ -1230,6 +1232,108 @@
     min-width: 0;
   }
 
+  /* 貼上 git worktree list */
+  .eng-paste {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .eng-paste-text {
+    width: 100%;
+    min-height: 120px;
+    resize: vertical;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .eng-paste-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3);
+  }
+  .eng-paste-loading {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+  }
+  .eng-paste-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+  .eng-paste-bulk,
+  .eng-paste-status {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .eng-paste-scroll {
+    max-height: 42vh;
+    overflow: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+  .eng-paste-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+  }
+  .eng-paste-table th {
+    position: sticky;
+    top: 0;
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    font-weight: var(--font-medium);
+    text-align: left;
+    white-space: nowrap;
+  }
+  .eng-paste-table td {
+    padding: var(--space-2) var(--space-3);
+    border-top: 1px solid var(--color-border);
+    vertical-align: middle;
+  }
+  .eng-paste-col-check {
+    width: 32px;
+  }
+  .eng-paste-row[data-action='existing'] {
+    opacity: 0.7;
+  }
+  .eng-paste-path {
+    word-break: break-all;
+  }
+  .eng-paste-tags {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+  .eng-paste-unparsed {
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+  }
+  .eng-paste-unparsed summary {
+    cursor: pointer;
+  }
+  .eng-paste-unparsed ul {
+    margin: var(--space-2) 0 0;
+    padding-left: var(--space-5, 20px);
+    overflow-wrap: anywhere;
+  }
+  .eng-machine-filter {
+    min-width: 160px;
+  }
+
+  @media (max-width: 768px) {
+    .eng-paste-fields {
+      grid-template-columns: 1fr;
+    }
+    .eng-paste-col-sha {
+      display: none;
+    }
+  }
   @media (max-width: 640px) {
     .eng-hint {
       max-width: none;

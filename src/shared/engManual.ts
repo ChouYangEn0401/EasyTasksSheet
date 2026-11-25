@@ -165,7 +165,7 @@ export type ManualIssueInput = {
 /** eng_statuses（kind = worktree）的 key */
 export type WorktreeRecordStatus = string;
 
-export type WorktreeSource = 'manual' | 'report' | 'scan';
+export type WorktreeSource = 'manual' | 'report' | 'scan' | 'paste';
 
 export type WorktreeRecord = {
   id: number;
@@ -325,4 +325,55 @@ export type ScanApplyResult = {
   created: number;
   moved: number;
   updated: number;
+};
+
+// ── 貼上 git worktree list 輸出（POST /api/eng/worktrees/paste/preview、/apply） ──
+
+export type PasteAction = 'new' | 'existing' | 'moved';
+
+export type PasteItem = {
+  path: string;
+  sha: string | null;
+  branch: string | null;
+  isDetached: boolean;
+  isBare: boolean;
+  isLocked: boolean;
+  isPrunable: boolean;
+  lockReason: string;
+  prunableReason: string;
+  lineNo: number;
+  /** 貼上內容的第一筆（主 worktree） */
+  isMain: boolean;
+  /** 可能是暫時性 / 代理產生（提示，非判決） */
+  isTemp: boolean;
+  tempReasons: string[];
+  /** 正規化路徑（比對用） */
+  key: string;
+  action: PasteAction;
+  recordId: number | null;
+  recordPath: string | null;
+  /** 貼上內容中重複的路徑（只會登記第一筆） */
+  duplicate: boolean;
+};
+
+export type PasteUnparsed = { lineNo: number; text: string };
+
+export type PastePreview = {
+  machine: string;
+  repo: string;
+  repoGuess: string;
+  truncated: boolean;
+  counts: Record<PasteAction, number>;
+  items: PasteItem[];
+  unparsed: PasteUnparsed[];
+  unparsedCount: number;
+};
+
+export type PasteApplyResult = {
+  ok: true;
+  machine: string;
+  repo: string;
+  created: number;
+  updated: number;
+  skipped: number;
 };

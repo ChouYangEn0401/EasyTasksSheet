@@ -4,6 +4,8 @@ import type {
   EngStatusesResponse,
   EngStatusInput,
   EngStatusKind,
+  PasteApplyResult,
+  PastePreview,
   ScanApplyResult,
   ScanPreview,
   WorktreeTrash,
@@ -202,6 +204,32 @@ export function useScanApply() {
     meta: { errorToast: false },
     mutationFn: (input: { path: string; machine?: string; paths: string[] }) =>
       api.post<ScanApplyResult>('/eng/worktrees/scan/apply', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.worktrees() }),
+  });
+}
+
+// ── 貼上 git worktree list 輸出（不執行 git；伺服器只解析文字） ──
+
+export function usePastePreview() {
+  return useMutation({
+    meta: { errorToast: false },
+    mutationFn: (input: { text: string; machine?: string; repo?: string }) =>
+      api.post<PastePreview>('/eng/worktrees/paste/preview', input),
+  });
+}
+
+export function usePasteApply() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { errorToast: false },
+    mutationFn: (input: {
+      text: string;
+      machine: string;
+      repo?: string;
+      selected: number[];
+      updateExisting?: boolean;
+      status?: string;
+    }) => api.post<PasteApplyResult>('/eng/worktrees/paste/apply', input),
     onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.worktrees() }),
   });
 }

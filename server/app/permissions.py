@@ -208,7 +208,7 @@ WRITE_GUARDS: tuple[tuple[frozenset[str], re.Pattern[str], str], ...] = (
     (_WRITE_METHODS, re.compile(r"^/api/tasks(/|$)"), "tasks.edit"),
     (_WRITE_METHODS, re.compile(r"^/api/feedback(/|$)"), "feedback.edit"),
     (_WRITE_METHODS, re.compile(r"^/api/personal(/|$)"), "personal.edit"),
-    (_WRITE_METHODS, re.compile(r"^/api/eng/(issues|worktree-records|worktrees/pending)(/|$)"), "eng.edit"),
+    (_WRITE_METHODS, re.compile(r"^/api/eng/(issues|worktree-records|worktrees/pending|worktrees/paste)(/|$)"), "eng.edit"),
     (_WRITE_METHODS, re.compile(r"^/api/properties(/|$)"), "properties.edit"),
     (frozenset({"POST"}), re.compile(r"^/api/projects/?$"), "projects.create"),
     (_WRITE_METHODS, re.compile(r"^/api/auth/password$"), "profile.edit"),

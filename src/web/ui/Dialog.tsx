@@ -25,7 +25,7 @@ export function Dialog({
   children?: ReactNode;
   /** 動作列（右對齊；次要在左、主要在右） */
   actions?: ReactNode;
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'lg';
   dismissible?: boolean;
   dirty?: boolean;
   role?: 'dialog' | 'alertdialog';
@@ -62,7 +62,7 @@ export function Dialog({
   return (
     <dialog
       ref={ref}
-      className={`ui-dialog${size === 'md' ? ' ui-dialog--md' : ''}`}
+      className={`ui-dialog${size === 'md' ? ' ui-dialog--md' : size === 'lg' ? ' ui-dialog--lg' : ''}`}
       role={role === 'alertdialog' ? 'alertdialog' : undefined}
       aria-labelledby={titleId}
       onCancel={(e) => {

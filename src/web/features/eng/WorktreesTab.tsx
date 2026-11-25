@@ -34,6 +34,7 @@ import { useDeleteRecord, usePendingReport, useSaveRecord } from './api.ts';
 import { EngIcon, MoreIcon, NameList } from './bits.tsx';
 import { ManageStatusesButton, StatusSelect } from './EngStatus.tsx';
 import { useStatusList } from './statusHooks.ts';
+import { PasteDialog } from './PasteDialog.tsx';
 import { ScanDialog } from './ScanDialog.tsx';
 import { TrashDialog } from './TrashDialog.tsx';
 import { NONE, useUserOptions } from './userOptions.ts';
@@ -403,7 +404,13 @@ function RecordRow({
   const detail = [record.purpose, record.note].filter(Boolean).join(' · ');
   const sub = [
     record.repo,
-    record.source === 'scan' ? '掃描登記' : record.source === 'report' ? '由回報登記' : '',
+    record.source === 'scan'
+      ? '掃描登記'
+      : record.source === 'report'
+        ? '由回報登記'
+        : record.source === 'paste'
+          ? '貼上登記'
+          : '',
   ]
     .filter(Boolean)
     .join(' · ');
@@ -661,11 +668,27 @@ export function WorktreesTab({
   const [deleting, setDeleting] = useState<WorktreeRecord | null>(null);
   const [showDone, setShowDone] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  /** 電腦篩選（'' = 全部）；貼上登記後自動套用 */
+  const [machineFilter, setMachineFilter] = useState('');
   const [trashOpen, setTrashOpen] = useState(false);
   const canScan = useCan('eng.scan');
+  const canEdit = useCan('eng.edit');
   const statuses = useStatusList('worktree');
   const data = query.data;
-  const machines = useMemo(() => data?.machines ?? [], [data]);
+  const allMachines = useMemo(() => data?.machines ?? [], [data]);
+  const filterKey = machineFilter.trim().toLowerCase();
+  const machines = useMemo(
+    () => (filterKey ? allMachines.filter((g) => g.machine.trim().toLowerCase() === filterKey) : allMachines),
+    [allMachines, filterKey],
+  );
+  const machineOptions = useMemo(
+    () => [
+      { value: '', label: '全部電腦' },
+      ...allMachines.map((g) => ({ value: g.machine.trim().toLowerCase(), label: g.machine })),
+    ],
+    [allMachines],
+  );
   const doneCount = machines.reduce(
     (n, g) => n + g.records.filter((r) => isDoneRecord(statuses, r.status)).length,
     0,
@@ -673,7 +696,7 @@ export function WorktreesTab({
 
   return (
     <section className="eng-section" aria-label="工作樹">
-      <NameList id={machineListId} names={machines.map((m) => m.machine)} />
+      <NameList id={machineListId} names={allMachines.map((m) => m.machine)} />
       <AddRecordForm machineListId={machineListId} />
 
       <div className="eng-toolbar">
@@ -682,6 +705,16 @@ export function WorktreesTab({
           checked={showDone}
           onChange={(e) => setShowDone(e.target.checked)}
         />
+        {allMachines.length > 0 && (
+          <span className="eng-machine-filter">
+            <Select
+              options={machineOptions}
+              value={machineOptions.some((o) => o.value === filterKey) ? filterKey : ''}
+              onChange={setMachineFilter}
+              aria-label="依電腦篩選"
+            />
+          </span>
+        )}
         <span className="eng-toolbar-end">
           <ManageStatusesButton kind="worktree" />
           <Button
@@ -692,6 +725,11 @@ export function WorktreesTab({
           >
             回收區{data ? `（${data.trashCount}）` : ''}
           </Button>
+          {canEdit && (
+            <Button variant="secondary" size="sm" icon="plus" onClick={() => setPasteOpen(true)}>
+              貼上 git worktree list
+            </Button>
+          )}
           {canScan && (
             <Button variant="secondary" size="sm" icon="refresh" onClick={() => setScanOpen(true)}>
               掃描本機專案
@@ -724,7 +762,9 @@ export function WorktreesTab({
             icon="branch"
             title="尚未記錄任何 worktree"
             description={
-              canScan ? '在上方填入電腦與路徑，或按「掃描本機專案」' : '在上方填入電腦與路徑即可新增'
+              canEdit
+                ? '在上方填入電腦與路徑，或按「貼上 git worktree list」一次登記'
+                : '在上方填入電腦與路徑即可新增'
             }
           />
         </div>
@@ -743,6 +783,13 @@ export function WorktreesTab({
         <RecordDialog record={editing} machineListId={machineListId} onClose={() => setEditing(null)} />
       )}
       {deleting && <TrashConfirm record={deleting} onClose={() => setDeleting(null)} />}
+      {pasteOpen && (
+        <PasteDialog
+          machineNames={allMachines.map((m) => m.machine)}
+          onClose={() => setPasteOpen(false)}
+          onDone={(m) => setMachineFilter(m.trim().toLowerCase())}
+        />
+      )}
       {scanOpen && data && <ScanDialog scan={data.scan} onClose={() => setScanOpen(false)} />}
       {trashOpen && <TrashDialog onClose={() => setTrashOpen(false)} />}
     </section>

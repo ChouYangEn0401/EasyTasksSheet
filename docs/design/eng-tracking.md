@@ -195,3 +195,16 @@
 - 「⋯ → 移到回收區」為軟刪除（`deleted_at`、`deleted_by`）；回收區對話框（工具列「回收區（N）」）列出已刪除紀錄，可「還原」（同電腦同路徑已有紀錄時 409）。
 - 超過 30 天只標示「已超過 30 天」，**仍不自動清除**、仍可還原；只有具 `eng.trash.purge`（預設 manager 以上）者按「清空回收區」→ 確認「永久刪除」才會真正刪除（API 需 body `{ "confirm": true }`）。
 - 回收區中的紀錄不參與比對與重複路徑檢查；狀態的「使用中筆數」仍計入（還原後會用到）。
+## 14. 貼上 git worktree list 快速登記
+
+- **用途**：不用伺服器掃描、不需資料夾路徑也不需 `WORKTREE_SCAN_ROOTS`——在自己的電腦執行 `git worktree list`（或 `--porcelain`；PowerShell 可 `git worktree list | Set-Clipboard`），整段貼到工作樹分頁「貼上 git worktree list」對話框 → 自動預覽 → 勾選 → 登記。**伺服器只解析文字，不執行任何 git、不讀檔案系統**。權限沿用 `eng.edit`（預設 user 以上），不新增權限、不需 migration（沿用 `worktree_records`，`source = 'paste'`）。
+- **解析器**（`server/app/worktree_paste.py`，純函式）：
+  - 預設格式 `<path> <sha> [<branch>]`／`(detached HEAD)`／`(bare)`，結尾旗標 `locked [原因]`、`prunable [原因]`；`--verbose` 的縮排續行（`locked: …`）；`--porcelain`（`worktree <path>` 區塊，含 `HEAD`、`branch refs/heads/…`、`detached`、`bare`、`locked`、`prunable`，`-z` 的 NUL 視同換行）。
+  - 路徑以「路徑 + 空白 + 7–40 位十六進位 sha + 空白 + `[`／`(`」為邊界解析（不用空白切），可含空白、中文、Windows 反斜線 / 正斜線；`(bare)` 無 sha。
+  - 忽略空行與命令提示字元行（`C:\x>git worktree list`、`PS C:\x> git …`、`$ git …`）；其餘無法辨識的行回傳 `unparsed`（預覽以淡色折疊區「有 N 行無法辨識」顯示，最多回傳 100 行）。
+  - 限制：輸入 ≤ 200 KB（超過 400）、最多 500 筆（`truncated`）。每筆輸出 `path、sha、branch、isDetached、isBare、isLocked、isPrunable、lineNo、isMain（第一筆）`。Repo 名稱推測 = 第一筆的資料夾名稱（bare 去掉 `.git`）。
+- **暫時性 / 代理產生提示**（只是提示，非判決；預設不勾選，仍可手動勾選）：路徑含 `/.claude/worktrees/`、`/scratchpad/`、`/AppData/Local/Temp/`、`/tmp/`（不分大小寫、反斜線視同正斜線，須為完整資料夾）、資料夾名以 `agent-` 開頭、分支以 `worktree-agent-` 開頭、或位於 Temp 的 detached HEAD。
+- **API**（皆需 `eng.edit`）：
+  - `POST /api/eng/worktrees/paste/preview` `{text, machine?, repo?}`：回傳 `items`（解析結果 + `isTemp` / `tempReasons` + `action`）、`counts`、`unparsed`、`repoGuess`。與既有（未刪除）紀錄比對：`new`；`existing` = 同電腦 + 同路徑（不分大小寫、斜線方向）；`moved` = 同分支 + 同 sha（可為縮寫）但路徑不同。`machine` 預設「我的電腦」（以名稱比對）。
+  - `POST /api/eng/worktrees/paste/apply` `{text, machine, repo?, selected: [行號|路徑], updateExisting?, status?}`：**伺服器重新解析 `text`**，只從自己的解析結果依行號 / 路徑挑選，不採信任何前端解析結果；單一 transaction（`status` 須為存在且未封存的工作樹狀態，否則整批不寫入）。新增紀錄：machine、path、branch、repo、`head_sha`、狀態預設「使用中」、備註「由貼上匯入；sha XXXXXXXX；locked / detached HEAD / prunable / bare」、`source = 'paste'`；`existing` 預設略過，`updateExisting` 才更新分支 / HEAD，備註只在原本為空或也是貼上匯入時才覆寫（不蓋掉使用者自己寫的）；`moved` 勾選 = 更新舊紀錄路徑（與掃描一致）；貼上內容中重複路徑只登記第一筆。回傳 `{created, updated, skipped}`；全部 `record_change(worktree_plan)`。**冪等**：重複貼同一份 → 全部已存在、略過。
+- **前端**（`PasteDialog.tsx`、`pasteModel.ts`）：文字框貼上後自動預覽；電腦名稱必填（記住上次，localStorage `eng.machine`，預設「我的電腦」）、Repo 名稱自動帶入可改；預覽表（勾選、路徑中間省略 + tooltip、分支、短 sha、標籤 新增 / 已存在 / 可能搬動 / 暫時性 / 鎖定 / 分離 HEAD / 可清理）；「全選」「只選非暫時性」「全不選」、已選計數、批次「登記為」狀態；Ctrl+Enter 登記、Esc 關閉；登記後 toast「已登記 N 筆、略過 M 筆」並自動套用工作樹分頁的「依電腦篩選」。

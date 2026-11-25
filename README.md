@@ -390,6 +390,7 @@ sudo journalctl -u tasks-sheets -n 50                                  # 6. 確�
   python -m server.cli scan-worktrees <專案資料夾> [--machine 電腦名稱] [--repo 專案名稱] [--dry-run] [--yes]
   ```
 
+- **貼上登記（最簡單）**：在專案資料夾執行 `git worktree list`（PowerShell 可 `git worktree list | Set-Clipboard`，也支援 `--porcelain`），到工作樹分頁按「貼上 git worktree list」把輸出整段貼上 → 預覽（新增 / 已存在 / 可能搬動；`.claude/worktrees`、scratchpad、Temp 等疑似暫時性者預設不勾）→ 登記。不執行 git、不需資料夾路徑或 `WORKTREE_SCAN_ROOTS`，一般成員即可使用；重複貼同一份不會重複登記。
 - **不見不等於刪除**：每台電腦以識別碼（`~/.tasks-sheets/machine.json`，第一次回報時自動建立，可編輯其中的 `machineName`）區分，改名或同名不混淆。回報中不見的 worktree 只會標示「回報中找不到」，紀錄一律保留；空清單或筆數驟減的回報會先攔下（保留舊資料），要有人在頁面按「確認採用這次回報」才套用。路徑不同但分支與 HEAD 相同時提示「可能是搬動」並可一鍵更新路徑。刪除紀錄改為「移到回收區」，隨時可還原；只有管理者按「清空回收區」才會永久刪除。
 - **各人電腦自動回報（選用）**：在 `.env` 設定 `WORKTREE_REPORT_TOKEN`（夠長的隨機字串，例如 `python -c "import secrets; print(secrets.token_urlsafe(32))"`）並重啟服務；各人在自己的電腦（需 Node.js 與 git）執行：
 

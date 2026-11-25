@@ -31,7 +31,7 @@ TasksSheets 是給實驗室內部用的多人任務 / 專案管理網站。本�
 | 問題回饋 `/feedback`                  | 回饋 / 問題清單與月曆排程（拖曳排程）                                                                                |
 | 個人清單 `/me`                        | 我的任務、釘選、自由待辦（含延後 / 取消等小狀態）                                                                    |
 | 個人設定 `/settings`                  | 改顯示名稱、帳號、密碼（改密碼後其他裝置登出）                                                                       |
-| 工程追蹤 `/eng`                       | 問題（含附件圖片 / 影片 / 檔案、連結預覽、選配 GitHub 連動）、工作樹（worktree）紀錄、自訂狀態、掃描本機專案、回收區 |
+| 工程追蹤 `/eng`                       | 問題（含附件圖片 / 影片 / 檔案、連結預覽、選配 GitHub 連動）、工作樹（worktree）紀錄、自訂狀態、掃描本機專案、貼上 `git worktree list` 快速登記、回收區 |
 | 成員管理 `/admin/users`               | 新增 / 停用 / 重設密碼 / 角色 / 解鎖（`members.manage`）                                                             |
 | 資料管理 `/admin/data`                | JSON 匯出 / 匯入（預覽、衝突策略）、完整 .db 備份下載（root）                                                        |
 | 資料同步 `/admin/data/sync`           | 多台電腦 sync-push 的來源金鑰與待確認衝突                                                                            |
@@ -81,7 +81,7 @@ docs/                    規格與說明；docs/design/ 為各頁面介面規格
 | 總覽          | `overview.py`、`_overview_compute.py`      | `overview/`                   |
 | 回饋 / 月曆   | `feedback.py`                              | `feedback/`、`calendar/`      |
 | 個人清單      | `personal.py`                              | `personal/`                   |
-| 工程追蹤      | `eng.py`、`eng_status.py`、`eng_attach.py` | `eng/`                        |
+| 工程追蹤      | `eng.py`、`eng_status.py`、`eng_attach.py`、`eng_paste.py`（+ `worktree_paste.py` 解析器） | `eng/`                        |
 | 成員 / 權限   | `admin.py`、`users.py`、`permissions_admin.py` | `admin/`                  |
 | 資料匯出入 / 備份下載 | `data_admin.py`                    | `admin/DataPage.tsx`          |
 | 多電腦同步    | `sync_push.py`、`sync.py`（SSE）           | `admin/SyncPage.tsx`          |
