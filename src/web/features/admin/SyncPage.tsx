@@ -49,6 +49,7 @@ import {
 } from './syncModel.ts';
 import './admin.css';
 import './sync.css';
+import { BASE_PATH } from '../../lib/base.ts';
 
 type Tab = 'sources' | 'conflicts';
 
@@ -350,7 +351,7 @@ function TokenDialog({
   regenerated: boolean;
   onClose: () => void;
 }) {
-  const command = pushCommand(window.location.origin, data.token);
+  const command = pushCommand(window.location.origin + BASE_PATH, data.token);
   const [copied, setCopied] = useState<'token' | 'command' | null>(null);
   const copy = async (text: string, what: 'token' | 'command') => {
     try {

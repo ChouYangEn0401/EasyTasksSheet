@@ -5,3 +5,5 @@ playwright-report
 test-results
 package-lock.json
 *.md
+# 152 首頁導覽頁：保留原本的手寫格式，與 C:\nginx\html\jump_page.html 逐字對照
+deploy/windows/jump_page.html

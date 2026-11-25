@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
@@ -27,6 +28,9 @@ class Config:
     APP_ORIGIN: str | None = None
     DATABASE_PATH: str = "data/app.db"
     STATIC_DIR: str = "dist/web"
+    #: 掛在反向代理的子路徑底下時的網址前綴，例如 /easytasks（nginx 轉發時去掉前綴）；空 = 掛在網站根目錄。
+    #: 影響 cookie 路徑、後端產生的附件網址；前端在 npm run build 時讀同一個值（vite.config.ts）
+    BASE_PATH: str = ""
     TZ: str = "Asia/Taipei"
 
     SESSION_MAX_HOURS: float = 9
@@ -106,6 +110,20 @@ _POSITIVE_FLOAT = {
 _POSITIVE_INT = {"LOGIN_MAX_FAILS_PER_USER", "LOGIN_MAX_FAILS_PER_IP", "GIT_TIMEOUT_MS", "ATTACHMENT_MAX_PER_ITEM"}
 
 
+_BASE_PATH_RE = re.compile(r"^(/[A-Za-z0-9._~-]+)+$")
+
+
+def normalize_base_path(raw: str) -> str:
+    """"/easytasks/"、"easytasks" → "/easytasks"；"/" 或空白 → ""（根目錄）。只允許安全的路徑字元。"""
+    v = raw.strip().strip("/")
+    if not v:
+        return ""
+    v = "/" + v
+    if not _BASE_PATH_RE.match(v) or any(seg in (".", "..") for seg in v.split("/")):
+        raise ValueError(raw)
+    return v
+
+
 def load_config(env: Mapping[str, str] | None = None) -> Config:
     """由環境變數建立設定；空字串視同未設定（.env.example 直接複製時許多值為空）。"""
     env = os.environ if env is None else env
@@ -119,6 +137,8 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
                 if raw not in ("development", "production", "test"):
                     raise ValueError(raw)
                 values[name] = raw
+            elif name == "BASE_PATH":
+                values[name] = normalize_base_path(raw)
             elif name in _BOOL:
                 if raw not in ("true", "false"):
                     raise ValueError(raw)

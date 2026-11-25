@@ -1,10 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ImportApplyInput, ImportPreview, ImportResult } from '../../../shared/dataTransfer.ts';
 import { api } from '../../lib/api.ts';
+import { apiUrl } from '../../lib/base.ts';
 
 /** 下載端點（瀏覽器直接以 <a download> 取得附件） */
-export const DATA_EXPORT_URL = '/api/admin/data/export';
-export const DATA_BACKUP_URL = '/api/admin/data/backup';
+export const DATA_EXPORT_URL = apiUrl('/admin/data/export');
+export const DATA_BACKUP_URL = apiUrl('/admin/data/backup');
 
 /** 觸發瀏覽器下載（同源 GET，帶 session cookie） */
 export function startDownload(url: string) {

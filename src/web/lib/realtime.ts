@@ -1,4 +1,5 @@
 import type { Change } from '../../shared/sync.ts';
+import { apiUrl } from './base.ts';
 
 /*
  * 即時連線狀態機（純邏輯；EventSource、fetch、計時器皆可注入以便測試）。
@@ -119,7 +120,7 @@ export function createRealtimeClient(deps: RealtimeDeps) {
     if (!running) return;
     closeSource();
     if (snapshot.status === 'idle') set({ status: 'connecting' });
-    const url = lastId != null ? `/api/events?since=${lastId}` : '/api/events';
+    const url = lastId != null ? apiUrl(`/events?since=${lastId}`) : apiUrl('/events');
     const es = deps.createSource(url);
     source = es;
     armWatchdog(es);

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useSyncExternalStore } from 'react';
 import type { Attachment, AttachmentLimits } from '../../../shared/engManual.ts';
 import { checkFile } from './attachModel.ts';
+import { apiUrl } from '../../lib/base.ts';
 
 /**
  * 附件上傳佇列（整個問題分頁共用，收合列表也不會中斷上傳）。
@@ -108,7 +109,7 @@ export class UploadStore {
     this.xhrs.set(key, xhr);
     const form = new FormData();
     form.append('files', item.file, item.file.name);
-    xhr.open('POST', `/api/eng/issues/${item.issueId}/attachments`);
+    xhr.open('POST', apiUrl(`/eng/issues/${item.issueId}/attachments`));
     xhr.setRequestHeader('Accept', 'application/json');
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) this.patch(key, { progress: e.loaded / e.total });

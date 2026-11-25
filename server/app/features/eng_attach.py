@@ -83,8 +83,9 @@ def attachment_json(r: sqlite3.Row) -> dict[str, Any]:
         "size": r["size"],
         "uploadedBy": r["uploaded_by"],
         "createdAt": r["created_at"],
-        "url": f"/api/attachments/{r['id']}",
-        "thumbUrl": f"/api/attachments/{r['id']}/thumb" if kind == "image" else None,
+        # 前端直接拿來當 <img src>，所以要含 BASE_PATH（子路徑部署時 nginx 才轉得到）
+        "url": f"{config.BASE_PATH}/api/attachments/{r['id']}",
+        "thumbUrl": f"{config.BASE_PATH}/api/attachments/{r['id']}/thumb" if kind == "image" else None,
     }
 
 
