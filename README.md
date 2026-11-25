@@ -2,6 +2,23 @@
 
 給實驗室內部使用的多人任務 / 專案管理網站。單一 Python 行程（FastAPI + uvicorn）同時提供 API 與前端靜態檔，資料存在一個 SQLite 檔，部署與備份都很簡單。
 
+## 快速開始（純 Python 執行）
+
+專案的 Python 進入點是根目錄的 [`main.py`](main.py)：
+
+```bash
+python -m venv .venv                       # 建立虛擬環境
+.venv/Scripts/activate                     # Windows（Linux / macOS：source .venv/bin/activate）
+pip install -r requirements.txt            # 安裝後端相依套件
+cp .env.example .env                       # 可選；Windows PowerShell：Copy-Item .env.example .env
+python main.py --prod                      # 啟動，開啟 http://127.0.0.1:3000
+```
+
+- 前端已建置在 `dist/web`；若是第一次取得原始碼或改了前端，需先 `npm ci && npm run build`（Node 只用在建置前端）。
+- 第一次啟動會自動建立資料庫與預設管理員，帳號與密碼會印在主控台（或由 `.env` 的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 指定），首次登入要先改密碼。
+- 開發時用 `python main.py --reload`（後端自動重載）；管理指令（新增帳號、備份、還原）用 `python -m server.cli --help`。
+- 後端程式碼在 [`server/app/`](server/app)：`main.py` 組裝應用、`app.py` 掛路由、`features/` 每個功能一個檔案、`migrations/` 放資料表 SQL。
+
 ## 功能簡介
 
 - **任務檢視**：List（就地編輯、快速新增、自訂欄位、任務詳情抽屜）、Kanban（拖曳改狀態與排序）、Gantt 與總覽主畫面、月曆排程。
