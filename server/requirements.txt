@@ -3,8 +3,10 @@ uvicorn[standard]>=0.30,<1
 pydantic>=2.7,<3
 argon2-cffi>=23.1,<26
 python-dotenv>=1.0,<2
-# 附件上傳：串流解析 multipart/form-data（純 Python、無其他相依）
+# attachments upload: streaming multipart/form-data parser (pure Python)
 python-multipart>=0.0.18,<1
-# 測試
+# tests
 pytest>=8,<10
 httpx>=0.27,<1
+# NOTE: keep this file ASCII-only. pip reads it with the system code page
+# (cp950 on Traditional Chinese Windows) and fails on non-ASCII bytes.

@@ -1,2 +1,3 @@
-# Python 後端相依套件（實際清單在 server/requirements.txt）
+# Python backend dependencies (the actual list is in server/requirements.txt)
+# NOTE: keep ASCII-only (pip reads this with the system code page, e.g. cp950).
 -r server/requirements.txt
