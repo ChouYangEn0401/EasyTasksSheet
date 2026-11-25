@@ -78,6 +78,8 @@
 
 設計目標：**管理員進頁 3 秒內看出誰沒事做、誰有事做**；統計只給少數幾個數字。
 
+總覽是為了讓大家看見彼此大概在忙什麼、方便互相支援與安排，不是績效評比或監控；呈現方式請依 `docs/product-principles.md`（不排名、中性色、「大約」語氣、沒有紀錄不等於沒做事、估時選填）。近三週見 §B5。
+
 ### B1. 版面線框
 
 ```
@@ -129,6 +131,24 @@
 - 載入中：統計數字與卡片皆 Skeleton（4 格 + 6 張卡 + Gantt 骨架）。錯誤：「統計 + 成員」與「Gantt」兩塊各自顯示 `ErrorState`。無任務：統計為 0、成員區 `EmptyState`「還沒有任務」。統計與成員卡來自 `GET /api/overview`，精簡 Gantt 用 core 的 tasks hook；皆沿用 30 秒輪詢與 focus 重抓，靜默更新。
 - `/api/overview` 需提供：`totals.by_status[]`（status_id、name、category、color、count）、`totals.overdue`、`totals.done_this_week`、`week_range`；`members[]`（user、`doing[]` 含 id / title / status_id / due_date / updated_at / updated_by、`counts.todo|doing|done`、`overdue`、`remaining_hours`、`unestimated_count`、`last_updated_at`）；`unassigned`（open_count、remaining_hours）。
 - 定義：無任務 = category `doing` 的任務數為 0；逾期 = 到期日早於今天且 category ≠ done；未完成預估 = category ≠ done 的 `estimate_hours` 合計；本週完成 = category `done` 且 `completed_at`（狀態類別轉為 done 的時刻；改回非 done 時清空；既有資料以 `updated_at` 回填）落在本週（Asia/Taipei 週一 00:00 起），不含已刪除任務。
+
+### B5. 近三週（`feat/overview-weeks`）
+
+> 原則（完整版見 `docs/product-principles.md`）：總覽是讓大家看見彼此大概在忙什麼、方便互相支援與安排，**不是績效評比或監控**。不排名、不顯示「最多 / 最少 / 落後」、不用紅 / 橘警示色、不做個人間的精確工時對比；數字用中性色與「大約」語氣；沒有資料時寫「這週沒有紀錄」。估時是選填的：沒填只呈現件數，有填才補充工時。
+
+- **API**：`GET /api/overview/activity?weeks=3`（1–4，預設 3；非數字回到 3）。不動 `GET /api/overview` 既有欄位；前端 query key `['overview','activity',3]`，隨 `['overview']` 一起失效重抓、30 秒輪詢。
+- 回應：`weeks[]`（由舊到新：前週、上週、本週；`start` / `end` / `current` / `touchedPartial`）、`teamWeeks[]`（全隊合計）、`members[]`（只含啟用成員：`userId`、`weeks[]`）。每週：
+  - `completed`：`completed_at` 落在該週（Asia/Taipei 週一 00:00 至下週一 00:00）且目前仍為 done 的任務數，歸給**目前的負責人**（無法得知是誰按下完成）。
+  - `touched`：該成員在該週**新增或更新**過的不同任務數（`changes` 表 `entity_type = task`、`action ∈ {create, update}`、`actor_id` = 該成員），歸給**動手的人**；可能包含已完成的任務。
+  - `involved`：`completed ∪ touched` 的不同任務數，作為直條高度依據。
+  - `completedHours` / `hoursKnown`：完成任務中有填 `estimate_hours` 者的合計與件數；`hoursKnown = 0` 時前端完全不顯示工時。
+  - 成員另有 `items[]`（最多 20 筆：id、title、statusId、estimateHours、completed、touched、at）與 `itemsTotal`。完成在前、時間新 → 舊。
+  - 不計：已軟刪除的任務、`delete` 動作、無操作者的變更。全隊合計的 `touched` 含停用成員的處理紀錄；`completed` 與本週完成統計一致（含未指派）。
+- **限制**：`changes` 只保留 `CHANGES_RETENTION_DAYS`（預設 30 天），3 週（最多回溯 20 天）在範圍內；若週起點早於保留界線則 `touchedPartial = true`，詳情顯示「較早的處理紀錄已不保留，件數可能偏少」。`completed` 依 `tasks.completed_at`，不受影響。
+- **成員卡片**：數量列與頁尾之間一列（上方 1px `--color-border-subtle` 分隔）：「近三週」+ 三個 8px 寬小直條（前週、上週、本週，高 24px；高度 = `involved` ÷ max(全隊所有人所有週的最大值, 5)，有資料者至少 14%；下限 5 讓件數很少時不被放大成滿格）+ 小字「完成 N・處理 M」（三週加總）+ chevron。過去兩週 `--color-info-border`、本週 `--color-accent`；沒有紀錄為 `--color-border-strong` 淡灰虛線。整列是一顆按鈕（`aria-expanded`），hover / focus 顯示 Tooltip 三行「前週：完成 3 件、處理 5 件」/「上週：沒有紀錄」。
+- **詳情**：點按鈕在卡片內展開；分段鈕「前週 / 上週 / 本週」（預設本週）；該週日期區間與件數、（有估時才顯示）「預估工時約 N 小時（M 件有填估時）」、任務清單（狀態色點 + 標題（`openTask`）+「完成 / 處理」+ 日期）；沒有任務時「這週沒有紀錄」；超過 20 筆時「另有 N 件未列出」。
+- **全隊合計**：統計列正下方一張中性卡片「近三週團隊進展」+ 說明「大約的數字，方便了解大家在忙什麼」：三個小直條 + 各週「完成 N 件・處理 M 件」（有估時另一行約略工時）；< 768px 改單欄。
+- 成員排序與「目前無任務」的警示樣式維持 §B3；近三週區域不隨之變色。activity 載入中或失敗時，卡片與合計直接不顯示該區域，不影響其他內容。
 
 ## C. 鍵盤操作
 

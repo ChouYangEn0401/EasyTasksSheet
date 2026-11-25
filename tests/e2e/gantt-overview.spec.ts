@@ -177,3 +177,68 @@ test('總覽：目前無任務的成員排前並標示；Gantt：刻度、今日
 
   expect(errors).toEqual([]);
 });
+
+test('總覽：近三週（迷你直條、Tooltip、展開詳情、有估時才顯示工時）', async ({ page }) => {
+  test.setTimeout(60_000);
+  await loginViaUi(page, E2E_USERS.admin, '/');
+  const errors = collectErrors(page);
+
+  const users = await api<{ id: number; username: string }[]>(page, 'GET', '/api/users');
+  const admin = users.find((u) => u.username === E2E_USERS.admin.username)!;
+  const DONE_EST = `近三週有估時 ${suffix}`;
+  const DONE_NO_EST = `近三週沒估時 ${suffix}`;
+  const done1 = await api<Task>(page, 'POST', '/api/tasks', {
+    title: DONE_EST,
+    statusId: 4, // 完成
+    assigneeId: admin.id,
+    estimateHours: 3,
+  });
+  await api<Task>(page, 'POST', '/api/tasks', { title: DONE_NO_EST, statusId: 4, assigneeId: admin.id });
+
+  const activity = await api<{
+    weeks: { current: boolean }[];
+    members: { userId: number; weeks: { completed: number; hoursKnown: number }[] }[];
+  }>(page, 'GET', '/api/overview/activity');
+  expect(activity.weeks.map((w) => w.current)).toEqual([false, false, true]);
+  const mine = activity.members.find((m) => m.userId === admin.id)!.weeks[2]!;
+  expect(mine.completed).toBeGreaterThanOrEqual(2);
+  expect(mine.hoursKnown).toBeGreaterThanOrEqual(1);
+
+  await page.goto('/');
+  // 全隊合計：中性呈現
+  const team = page.getByTestId('team-weeks');
+  await expect(team).toContainText('近三週團隊進展');
+  await expect(team).toContainText('本週');
+
+  const adminCard = page.getByTestId(`member-card-${admin.id}`);
+  const toggle = adminCard.getByRole('button', { name: /^近三週：/ });
+  await expect(toggle).toBeVisible();
+  await expect(adminCard.locator('.ov-bar')).toHaveCount(3);
+  await expect(toggle).toContainText(/完成 \d+・處理 \d+/);
+  // 鍵盤 focus 顯示 Tooltip（緩和語氣）
+  await toggle.focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('tooltip')).toContainText(/本週：完成 \d+ 件、處理 \d+ 件/);
+
+  // 展開詳情（鍵盤可操作）：預設本週
+  await page.keyboard.press('Enter');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  const panel = adminCard.getByRole('region', { name: /近三週的任務/ });
+  await expect(panel.getByRole('button', { name: '本週' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(panel.getByRole('button', { name: DONE_EST })).toBeVisible();
+  await expect(panel.getByRole('button', { name: DONE_NO_EST })).toBeVisible();
+  await expect(panel).toContainText(/預估工時約 [\d.]+ 小時（\d+ 件有填估時）/);
+  // 前週沒有紀錄：說「這週沒有紀錄」，且不顯示工時
+  await panel.getByRole('button', { name: '前週' }).click();
+  await expect(panel).toContainText('這週沒有紀錄');
+  await expect(panel).not.toContainText('預估工時');
+  // 不出現排名 / 落後字眼
+  await expect(page.locator('.ov-page')).not.toContainText(/排名|落後|最少|沒做事/);
+  // 任務可開啟詳情
+  await panel.getByRole('button', { name: '本週' }).click();
+  await panel.getByRole('button', { name: DONE_EST }).click();
+  await expect(page).toHaveURL(new RegExp(`[?&]task=${done1.id}`));
+
+  expect(errors).toEqual([]);
+});

@@ -8,7 +8,9 @@ import { Alert, EmptyState, ErrorState, Skeleton } from '../../ui/index.ts';
 import { Gantt } from '../gantt/Gantt.tsx';
 import { isScheduled } from '../gantt/timeline.ts';
 import { MemberCard, UnassignedCard } from './MemberCard.tsx';
-import { formatWeekRange, useOverview } from './useOverview.ts';
+import { teamMax } from './activity.ts';
+import { formatWeekRange, useOverview, useOverviewActivity } from './useOverview.ts';
+import { TeamWeeks } from './WeeksActivity.tsx';
 import './overview.css';
 
 const IDLE_SECTION_ID = 'overview-idle';
@@ -36,10 +38,17 @@ function OverviewBody({ data }: { data: OverviewResponse }) {
   const idle = members.filter((m) => m.idle);
   const busy = members.filter((m) => !m.idle);
   const totalTasks = totals.byStatus.reduce((n, s) => n + s.count, 0);
+  const activity = useOverviewActivity().data;
+  const activityMax = teamMax(activity);
+  const activityOf = (userId: number) => {
+    const weeks = activity?.members.find((m) => m.userId === userId)?.weeks;
+    return activity && weeks ? { weeks, meta: activity.weeks, max: activityMax } : undefined;
+  };
 
   return (
     <>
       <StatsRow data={data} />
+      {activity && <TeamWeeks data={activity} />}
       {totalTasks === 0 ? (
         <EmptyState title="還沒有任務" description="按 N 快速新增任務" />
       ) : (
@@ -52,7 +61,13 @@ function OverviewBody({ data }: { data: OverviewResponse }) {
                 </h2>
                 <div className="ov-grid">
                   {idle.map((m) => (
-                    <MemberCard key={m.user.id} member={m} statuses={totals.byStatus} today={today} />
+                    <MemberCard
+                      key={m.user.id}
+                      member={m}
+                      statuses={totals.byStatus}
+                      today={today}
+                      activity={activityOf(m.user.id)}
+                    />
                   ))}
                 </div>
               </>
@@ -71,7 +86,13 @@ function OverviewBody({ data }: { data: OverviewResponse }) {
             </h2>
             <div className="ov-grid">
               {busy.map((m) => (
-                <MemberCard key={m.user.id} member={m} statuses={totals.byStatus} today={today} />
+                <MemberCard
+                  key={m.user.id}
+                  member={m}
+                  statuses={totals.byStatus}
+                  today={today}
+                  activity={activityOf(m.user.id)}
+                />
               ))}
               {unassigned.openCount > 0 && <UnassignedCard data={unassigned} />}
             </div>

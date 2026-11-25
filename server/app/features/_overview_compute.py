@@ -84,6 +84,155 @@ def _round2(n: float) -> int | float:
     return int(r) if r == int(r) else r
 
 
+#: 詳情清單每人每週最多回傳的任務數
+ACTIVITY_ITEMS_LIMIT = 20
+
+
+def activity_weeks(now: int, time_zone: str, weeks: int) -> list[dict[str, Any]]:
+    """最近 N 週（含本週，週一至週日，以 tz 計），由舊到新；最後一週為進行中的本週"""
+    zone = get_zone(time_zone)
+    cur = week_of(now, time_zone)
+    start0 = date.fromisoformat(cur["start"])
+
+    def local_midnight(d: date) -> int:
+        return int(datetime(d.year, d.month, d.day, tzinfo=zone).timestamp() * 1000)
+
+    out = []
+    for back in range(weeks - 1, -1, -1):
+        s = start0 - timedelta(days=7 * back)
+        out.append(
+            {
+                "start": s.isoformat(),
+                "end": (s + timedelta(days=6)).isoformat(),
+                "startMs": local_midnight(s),
+                "endMs": local_midnight(s + timedelta(days=7)),
+                "current": back == 0,
+            }
+        )
+    return out
+
+
+def compute_activity(
+    statuses: list[dict[str, Any]],
+    users: list[dict[str, Any]],
+    tasks: list[dict[str, Any]],
+    changes: list[dict[str, Any]],
+    now: int,
+    time_zone: str,
+    weeks: int = 3,
+    retention_days: float = 30,
+) -> dict[str, Any]:
+    """近 N 週大家大概做了多少事（docs/design/gantt-overview.md §B5）。
+
+    tasks（未刪除）：id/title/statusId/assigneeId/estimateHours/completedAt
+    changes（entity_type = task，action 為 create / update）：entityId/actorId/createdAt
+
+    - completed：completed_at 落在該週、目前仍為 done 的任務，歸給目前的負責人
+    - touched：該成員在該週新增或更新過的不同任務數（依 changes 表；已刪除任務不計）
+    - involved：completed ∪ touched 的不同任務數（迷你直條的高度依據）
+    - completedHours / hoursKnown：完成任務中有填 estimate_hours 者的合計與件數
+    - changes 只保留 retention_days 天；週起點早於保留界線時 touchedPartial = true
+    """
+    week_list = activity_weeks(now, time_zone, weeks)
+    cutoff = now - int(retention_days * 86_400_000)
+    status_by_id = {s["id"]: s for s in statuses}
+    task_by_id = {t["id"]: t for t in tasks}
+
+    def week_index(ms: int | None) -> int | None:
+        if ms is None:
+            return None
+        for i, w in enumerate(week_list):
+            if w["startMs"] <= ms < w["endMs"]:
+                return i
+        return None
+
+    # (key, week) -> {task_id: {"completedAt": ms | None, "touchedAt": ms | None}}；key 為 user id 或 "team"
+    buckets: dict[tuple[Any, int], dict[int, dict[str, int | None]]] = {}
+
+    def mark(key: Any, wi: int, tid: int, field: str, ms: int) -> None:
+        entry = buckets.setdefault((key, wi), {}).setdefault(tid, {"completedAt": None, "touchedAt": None})
+        prev = entry[field]
+        if prev is None or ms > prev:
+            entry[field] = ms
+
+    for t in tasks:
+        s = status_by_id.get(t["statusId"])
+        if not s or s["category"] != "done":
+            continue
+        wi = week_index(t.get("completedAt"))
+        if wi is None:
+            continue
+        mark("team", wi, t["id"], "completedAt", t["completedAt"])
+        if t["assigneeId"] is not None:
+            mark(t["assigneeId"], wi, t["id"], "completedAt", t["completedAt"])
+
+    for c in changes:
+        if c["entityId"] not in task_by_id or c["actorId"] is None:
+            continue
+        wi = week_index(c["createdAt"])
+        if wi is None:
+            continue
+        mark("team", wi, c["entityId"], "touchedAt", c["createdAt"])
+        mark(c["actorId"], wi, c["entityId"], "touchedAt", c["createdAt"])
+
+    def stats(key: Any, wi: int, with_items: bool) -> dict[str, Any]:
+        entries = buckets.get((key, wi), {})
+        completed = [tid for tid, e in entries.items() if e["completedAt"] is not None]
+        hours = 0.0
+        known = 0
+        for tid in completed:
+            h = task_by_id[tid]["estimateHours"]
+            if h is not None:
+                hours += h
+                known += 1
+        out: dict[str, Any] = {
+            "completed": len(completed),
+            "touched": sum(1 for e in entries.values() if e["touchedAt"] is not None),
+            "involved": len(entries),
+            "completedHours": _round2(hours),
+            "hoursKnown": known,
+        }
+        if with_items:
+            items = []
+            for tid, e in entries.items():
+                t = task_by_id[tid]
+                items.append(
+                    {
+                        "id": tid,
+                        "title": t["title"],
+                        "statusId": t["statusId"],
+                        "estimateHours": t["estimateHours"],
+                        "completed": e["completedAt"] is not None,
+                        "touched": e["touchedAt"] is not None,
+                        # 完成的任務以完成時刻為準，其餘以該週最後一次處理的時刻
+                        "at": e["completedAt"] if e["completedAt"] is not None else e["touchedAt"],
+                    }
+                )
+            # 完成在前，再依時間新 → 舊、id
+            items.sort(key=lambda x: (0 if x["completed"] else 1, -x["at"], x["id"]))
+            out["items"] = items[:ACTIVITY_ITEMS_LIMIT]
+            out["itemsTotal"] = len(items)
+        return out
+
+    return {
+        "weeks": [
+            {
+                "start": w["start"],
+                "end": w["end"],
+                "current": w["current"],
+                "touchedPartial": w["startMs"] < cutoff,
+            }
+            for w in week_list
+        ],
+        "teamWeeks": [stats("team", i, False) for i in range(len(week_list))],
+        "members": [
+            {"userId": u["id"], "weeks": [stats(u["id"], i, True) for i in range(len(week_list))]}
+            for u in sorted(users, key=lambda u: u["id"])
+            if u["isActive"]
+        ],
+    }
+
+
 def compute_overview(
     statuses: list[dict[str, Any]],
     users: list[dict[str, Any]],

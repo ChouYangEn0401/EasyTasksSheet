@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { OverviewResponse } from '../../../shared/overview.ts';
+import type { ActivityResponse, OverviewResponse } from '../../../shared/overview.ts';
 import { api } from '../../lib/api.ts';
 import { LIST_POLL_MS } from '../../lib/queryClient.ts';
 import { withSortedMembers } from './sortMembers.ts';
@@ -12,6 +12,16 @@ export function useOverview() {
     queryKey: overviewKey,
     queryFn: ({ signal }) => api.get<OverviewResponse>('/overview', { signal }),
     select: withSortedMembers,
+    refetchInterval: LIST_POLL_MS,
+    placeholderData: (prev) => prev,
+  });
+}
+
+/** GET /api/overview/activity?weeks=3（近三週）；key 在 ['overview'] 之下，任務變動時一併失效重抓 */
+export function useOverviewActivity() {
+  return useQuery({
+    queryKey: [...overviewKey, 'activity', 3] as const,
+    queryFn: ({ signal }) => api.get<ActivityResponse>('/overview/activity?weeks=3', { signal }),
     refetchInterval: LIST_POLL_MS,
     placeholderData: (prev) => prev,
   });

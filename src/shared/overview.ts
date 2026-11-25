@@ -73,3 +73,56 @@ export const overviewResponse = z.object({
   }),
 });
 export type OverviewResponse = z.infer<typeof overviewResponse>;
+
+/* ── GET /api/overview/activity?weeks=3：近三週大家大概做了多少事（gantt-overview.md §B5） ── */
+
+/** 一週的件數（全隊合計與個人共用） */
+export const activityWeekStats = z.object({
+  /** completed_at 落在該週、目前仍為完成的任務數（歸給目前的負責人） */
+  completed: z.number(),
+  /** 該週新增或更新過的不同任務數（依 changes 表，歸給動手的人；可能包含已完成的任務） */
+  touched: z.number(),
+  /** completed ∪ touched 的不同任務數（迷你直條高度依據） */
+  involved: z.number(),
+  /** 完成任務中有填預估工時者的合計 */
+  completedHours: z.number(),
+  /** 完成任務中有填預估工時的件數；0 = 不顯示工時 */
+  hoursKnown: z.number(),
+});
+export type ActivityWeekStats = z.infer<typeof activityWeekStats>;
+
+export const activityItem = z.object({
+  id: z.number().int(),
+  title: z.string(),
+  statusId: z.number().int(),
+  estimateHours: z.number().nullable(),
+  completed: z.boolean(),
+  touched: z.boolean(),
+  /** 完成時刻（完成者）或該週最後一次處理的時刻（Unix ms） */
+  at: z.number().int(),
+});
+export type ActivityItem = z.infer<typeof activityItem>;
+
+export const memberActivityWeek = activityWeekStats.extend({
+  /** 完成在前、時間新 → 舊；最多 20 筆 */
+  items: z.array(activityItem),
+  itemsTotal: z.number(),
+});
+export type MemberActivityWeek = z.infer<typeof memberActivityWeek>;
+
+export const activityResponse = z.object({
+  /** 由舊到新（前週、上週、本週）；current = 進行中的本週 */
+  weeks: z.array(
+    z.object({
+      start: z.string(),
+      end: z.string(),
+      current: z.boolean(),
+      /** 週起點早於 changes 保留界線（預設 30 天），「處理」件數可能不完整 */
+      touchedPartial: z.boolean(),
+    }),
+  ),
+  teamWeeks: z.array(activityWeekStats),
+  /** 只含啟用中的成員，依使用者 id */
+  members: z.array(z.object({ userId: z.number().int(), weeks: z.array(memberActivityWeek) })),
+});
+export type ActivityResponse = z.infer<typeof activityResponse>;

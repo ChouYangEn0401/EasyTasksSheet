@@ -1,11 +1,18 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import type { MemberSummary, OverviewResponse, StatusTotal } from '../../../shared/overview.ts';
+import type {
+  ActivityResponse,
+  MemberActivityWeek,
+  MemberSummary,
+  OverviewResponse,
+  StatusTotal,
+} from '../../../shared/overview.ts';
 import type { StatusCategory } from '../../../shared/projects.ts';
 import { statusStyle, statusTone } from '../../lib/colors.ts';
 import { openTask } from '../../lib/openTask.ts';
 import { Avatar, Badge, Button, Tooltip, UpdatedAt } from '../../ui/index.ts';
 import { formatHours, shortDate } from './useOverview.ts';
+import { MemberWeeks } from './WeeksActivity.tsx';
 
 const DOING_LIMIT = 3;
 const CATEGORY_LABEL: Record<StatusCategory, string> = { todo: '待辦', doing: '進行中', done: '完成' };
@@ -34,10 +41,13 @@ export function MemberCard({
   member,
   statuses,
   today,
+  activity,
 }: {
   member: MemberSummary;
   statuses: StatusTotal[];
   today: string;
+  /** 近三週（§B5）；尚未載入或失敗時不顯示 */
+  activity?: { weeks: MemberActivityWeek[]; meta: ActivityResponse['weeks']; max: number };
 }) {
   const [expanded, setExpanded] = useState(false);
   const { user, doing, counts, overdue, idle } = member;
@@ -110,6 +120,16 @@ export function MemberCard({
           </span>
         ))}
       </p>
+
+      {activity && (
+        <MemberWeeks
+          name={user.displayName}
+          weeks={activity.weeks}
+          meta={activity.meta}
+          max={activity.max}
+          statuses={statuses}
+        />
+      )}
 
       <footer className="ov-card-foot">
         <RemainingHours hours={member.remainingHours} unestimated={member.unestimatedCount} />
