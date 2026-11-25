@@ -119,9 +119,22 @@ def plan_revert(conn: sqlite3.Connection, entry: Any, lab: Labeler | None = None
 
     if et in LINK_FIELDS:
         return _plan_link(conn, plan, et, action, row, before)
+    if et == "comment" and action in ("restore", "delete"):
+        return _plan_comment(conn, plan, action, row)
+    if action in ("update", "reorder"):
+        return _plan_set_fields(conn, lab, plan, et, row, before, after)
+    if et == "task" and action in ("create", "restore", "delete"):
+        return _plan_task(conn, plan, action, row)
+    if et in ("status", "property") and action in ("create", "restore", "delete"):
+        return _plan_status_property(conn, plan, et, action, eid, row, before)
 
-    if et == "comment" and action == "restore":
-        # 「還原管理刪除的留言」的再還原：重新刪除
+    plan.blocked = entry["note"] or "此類操作無法自動還原"
+    return plan
+
+
+def _plan_comment(conn: sqlite3.Connection, plan: RevertPlan, action: str, row: Any) -> RevertPlan:
+    """留言：管理刪除 → 取消刪除；「還原管理刪除的留言」的再還原（action = restore）→ 重新刪除"""
+    if action == "restore":
         if row is None:
             plan.blocked = "這則留言已不存在"
         elif row["deleted_at"] is not None:
@@ -129,33 +142,44 @@ def plan_revert(conn: sqlite3.Connection, entry: Any, lab: Labeler | None = None
         else:
             plan.kind = "delete_comment"
         return plan
+    if row is None:
+        plan.blocked = "這則留言已不存在"
+    elif row["deleted_at"] is None:
+        plan.blocked = "這則留言目前沒有被刪除"
+    elif conn.execute("SELECT 1 FROM tasks WHERE id = ? AND deleted_at IS NULL", (row["task_id"],)).fetchone() is None:
+        plan.blocked = "留言所屬的任務已刪除，請先還原任務"
+    else:
+        plan.kind = "undelete_comment"
+    return plan
 
-    if et == "comment" and action == "delete":
-        if row is None:
-            plan.blocked = "這則留言已不存在"
-        elif row["deleted_at"] is None:
-            plan.blocked = "這則留言目前沒有被刪除"
-        elif conn.execute("SELECT 1 FROM tasks WHERE id = ? AND deleted_at IS NULL", (row["task_id"],)).fetchone() is None:
-            plan.blocked = "留言所屬的任務已刪除，請先還原任務"
-        else:
-            plan.kind = "undelete_comment"
+
+def _plan_set_fields(
+    conn: sqlite3.Connection,
+    lab: Labeler,
+    plan: RevertPlan,
+    et: str,
+    row: Any,
+    before: dict[str, Any],
+    after: dict[str, Any],
+) -> RevertPlan:
+    """欄位更新 / 調整順序：把欄位設回 before（目前值 ≠ after 者標為衝突）"""
+    if row is None:
+        plan.blocked = "這筆資料已不存在，無法還原"
         return plan
-
-    if action in ("update", "reorder"):
-        if row is None:
-            plan.blocked = "這筆資料已不存在，無法還原"
-            return plan
-        if et == "task" and row["deleted_at"] is not None:
-            plan.blocked = "任務目前已刪除，請先還原刪除，再還原這次修改"
-            return plan
-        plan.kind = "set_fields"
-        plan.fields = _field_rows(lab, et, before, after, snapshot(et, row))
-        plan.blocked = _check_refs(conn, et, before)
-        if plan.blocked is None and et == "user":
-            plan.blocked = _check_user_revert(conn, row, before)
+    if et == "task" and row["deleted_at"] is not None:
+        plan.blocked = "任務目前已刪除，請先還原刪除，再還原這次修改"
         return plan
+    plan.kind = "set_fields"
+    plan.fields = _field_rows(lab, et, before, after, snapshot(et, row))
+    plan.blocked = _check_refs(conn, et, before)
+    if plan.blocked is None and et == "user":
+        plan.blocked = _check_user_revert(conn, row, before)
+    return plan
 
-    if et == "task" and action in ("create", "restore"):
+
+def _plan_task(conn: sqlite3.Connection, plan: RevertPlan, action: str, row: Any) -> RevertPlan:
+    """任務：建立 / 還原 → 軟刪除；刪除 → 取消軟刪除"""
+    if action in ("create", "restore"):
         if row is None:
             plan.blocked = "任務已不存在"
         elif row["deleted_at"] is not None:
@@ -163,19 +187,22 @@ def plan_revert(conn: sqlite3.Connection, entry: Any, lab: Labeler | None = None
         else:
             plan.kind = "soft_delete"
         return plan
+    if row is None:
+        plan.blocked = "任務已不存在"
+    elif row["deleted_at"] is None:
+        plan.blocked = "任務目前沒有被刪除"
+    elif not _exists(conn, "projects", row["project_id"]) or not _exists(conn, "statuses", row["status_id"]):
+        plan.blocked = "任務的專案或狀態已不存在，無法還原"
+    else:
+        plan.kind = "undelete"
+    return plan
 
-    if et == "task" and action == "delete":
-        if row is None:
-            plan.blocked = "任務已不存在"
-        elif row["deleted_at"] is None:
-            plan.blocked = "任務目前沒有被刪除"
-        elif not _exists(conn, "projects", row["project_id"]) or not _exists(conn, "statuses", row["status_id"]):
-            plan.blocked = "任務的專案或狀態已不存在，無法還原"
-        else:
-            plan.kind = "undelete"
-        return plan
 
-    if et in ("status", "property") and action in ("create", "restore"):
+def _plan_status_property(
+    conn: sqlite3.Connection, plan: RevertPlan, et: str, action: str, eid: Any, row: Any, before: dict[str, Any]
+) -> RevertPlan:
+    """狀態 / 自訂欄位：新增（或刪除的還原）→ 刪除該列；刪除 → 以原編號重新建立"""
+    if action in ("create", "restore"):
         if row is None:
             plan.blocked = "這筆資料已被刪除"
             return plan
@@ -189,17 +216,12 @@ def plan_revert(conn: sqlite3.Connection, entry: Any, lab: Labeler | None = None
                 return plan
         plan.kind = "delete_row"
         return plan
-
-    if et in ("status", "property") and action == "delete":
-        if row is not None:
-            plan.blocked = "同一編號的資料已存在，無法還原"
-        elif et == "property" and not _exists(conn, "projects", before.get("projectId")):
-            plan.blocked = "此欄位所屬的專案已不存在"
-        else:
-            plan.kind = "recreate_row"
-        return plan
-
-    plan.blocked = entry["note"] or "此類操作無法自動還原"
+    if row is not None:
+        plan.blocked = "同一編號的資料已存在，無法還原"
+    elif et == "property" and not _exists(conn, "projects", before.get("projectId")):
+        plan.blocked = "此欄位所屬的專案已不存在"
+    else:
+        plan.kind = "recreate_row"
     return plan
 
 
