@@ -28,7 +28,7 @@ def test_get_profile():
         "id": user["id"],
         "username": user["username"],
         "displayName": user["display_name"],
-        "role": "member",
+        "role": "user",
         "createdAt": 1,
         "lastLoginAt": clock.now(),
     }
@@ -109,7 +109,7 @@ def test_role_and_other_fields_rejected():
     for body in ({"role": "admin"}, {"displayName": "ok", "role": "admin"}, {"isActive": False}, {"id": 999}):
         res = patch(api, body)
         assert res.status_code == 400, body
-    assert db.one("SELECT role, display_name FROM users WHERE id = ?", (user["id"],))["role"] == "member"
+    assert db.one("SELECT role, display_name FROM users WHERE id = ?", (user["id"],))["role"] == "user"
     assert db.one("SELECT display_name FROM users WHERE id = ?", (user["id"],))["display_name"] == user["display_name"]
 
 
