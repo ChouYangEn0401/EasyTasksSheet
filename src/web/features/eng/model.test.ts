@@ -3,6 +3,8 @@ import type { MachineGroup, ManualIssue, WorktreeReport } from '../../../shared/
 import {
   hintCount,
   knownNames,
+  linkedRepo,
+  needsGithubSync,
   openIssueCount,
   pathKey,
   readEngTab,
@@ -21,6 +23,10 @@ const issue = (id: number, status: ManualIssue['status']): ManualIssue => ({
   status,
   assigneeId: null,
   url: null,
+  githubRepo: null,
+  githubNumber: null,
+  githubState: null,
+  syncedAt: null,
   createdBy: null,
   updatedBy: null,
   createdAt: 0,
@@ -63,6 +69,24 @@ describe('問題', () => {
   });
   it('已知名稱去重排序、略過空白', () => {
     expect(knownNames(['b', ' a ', ''], [null, 'b', undefined])).toEqual(['a', 'b']);
+  });
+});
+
+describe('GitHub 連動', () => {
+  const MIN = 60_000;
+  it('有連結 GitHub 的問題中最舊的同步時間超過設定才自動同步', () => {
+    const plain = issue(1, 'open');
+    const gh = (syncedAt: number | null): ManualIssue => ({ ...issue(2, 'open'), githubNumber: 3, syncedAt });
+    expect(needsGithubSync([plain], 5, 100 * MIN)).toBe(false);
+    expect(needsGithubSync([plain, gh(null)], 5, 100 * MIN)).toBe(true);
+    expect(needsGithubSync([gh(96 * MIN)], 5, 100 * MIN)).toBe(false);
+    expect(needsGithubSync([gh(96 * MIN), gh(90 * MIN)], 5, 100 * MIN)).toBe(true);
+  });
+  it('專案連動的 repo 不分大小寫', () => {
+    const links = [{ project: 'Widgets', githubRepo: 'acme/widgets' }];
+    expect(linkedRepo(links, ' widgets ')).toBe('acme/widgets');
+    expect(linkedRepo(links, 'other')).toBeUndefined();
+    expect(linkedRepo(links, '')).toBeUndefined();
   });
 });
 

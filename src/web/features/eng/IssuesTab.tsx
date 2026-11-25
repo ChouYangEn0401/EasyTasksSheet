@@ -1,12 +1,16 @@
-import { useId, useState, type FormEvent } from 'react';
+import { createContext, useContext, useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import {
   ISSUE_STATUS_LABELS,
   ISSUE_STATUSES,
+  type GithubLink,
+  type IssuesResponse,
   type IssueStatus,
   type ManualIssue,
 } from '../../../shared/engManual.ts';
 import { errorMessage } from '../../lib/api.ts';
+import { formatDateTime } from '../../lib/format.ts';
 import { useUsersById } from '../../lib/hooks.ts';
+import { notifySuccess, toast } from '../../lib/toast.ts';
 import {
   Alert,
   Avatar,
@@ -26,10 +30,23 @@ import {
   type MenuItem,
   type SelectOption,
 } from '../../ui/index.ts';
-import { useDeleteIssue, useSaveIssue } from './api.ts';
+import { useDeleteIssue, usePublishIssue, useSaveIssue, useSyncIssues } from './api.ts';
 import { ExternalIcon, MoreIcon, NameList, SkeletonRows } from './bits.tsx';
+import { GithubDialog } from './GithubDialog.tsx';
 import { NONE, useUserOptions } from './userOptions.ts';
-import { ISSUE_TONE, openIssueCount, visibleIssues } from './model.ts';
+import { ISSUE_TONE, linkedRepo, needsGithubSync, openIssueCount, visibleIssues } from './model.ts';
+
+/** GitHub 連動狀態（未設定 token 時 enabled = false，畫面不出現任何 GitHub 按鈕） */
+type GithubCtx = { enabled: boolean; links: GithubLink[]; syncOne: (issue: ManualIssue) => void };
+const GithubContext = createContext<GithubCtx>({ enabled: false, links: [], syncOne: () => {} });
+
+/** 存檔後：若連結是尚未同步的 GitHub issue，立即同步一次（取得狀態與編號確認） */
+function useSyncAfterSave() {
+  const { enabled, syncOne } = useContext(GithubContext);
+  return (issue: ManualIssue) => {
+    if (enabled && issue.githubNumber != null && issue.syncedAt == null) syncOne(issue);
+  };
+}
 
 const STATUS_OPTIONS: SelectOption<IssueStatus>[] = ISSUE_STATUSES.map((s) => ({
   value: s,
@@ -69,6 +86,7 @@ function AddIssueForm({ listId }: { listId: string }) {
   const [form, setForm] = useState(emptyDraft);
   const [error, setError] = useState<string | null>(null);
   const save = useSaveIssue({ silent: true });
+  const afterSave = useSyncAfterSave();
   const userOptions = useUserOptions(form.assigneeId);
   const set = (patch: Partial<Draft>) => setForm((f) => ({ ...f, ...patch }));
 
@@ -78,7 +96,10 @@ function AddIssueForm({ listId }: { listId: string }) {
     setError(null);
     save.mutate(toInput(form), {
       // 保留專案與負責人，方便連續登錄同一專案的問題
-      onSuccess: () => setForm((f) => ({ ...emptyDraft(), project: f.project, assigneeId: f.assigneeId })),
+      onSuccess: (issue) => {
+        setForm((f) => ({ ...emptyDraft(), project: f.project, assigneeId: f.assigneeId }));
+        afterSave(issue);
+      },
       onError: (err) => setError(errorMessage(err)),
     });
   };
@@ -116,7 +137,7 @@ function AddIssueForm({ listId }: { listId: string }) {
             type="url"
             value={form.url}
             maxLength={500}
-            placeholder="https://…（選填）"
+            placeholder="https://…（選填，可貼 GitHub issue）"
             onChange={(e) => set({ url: e.target.value })}
           />
         </Field>
@@ -167,6 +188,7 @@ function IssueDialog({
   const [form, setForm] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const save = useSaveIssue({ silent: true });
+  const afterSave = useSyncAfterSave();
   const userOptions = useUserOptions(form.assigneeId);
   const set = (patch: Partial<Draft>) => setForm((f) => ({ ...f, ...patch }));
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
@@ -176,7 +198,13 @@ function IssueDialog({
     if (!form.title.trim() || save.isPending) return;
     save.mutate(
       { id: issue.id, ...toInput(form) },
-      { onSuccess: onClose, onError: (err) => setError(errorMessage(err)) },
+      {
+        onSuccess: (saved) => {
+          onClose();
+          afterSave(saved);
+        },
+        onError: (err) => setError(errorMessage(err)),
+      },
     );
   };
 
@@ -285,6 +313,31 @@ function DeleteDialog({ issue, onClose }: { issue: ManualIssue; onClose: () => v
   );
 }
 
+/** GitHub 小標記：#編號；滑過顯示 repo、GitHub 狀態與同步時間 */
+function GithubTag({ issue }: { issue: ManualIssue }) {
+  const state =
+    issue.githubState === 'closed' ? 'GitHub 已關閉' : issue.githubState === 'open' ? 'GitHub 開啟中' : null;
+  const tip = [
+    issue.githubRepo,
+    state,
+    issue.syncedAt != null ? `同步於 ${formatDateTime(issue.syncedAt)}` : '尚未同步',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  return (
+    <Tooltip content={tip}>
+      <span
+        className="eng-gh-tag tabular-nums"
+        data-state={issue.githubState ?? undefined}
+        tabIndex={0}
+        aria-label={`GitHub #${issue.githubNumber}（${tip}）`}
+      >
+        #{issue.githubNumber}
+      </span>
+    </Tooltip>
+  );
+}
+
 function IssueRow({
   issue,
   onEdit,
@@ -296,16 +349,32 @@ function IssueRow({
 }) {
   const byId = useUsersById();
   const save = useSaveIssue();
+  const publish = usePublishIssue();
+  const github = useContext(GithubContext);
   const assignee = issue.assigneeId != null ? byId.get(issue.assigneeId) : undefined;
   const setStatus = (status: IssueStatus) => {
     if (status !== issue.status) save.mutate({ id: issue.id, status });
   };
   const closed = issue.status === 'closed';
+  const publishRepo =
+    github.enabled && issue.githubNumber == null ? linkedRepo(github.links, issue.project) : undefined;
   const items: MenuItem[] = [
     { key: 'edit', label: '編輯', onSelect: onEdit },
     closed
       ? { key: 'reopen', label: '重新開啟', onSelect: () => setStatus('open') }
       : { key: 'close', label: '結案', onSelect: () => setStatus('closed') },
+    ...(publishRepo
+      ? [
+          {
+            key: 'publish',
+            label: `在 GitHub 建立（${publishRepo}）`,
+            onSelect: () =>
+              publish.mutate(issue.id, {
+                onSuccess: (res) => notifySuccess(`已在 GitHub 建立 #${res.githubNumber}`),
+              }),
+          },
+        ]
+      : []),
     { key: 'sep', separator: true },
     { key: 'delete', label: '刪除', danger: true, onSelect: onDelete },
   ];
@@ -327,6 +396,7 @@ function IssueRow({
                 <ExternalIcon />
               </a>
             )}
+            {issue.githubNumber != null && <GithubTag issue={issue} />}
           </span>
           {issue.description && (
             <Tooltip content={issue.description}>
@@ -388,74 +458,128 @@ export function IssuesTab({
   query,
   names,
 }: {
-  query: { data?: ManualIssue[]; error: unknown; refetch: () => void };
+  query: { data?: IssuesResponse; error: unknown; refetch: () => void };
   names: string[];
 }) {
   const listId = useId();
   const [showClosed, setShowClosed] = useState(false);
   const [editing, setEditing] = useState<ManualIssue | null>(null);
   const [deleting, setDeleting] = useState<ManualIssue | null>(null);
-  const all = query.data;
+  const [githubOpen, setGithubOpen] = useState(false);
+  const all = query.data?.issues;
   const issues = all ? visibleIssues(all, showClosed) : undefined;
   const closedCount = all ? all.length - openIssueCount(all) : 0;
 
+  const githubEnabled = query.data?.githubEnabled ?? false;
+  const links = query.data?.links ?? [];
+  const sync = useSyncIssues();
+  const autoSync = useSyncIssues({ auto: true });
+  const { mutate: autoMutate, isPending: autoPending } = autoSync;
+  const github: GithubCtx = { enabled: githubEnabled, links, syncOne: (i) => autoMutate(i.id) };
+
+  // 列表載入時若距上次同步超過設定分鐘數，自動同步一次（同一頁面停留期間最多每 syncMinutes 一次，失敗不重試轟炸）
+  const lastAuto = useRef(0);
+  useEffect(() => {
+    const data = query.data;
+    if (!data?.githubEnabled || autoPending || sync.isPending) return;
+    const now = Date.now();
+    if (now - lastAuto.current < data.syncMinutes * 60_000) return;
+    if (!needsGithubSync(data.issues, data.syncMinutes, now)) return;
+    lastAuto.current = now;
+    autoMutate(undefined);
+  }, [query.data, autoPending, autoMutate, sync.isPending]);
+
+  const runSync = () =>
+    sync.mutate(undefined, {
+      onSuccess: (res) => {
+        if (res.failed.length > 0) {
+          toast({
+            tone: 'warning',
+            title: `${res.failed.length} 筆無法同步`,
+            description: res.failed[0]?.message,
+          });
+        } else {
+          notifySuccess(res.updated.length ? `已同步，${res.updated.length} 筆狀態更新` : '已同步');
+        }
+      },
+    });
+
   return (
-    <section className="eng-section" aria-label="問題">
-      <NameList id={listId} names={names} />
-      <AddIssueForm listId={listId} />
+    <GithubContext.Provider value={github}>
+      <section className="eng-section" aria-label="問題">
+        <NameList id={listId} names={names} />
+        <AddIssueForm listId={listId} />
 
-      <div className="eng-toolbar">
-        <Checkbox
-          label={`顯示已結案（${closedCount}）`}
-          checked={showClosed}
-          onChange={(e) => setShowClosed(e.target.checked)}
-        />
-      </div>
-
-      {!all && query.error ? (
-        <ErrorState error={query.error} onRetry={query.refetch} />
-      ) : issues && issues.length === 0 ? (
-        <div className="eng-card">
-          <EmptyState
-            icon="checkCircle"
-            title={all && all.length > 0 ? '沒有未結案的問題' : '尚未記錄任何問題'}
-            description="在上方輸入標題即可新增"
+        <div className="eng-toolbar">
+          <Checkbox
+            label={`顯示已結案（${closedCount}）`}
+            checked={showClosed}
+            onChange={(e) => setShowClosed(e.target.checked)}
           />
+          {githubEnabled && (
+            <span className="eng-toolbar-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="refresh"
+                loading={sync.isPending || autoSync.isPending}
+                onClick={runSync}
+              >
+                同步 GitHub
+              </Button>
+              <Button variant="ghost" size="sm" icon="branch" onClick={() => setGithubOpen(true)}>
+                GitHub 連動 / 匯入
+              </Button>
+            </span>
+          )}
         </div>
-      ) : (
-        <div className="eng-card eng-scroll">
-          <table className="eng-table">
-            <thead>
-              <tr>
-                <th scope="col">標題</th>
-                <th scope="col">專案 / Repo</th>
-                <th scope="col">狀態</th>
-                <th scope="col">負責人</th>
-                <th scope="col">更新</th>
-                <th scope="col" className="eng-col-action">
-                  <span className="sr-only">操作</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {issues ? (
-                issues.map((i) => (
-                  <IssueRow
-                    key={i.id}
-                    issue={i}
-                    onEdit={() => setEditing(i)}
-                    onDelete={() => setDeleting(i)}
-                  />
-                ))
-              ) : (
-                <SkeletonRows rows={5} cols={6} />
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {editing && <IssueDialog issue={editing} listId={listId} onClose={() => setEditing(null)} />}
-      {deleting && <DeleteDialog issue={deleting} onClose={() => setDeleting(null)} />}
-    </section>
+
+        {!all && query.error ? (
+          <ErrorState error={query.error} onRetry={query.refetch} />
+        ) : issues && issues.length === 0 ? (
+          <div className="eng-card">
+            <EmptyState
+              icon="checkCircle"
+              title={all && all.length > 0 ? '沒有未結案的問題' : '尚未記錄任何問題'}
+              description="在上方輸入標題即可新增"
+            />
+          </div>
+        ) : (
+          <div className="eng-card eng-scroll">
+            <table className="eng-table">
+              <thead>
+                <tr>
+                  <th scope="col">標題</th>
+                  <th scope="col">專案 / Repo</th>
+                  <th scope="col">狀態</th>
+                  <th scope="col">負責人</th>
+                  <th scope="col">更新</th>
+                  <th scope="col" className="eng-col-action">
+                    <span className="sr-only">操作</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {issues ? (
+                  issues.map((i) => (
+                    <IssueRow
+                      key={i.id}
+                      issue={i}
+                      onEdit={() => setEditing(i)}
+                      onDelete={() => setDeleting(i)}
+                    />
+                  ))
+                ) : (
+                  <SkeletonRows rows={5} cols={6} />
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {editing && <IssueDialog issue={editing} listId={listId} onClose={() => setEditing(null)} />}
+        {deleting && <DeleteDialog issue={deleting} onClose={() => setDeleting(null)} />}
+        {githubOpen && <GithubDialog links={links} listId={listId} onClose={() => setGithubOpen(false)} />}
+      </section>
+    </GithubContext.Provider>
   );
 }

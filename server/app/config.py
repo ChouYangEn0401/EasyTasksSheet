@@ -45,6 +45,8 @@ class Config:
 
     GITHUB_TOKEN: str | None = None
     GITHUB_API_URL: str = "https://api.github.com"
+    #: 前端載入問題列表時，距上次同步超過幾分鐘就自動同步一次
+    GITHUB_SYNC_MINUTES: float = 5
     ISSUE_CACHE_MINUTES: float = 5
     WORKTREE_STALE_DAYS: float = 7
     WORKTREE_REPORT_TOKEN: str | None = None
@@ -67,6 +69,7 @@ _POSITIVE_FLOAT = {
     "LOGIN_LOCK_MINUTES",
     "CHANGES_RETENTION_DAYS",
     "ISSUE_CACHE_MINUTES",
+    "GITHUB_SYNC_MINUTES",
     "WORKTREE_STALE_DAYS",
 }
 _POSITIVE_INT = {"LOGIN_MAX_FAILS_PER_USER", "LOGIN_MAX_FAILS_PER_IP", "GIT_TIMEOUT_MS"}

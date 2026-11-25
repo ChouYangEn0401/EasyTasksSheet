@@ -290,7 +290,24 @@ sudo journalctl -u tasks-sheets -n 50                                  # 6. 確�
   ```
 
   腳本會把本機 `git worktree list` 的快照（dirty / ahead / behind / 是否已併入 main）送到 `POST /api/eng/worktrees/report`，頁面上會與手動紀錄比對並提示「可能遺失 / 未登記」，僅供參考。腳本只依賴 Node 內建模組，可單獨複製到其他電腦；可用排程（cron / 工作排程器）定期執行。`GIT_TIMEOUT_MS` 環境變數可調整腳本內 git 指令逾時（預設 10000）。
-- **GitHub 連動**：選配功能，**目前未實作**。
+- **GitHub 連動**：選配功能，見下方「選配：GitHub 連動」。
+
+### 選配：GitHub 連動
+
+沒設定 token 時完全不連網、畫面不出現 GitHub 按鈕，問題仍以手記為主。設定後：
+
+- 問題的「連結」貼上 GitHub issue 網址（`https://github.com/<owner>/<repo>/issues/<n>`）→ 自動顯示 `#編號`，並定期同步狀態（GitHub 關閉 → 已結案、重開 → 未處理；GitHub 端沒變動時不覆蓋本地手動改的狀態）。
+- 「GitHub 連動 / 匯入」：把專案名稱對應到 GitHub repo，可匯入開啟中的 issue（不重複建立）；問題的「⋯」選單可「在 GitHub 建立」。
+
+在伺服器 `.env` 設定（token **只存在 server 的 `.env`**，不會傳到瀏覽器）並重啟服務：
+
+| 變數                  | 預設                     | 說明                                                   |
+| --------------------- | ------------------------ | ------------------------------------------------------ |
+| `GITHUB_TOKEN`        | （空）                   | GitHub token；空白 = 停用 GitHub 連動                  |
+| `GITHUB_API_URL`      | `https://api.github.com` | API 位址（GitHub Enterprise 可改）                     |
+| `GITHUB_SYNC_MINUTES` | `5`                      | 開啟問題列表時，距上次同步超過幾分鐘就自動同步一次     |
+
+token 權限：fine-grained token 選定相關 repo，**Issues：Read-only** 即可同步與匯入；要「在 GitHub 建立」則需 **Issues：Read and write**。classic token 用 `repo` 範圍（公開 repo 可用 `public_repo`）。
 
 ## 常見問題
 

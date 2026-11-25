@@ -31,7 +31,8 @@ export function EngPage() {
   const names = useMemo(
     () =>
       knownNames(
-        (issues.data ?? []).map((i) => i.project),
+        (issues.data?.issues ?? []).map((i) => i.project),
+        (issues.data?.links ?? []).map((l) => l.project),
         (projects.data ?? []).filter((p) => !p.isArchived).map((p) => p.name),
         (worktrees.data?.machines ?? []).flatMap((m) => m.reports.map((r) => r.repo)),
       ),
@@ -59,7 +60,7 @@ export function EngPage() {
     <div className="eng-page">
       <div className="eng-tabs">
         <nav className="view-tabs-nav" aria-label="工程追蹤">
-          {tabLink('issues', '問題', issues.data ? openIssueCount(issues.data) : undefined)}
+          {tabLink('issues', '問題', issues.data ? openIssueCount(issues.data.issues) : undefined)}
           {tabLink(
             'worktrees',
             'Worktree',

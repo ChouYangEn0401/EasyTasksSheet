@@ -155,6 +155,44 @@
   .eng-link-icon:hover {
     color: var(--color-accent-text);
   }
+  /* ── GitHub 連動（選配） ── */
+  .eng-toolbar-end {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-left: auto;
+  }
+  .eng-gh-tag {
+    flex: none;
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 0 var(--space-1);
+    line-height: 18px;
+  }
+  .eng-gh-tag[data-state='closed'] {
+    color: var(--color-success-text);
+  }
+  .eng-gh-links {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .eng-gh-link {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .eng-dialog-text code {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
   .eng-status-select {
     display: inline-block;
     width: 148px;

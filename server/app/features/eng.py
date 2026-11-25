@@ -5,6 +5,8 @@
 - 回報（worktree_reports）：各人電腦以 scripts/report-worktrees.mjs 回報 `git worktree list` 快照，
   POST /api/eng/worktrees/report 免 session，只以 WORKTREE_REPORT_TOKEN 驗證（未設定一律 403）
 - 伺服器端不執行任何 git 指令；紀錄與回報的比對只是參考提示（可能遺失 / 未登記）
+- GitHub 連動（選配，需 GITHUB_TOKEN）：「連結」為 GitHub issue 網址時自動解析 repo / 編號；
+  同步 / 匯入 / 在 GitHub 建立 / 專案連動設定。GET 不做網路呼叫，過期時由前端呼叫 /issues/sync
 
 變更紀錄沿用既有實體類型（前端即時同步已對應到 ['eng']）：問題與回報記為 repo、worktree 紀錄記為 worktree_plan。
 """
@@ -15,16 +17,19 @@ import hashlib
 import hmac
 import re
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import AfterValidator, BaseModel, Field, StringConstraints
+from starlette.concurrency import run_in_threadpool
 
 from ..changes import record_change
 from ..config import config
 from ..context import get_ctx
 from ..errors import HttpError, bad_request, forbidden, not_found
+from ..github import GitHubClient, GitHubClientProtocol, GitHubError, normalize_repo, parse_issue_url
 from ..validate import parse_id, present, read_json
 
 router = APIRouter()
@@ -122,6 +127,10 @@ def _issue(r: sqlite3.Row) -> dict[str, Any]:
         "status": r["status"],
         "assigneeId": r["assignee_id"],
         "url": r["url"],
+        "githubRepo": r["github_repo"],
+        "githubNumber": r["github_number"],
+        "githubState": r["github_state"],
+        "syncedAt": r["github_synced_at"],
         "createdBy": r["created_by"],
         "updatedBy": r["updated_by"],
         "createdAt": r["created_at"],
@@ -199,12 +208,32 @@ _ISSUE_COLUMNS = {
 _ISSUE_NOT_FOUND = "此問題不存在或已被刪除"
 
 
+def _github_columns(url: str | None) -> dict[str, Any]:
+    """「連結」對應的 GitHub 欄位：GitHub issue 網址 → repo / 編號（尚未同步）；其他網址 → 全部清空"""
+    parsed = parse_issue_url(url)
+    return {
+        "github_repo": parsed[0] if parsed else None,
+        "github_number": parsed[1] if parsed else None,
+        "github_state": None,
+        "github_title": None,
+        "github_synced_at": None,
+    }
+
+
 @router.get("/issues")
 async def list_issues(request: Request):
-    rows = get_ctx(request).db.all(
+    """全部問題 + GitHub 連動狀態（不在此做任何網路呼叫；過期時由前端呼叫 /issues/sync）"""
+    db = get_ctx(request).db
+    rows = db.all(
         "SELECT * FROM manual_issues ORDER BY CASE status WHEN 'closed' THEN 1 ELSE 0 END, updated_at DESC, id DESC"
     )
-    return [_issue(r) for r in rows]
+    links = db.all("SELECT * FROM eng_github_links ORDER BY project COLLATE NOCASE")
+    return {
+        "githubEnabled": _github_token(request) is not None,
+        "syncMinutes": config.GITHUB_SYNC_MINUTES,
+        "links": [_link(r) for r in links],
+        "issues": [_issue(r) for r in rows],
+    }
 
 
 @router.post("/issues")
@@ -215,10 +244,12 @@ async def create_issue(request: Request):
     t = ctx.now()
     with ctx.db.tx() as conn:
         _check_user(conn, fields.get("assigneeId"), "負責人")
-        cols = [_ISSUE_COLUMNS[k] for k in fields] + ["created_by", "updated_by", "created_at", "updated_at"]
+        values = {_ISSUE_COLUMNS[k]: v for k, v in fields.items()}
+        values.update(_github_columns(fields.get("url")))
+        values.update(created_by=uid, updated_by=uid, created_at=t, updated_at=t)
         cur = conn.execute(
-            f"INSERT INTO manual_issues ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
-            (*fields.values(), uid, uid, t, t),
+            f"INSERT INTO manual_issues ({', '.join(values)}) VALUES ({', '.join('?' * len(values))})",
+            tuple(values.values()),
         )
         iid = int(cur.lastrowid)  # type: ignore[arg-type]
         record_change(conn, "repo", iid, "create", uid, t)
@@ -234,10 +265,14 @@ async def update_issue(request: Request, id: str):
     uid = ctx.user["id"]
     t = ctx.now()
     with ctx.db.tx() as conn:
-        if not conn.execute("SELECT 1 FROM manual_issues WHERE id = ?", (iid,)).fetchone():
+        current = conn.execute("SELECT url FROM manual_issues WHERE id = ?", (iid,)).fetchone()
+        if current is None:
             raise not_found(_ISSUE_NOT_FOUND)
         _check_user(conn, fields.get("assigneeId"), "負責人")
         sets = {_ISSUE_COLUMNS[k]: v for k, v in fields.items()}
+        # 連結改了才重新解析（同一個 GitHub issue 保留同步狀態）
+        if "url" in fields and parse_issue_url(fields["url"]) != parse_issue_url(current["url"]):
+            sets.update(_github_columns(fields["url"]))
         sets.update(updated_by=uid, updated_at=t)
         conn.execute(
             f"UPDATE manual_issues SET {', '.join(f'{c} = ?' for c in sets)} WHERE id = ?", (*sets.values(), iid)
@@ -256,6 +291,271 @@ async def delete_issue(request: Request, id: str):
             raise not_found(_ISSUE_NOT_FOUND)
         record_change(conn, "repo", iid, "delete", ctx.user["id"], ctx.now())
     return {"ok": True}
+
+
+# ── GitHub 連動（選配；未設定 GITHUB_TOKEN 時以下端點一律 503，其餘功能不受影響） ──
+
+_NO_TOKEN = "伺服器未設定 GITHUB_TOKEN，GitHub 連動停用"
+#: 同步時同時對 GitHub 發出的請求數
+_SYNC_WORKERS = 4
+
+
+class GithubLinkInput(_Input):
+    project: _text(100, 1)  # type: ignore[valid-type]
+    githubRepo: _text(200, 1)  # type: ignore[valid-type]
+
+
+class GithubLinksInput(_Input):
+    links: Annotated[list[GithubLinkInput], Field(max_length=200)]
+
+
+class SyncInput(_Input):
+    id: Annotated[int, Field(gt=0)] | None = None
+
+
+class ImportInput(_Input):
+    project: _text(100, 1)  # type: ignore[valid-type]
+
+
+def _link(r: sqlite3.Row) -> dict[str, Any]:
+    return {"project": r["project"], "githubRepo": r["github_repo"]}
+
+
+def _github_token(request: Request) -> str | None:
+    """GitHub token；測試可以 app.state.github_token 覆寫。只在 server 端使用，絕不回傳前端"""
+    return getattr(request.app.state, "github_token", config.GITHUB_TOKEN) or None
+
+
+def _github(request: Request) -> GitHubClientProtocol:
+    """未設定 token → 503；測試可以 app.state.github_client 注入假的用戶端"""
+    token = _github_token(request)
+    if token is None:
+        raise HttpError(503, "GITHUB_DISABLED", _NO_TOKEN)
+    injected = getattr(request.app.state, "github_client", None)
+    return injected or GitHubClient(token, config.GITHUB_API_URL)
+
+
+def _bad_gateway(e: GitHubError) -> HttpError:
+    return HttpError(502, "GITHUB_ERROR", e.message)
+
+
+def github_changes(row: sqlite3.Row | dict[str, Any], gh: dict[str, Any]) -> dict[str, Any]:
+    """同步規則：只有 GitHub 端「有變動」時才覆蓋本地欄位（本地手動改的狀態 / 標題不會被蓋回去）。
+
+    - GitHub 狀態由「非關閉」→ closed：本地改為已結案
+    - GitHub 狀態由 closed → open（重開）：本地若為已結案則改回未處理
+    - GitHub 標題與上次同步的不同：覆蓋本地標題（第一次同步不覆蓋）
+    回傳要更新的本地欄位（不含 github_* 紀錄欄位）
+    """
+    out: dict[str, Any] = {}
+    prev_state, new_state = row["github_state"], gh["state"]
+    if new_state != prev_state:
+        if new_state == "closed" and row["status"] != "closed":
+            out["status"] = "closed"
+        elif new_state == "open" and prev_state == "closed" and row["status"] == "closed":
+            out["status"] = "open"
+    title = (gh.get("title") or "").strip()[:200]
+    if title and row["github_title"] is not None and title != row["github_title"] and title != row["title"]:
+        out["title"] = title
+    return out
+
+
+def _fetch_all(client: GitHubClientProtocol, targets: list[tuple[int, str, int]]) -> dict[int, Any]:
+    """平行取回各 issue；結果為 dict 或 GitHubError（單筆失敗不影響其他筆）"""
+
+    def one(target: tuple[int, str, int]) -> tuple[int, Any]:
+        iid, repo, number = target
+        try:
+            return iid, client.get_issue(repo, number)
+        except GitHubError as e:
+            return iid, e
+        except Exception:  # noqa: BLE001（任何意外都不讓整批失敗）
+            return iid, GitHubError("同步失敗")
+
+    if not targets:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(_SYNC_WORKERS, len(targets))) as pool:
+        return dict(pool.map(one, targets))
+
+
+@router.post("/issues/sync")
+async def sync_issues(request: Request):
+    """向 GitHub 取回有 GitHub 資訊之問題的最新狀態 / 標題；可帶 id 只同步一筆"""
+    ctx = get_ctx(request)
+    client = _github(request)
+    data = await read_json(request, SyncInput)
+    if data.id is not None:
+        row = ctx.db.one("SELECT * FROM manual_issues WHERE id = ?", (data.id,))
+        if row is None:
+            raise not_found(_ISSUE_NOT_FOUND)
+        if row["github_number"] is None:
+            raise bad_request("此問題沒有連結 GitHub issue")
+    targets = [
+        (r["id"], r["github_repo"], r["github_number"])
+        for r in ctx.db.all(
+            "SELECT id, github_repo, github_number FROM manual_issues WHERE github_number IS NOT NULL"
+            + (" AND id = ?" if data.id is not None else ""),
+            (data.id,) if data.id is not None else (),
+        )
+    ]
+    # 網路呼叫在 transaction 外進行，不佔住資料庫
+    results = await run_in_threadpool(_fetch_all, client, targets)
+
+    uid = ctx.user["id"]
+    t = ctx.now()
+    updated: list[int] = []
+    failed: list[dict[str, Any]] = []
+    with ctx.db.tx() as conn:
+        for iid, res in results.items():
+            if isinstance(res, GitHubError):
+                failed.append({"id": iid, "message": res.message})
+                continue
+            row = conn.execute("SELECT * FROM manual_issues WHERE id = ?", (iid,)).fetchone()
+            if row is None:  # 同步期間被刪除
+                continue
+            sets = github_changes(row, res)
+            if sets:
+                sets.update(updated_by=uid, updated_at=t)
+                updated.append(iid)
+            sets.update(github_state=res["state"], github_title=(res.get("title") or "").strip()[:200], github_synced_at=t)
+            conn.execute(
+                f"UPDATE manual_issues SET {', '.join(f'{c} = ?' for c in sets)} WHERE id = ?", (*sets.values(), iid)
+            )
+            record_change(conn, "repo", iid, "update", uid, t)
+    return {"checked": len(targets), "updated": updated, "failed": failed, "syncedAt": t}
+
+
+@router.put("/github-links")
+async def save_github_links(request: Request):
+    """專案連動整批取代：問題的「專案 / Repo」名稱 → GitHub owner/name"""
+    ctx = get_ctx(request)
+    _github(request)
+    data = await read_json(request, GithubLinksInput)
+    links: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for link in data.links:
+        repo = normalize_repo(link.githubRepo)
+        if repo is None:
+            raise bad_request(f"「{link.githubRepo}」不是有效的 GitHub repo（格式：owner/name）")
+        if link.project.lower() in seen:
+            raise bad_request(f"專案「{link.project}」重複")
+        seen.add(link.project.lower())
+        links.append((link.project, repo))
+    uid = ctx.user["id"]
+    t = ctx.now()
+    with ctx.db.tx() as conn:
+        conn.execute("DELETE FROM eng_github_links")
+        conn.executemany(
+            "INSERT INTO eng_github_links (project, github_repo, updated_by, updated_at) VALUES (?, ?, ?, ?)",
+            [(p, r, uid, t) for p, r in links],
+        )
+        record_change(conn, "repo", 0, "update", uid, t)
+        rows = conn.execute("SELECT * FROM eng_github_links ORDER BY project COLLATE NOCASE").fetchall()
+    return {"links": [_link(r) for r in rows]}
+
+
+def _linked_repo(conn: sqlite3.Connection, project: str) -> str:
+    row = conn.execute("SELECT github_repo FROM eng_github_links WHERE project = ?", (project.strip(),)).fetchone()
+    if row is None:
+        raise bad_request(f"專案「{project}」尚未連動 GitHub repo")
+    return row["github_repo"]
+
+
+@router.post("/issues/import")
+async def import_issues(request: Request):
+    """匯入專案連動 repo 中開啟中的 issue；以 repo + 編號去重，已存在者略過"""
+    ctx = get_ctx(request)
+    client = _github(request)
+    data = await read_json(request, ImportInput)
+    with ctx.db.tx() as conn:
+        repo = _linked_repo(conn, data.project)
+    try:
+        items = await run_in_threadpool(client.list_open_issues, repo)
+    except GitHubError as e:
+        raise _bad_gateway(e) from None
+
+    uid = ctx.user["id"]
+    t = ctx.now()
+    created: list[int] = []
+    with ctx.db.tx() as conn:
+        existing = {
+            r[0]
+            for r in conn.execute("SELECT github_number FROM manual_issues WHERE github_repo = ?", (repo,)).fetchall()
+        }
+        for gh in items:
+            if gh["number"] in existing or gh.get("is_pull"):
+                continue
+            existing.add(gh["number"])
+            title = (gh["title"] or "").strip()[:200] or f"#{gh['number']}"
+            cur = conn.execute(
+                "INSERT INTO manual_issues (title, description, project, status, url, github_repo, github_number, "
+                "github_state, github_title, github_synced_at, created_by, updated_by, created_at, updated_at) "
+                "VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    title,
+                    (gh["body"] or "").strip()[:5000],
+                    data.project,
+                    (gh["html_url"] or f"https://github.com/{repo}/issues/{gh['number']}")[:500],
+                    repo,
+                    gh["number"],
+                    gh["state"],
+                    title,
+                    t,
+                    uid,
+                    uid,
+                    t,
+                    t,
+                ),
+            )
+            iid = int(cur.lastrowid)  # type: ignore[arg-type]
+            record_change(conn, "repo", iid, "create", uid, t)
+            created.append(iid)
+    return {"repo": repo, "created": len(created), "skipped": len(items) - len(created)}
+
+
+@router.post("/issues/{id}/publish")
+async def publish_issue(request: Request, id: str):
+    """在專案連動的 GitHub repo 建立 issue（標題 / 說明），成功後寫回連結與編號"""
+    ctx = get_ctx(request)
+    iid = parse_id(id)
+    client = _github(request)
+    with ctx.db.tx() as conn:
+        row = conn.execute("SELECT * FROM manual_issues WHERE id = ?", (iid,)).fetchone()
+        if row is None:
+            raise not_found(_ISSUE_NOT_FOUND)
+        if row["github_number"] is not None:
+            raise bad_request("此問題已連結 GitHub issue")
+        if not row["project"]:
+            raise bad_request("請先填寫專案，並在「GitHub 連動」設定對應的 repo")
+        repo = _linked_repo(conn, row["project"])
+    try:
+        gh = await run_in_threadpool(client.create_issue, repo, row["title"], row["description"])
+    except GitHubError as e:
+        raise _bad_gateway(e) from None
+
+    uid = ctx.user["id"]
+    t = ctx.now()
+    with ctx.db.tx() as conn:
+        conn.execute(
+            "UPDATE manual_issues SET url = ?, github_repo = ?, github_number = ?, github_state = ?, github_title = ?, "
+            "github_synced_at = ?, updated_by = ?, updated_at = ? WHERE id = ?",
+            (
+                (gh["html_url"] or f"https://github.com/{repo}/issues/{gh['number']}")[:500],
+                repo,
+                gh["number"],
+                gh["state"],
+                (gh["title"] or "").strip()[:200],
+                t,
+                uid,
+                t,
+                iid,
+            ),
+        )
+        record_change(conn, "repo", iid, "update", uid, t)
+        row = conn.execute("SELECT * FROM manual_issues WHERE id = ?", (iid,)).fetchone()
+    if row is None:  # 建立期間被刪除（GitHub 端仍已建立）
+        raise not_found(_ISSUE_NOT_FOUND)
+    return _issue(row)
 
 
 # ── Worktree 紀錄 ──

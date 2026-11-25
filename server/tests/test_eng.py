@@ -60,7 +60,8 @@ def test_issue_crud_by_any_member():
     # 列表：未結案在前
     api.request("POST", "/api/eng/issues", {"title": "第二個"})
     listed = api.get("/api/eng/issues").json()
-    assert [i["title"] for i in listed] == ["第二個", "登入頁跑版"]
+    assert listed["githubEnabled"] is False and listed["links"] == []
+    assert [i["title"] for i in listed["issues"]] == ["第二個", "登入頁跑版"]
 
     assert api.request("DELETE", f"/api/eng/issues/{issue['id']}").json() == {"ok": True}
     assert api.request("DELETE", f"/api/eng/issues/{issue['id']}").status_code == 404

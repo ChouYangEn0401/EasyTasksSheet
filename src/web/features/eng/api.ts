@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  GithubLink,
+  GithubLinksResponse,
+  ImportResult,
+  IssuesResponse,
   ManualIssue,
+  SyncResult,
   ManualIssueInput,
   WorktreeRecord,
   WorktreeRecordInput,
@@ -18,8 +23,46 @@ export const engKeys = {
 export function useIssues() {
   return useQuery({
     queryKey: engKeys.issues(),
-    queryFn: ({ signal }) => api.get<ManualIssue[]>('/eng/issues', { signal }),
+    queryFn: ({ signal }) => api.get<IssuesResponse>('/eng/issues', { signal }),
     refetchInterval: LIST_POLL_MS,
+  });
+}
+
+// ── GitHub 連動（選配；githubEnabled 時前端才會呼叫） ──
+
+/** 同步 GitHub 狀態；auto（列表載入時自動觸發）失敗不跳全域 toast */
+export function useSyncIssues({ auto = false }: { auto?: boolean } = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: auto ? { errorToast: false } : undefined,
+    mutationFn: (id?: number) => api.post<SyncResult>('/eng/issues/sync', id ? { id } : {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.issues() }),
+  });
+}
+
+export function useImportIssues() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { errorToast: false },
+    mutationFn: (project: string) => api.post<ImportResult>('/eng/issues/import', { project }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.issues() }),
+  });
+}
+
+export function usePublishIssue() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.post<ManualIssue>(`/eng/issues/${id}/publish`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.issues() }),
+  });
+}
+
+export function useSaveGithubLinks() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { errorToast: false },
+    mutationFn: (links: GithubLink[]) => api.put<GithubLinksResponse>('/eng/github-links', { links }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.issues() }),
   });
 }
 

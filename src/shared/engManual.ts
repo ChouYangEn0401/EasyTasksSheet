@@ -19,11 +19,47 @@ export type ManualIssue = {
   status: IssueStatus;
   assigneeId: number | null;
   url: string | null;
+  /** 「連結」為 GitHub issue 網址時由後端解析（小寫 owner/name 與編號）；其他情況為 null */
+  githubRepo: string | null;
+  githubNumber: number | null;
+  /** 上次同步時 GitHub 端的狀態（尚未同步為 null） */
+  githubState: GithubState | null;
+  /** 上次成功同步的時間 */
+  syncedAt: number | null;
   createdBy: number | null;
   updatedBy: number | null;
   createdAt: number;
   updatedAt: number;
 };
+
+export type GithubState = 'open' | 'closed';
+
+/** 專案連動：問題的「專案 / Repo」名稱（不分大小寫）→ GitHub owner/name */
+export type GithubLink = { project: string; githubRepo: string };
+
+/** GET /api/eng/issues */
+export type IssuesResponse = {
+  /** 伺服器是否設定了 GITHUB_TOKEN（token 本身絕不回傳） */
+  githubEnabled: boolean;
+  /** 距上次同步超過幾分鐘，前端載入時自動同步一次 */
+  syncMinutes: number;
+  links: GithubLink[];
+  issues: ManualIssue[];
+};
+
+/** POST /api/eng/issues/sync（body：{} 或 { id }） */
+export type SyncResult = {
+  checked: number;
+  updated: number[];
+  failed: { id: number; message: string }[];
+  syncedAt: number;
+};
+
+/** POST /api/eng/issues/import（body：{ project }） */
+export type ImportResult = { repo: string; created: number; skipped: number };
+
+/** PUT /api/eng/github-links（body：{ links }，整批取代）；POST /issues/:id/publish 則回傳 ManualIssue */
+export type GithubLinksResponse = { links: GithubLink[] };
 
 /** POST /api/eng/issues（title 必填）；PATCH 只送改動欄位 */
 export type ManualIssueInput = {

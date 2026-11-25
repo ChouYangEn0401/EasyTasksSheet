@@ -93,6 +93,38 @@ test('問題：手動新增 → 改狀態 → 編輯 → 結案 → 顯示已結
   expect(errors.filter((e) => !e.includes('Failed to load resource'))).toEqual([]);
 });
 
+test('GitHub 連動（未設定 token）：不顯示 GitHub 按鈕；貼 GitHub issue 網址會解析出編號', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await loginViaUi(page, E2E_USERS.member, '/eng');
+  const enabled = ((await (await page.request.get('/api/eng/issues')).json()) as { githubEnabled: boolean })
+    .githubEnabled;
+  test.skip(enabled, 'E2E 伺服器設定了 GITHUB_TOKEN');
+
+  await expect(page.getByRole('button', { name: /GitHub/ })).toHaveCount(0);
+
+  const title = `E2E GitHub ${stamp}`;
+  const form = page.getByRole('form', { name: '新增問題' });
+  await form.getByLabel('標題').fill(title);
+  await form.getByLabel('連結').fill('https://github.com/Acme/Widgets/issues/42');
+  await form.getByRole('button', { name: '新增問題' }).click();
+  const row = issueRow(page, title);
+  await expect(row.getByText('#42')).toBeVisible();
+  // 一般網址不顯示編號
+  await row.getByRole('button', { name: `「${title}」的操作` }).click();
+  await expect(page.getByRole('menuitem', { name: '編輯' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: /GitHub/ })).toHaveCount(0);
+  await page.getByRole('menuitem', { name: '編輯' }).click();
+  const dialog = page.getByRole('dialog', { name: '編輯問題' });
+  await dialog.getByLabel('連結').fill('https://example.com/issue/42');
+  await dialog.getByRole('button', { name: '儲存' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(row.getByText('#42')).toHaveCount(0);
+
+  expect(errors.filter((e) => !e.includes('Failed to load resource'))).toEqual([]);
+});
+
 test('Worktree：手動新增紀錄、回報快照依電腦分組、未登記與可能遺失提示', async ({ page }) => {
   const errors = collectErrors(page);
   // 未設定回報 token：回報端點一律 403（不需登入）

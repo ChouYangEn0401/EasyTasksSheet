@@ -1,4 +1,5 @@
 import type {
+  GithubLink,
   IssueStatus,
   MachineGroup,
   ManualIssue,
@@ -39,6 +40,27 @@ export const visibleIssues = (issues: ManualIssue[], showClosed: boolean) =>
   showClosed ? issues : issues.filter((i) => i.status !== 'closed');
 
 export const openIssueCount = (issues: ManualIssue[]) => issues.filter((i) => i.status !== 'closed').length;
+
+// ── GitHub 連動 ──
+
+/** 是否需要自動同步：有連結 GitHub 的問題，且其中最舊的同步時間（未同步視為最舊）已超過 syncMinutes */
+export function needsGithubSync(
+  issues: ManualIssue[],
+  syncMinutes: number,
+  now: number = Date.now(),
+): boolean {
+  const linked = issues.filter((i) => i.githubNumber != null);
+  if (linked.length === 0) return false;
+  const oldest = Math.min(...linked.map((i) => i.syncedAt ?? 0));
+  return now - oldest > syncMinutes * 60_000;
+}
+
+/** 問題所屬專案連動的 GitHub repo（名稱不分大小寫、去除前後空白） */
+export function linkedRepo(links: GithubLink[], project: string): string | undefined {
+  const k = project.trim().toLowerCase();
+  if (!k) return undefined;
+  return links.find((l) => l.project.trim().toLowerCase() === k)?.githubRepo;
+}
 
 /** 已知的專案 / repo 名稱（供輸入框下拉建議），去重排序 */
 export function knownNames(...lists: (string | null | undefined)[][]): string[] {
