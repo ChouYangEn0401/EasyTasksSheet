@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field, StringConstraints, ValidationError
 from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
+from .. import audit_events
 from .. import data_transfer as dt
 from ..backup import BackupError
 from ..config import config
@@ -212,10 +213,17 @@ async def import_apply(request: Request, ctx: Ctx = Depends(require("data.import
         mode=data.mode,
         confirm=data.confirm,
     )
+    t = ctx.now()
     try:
         result = await run_in_threadpool(
             lambda: dt.apply_import(
-                ctx.db, doc, opts, actor_id=ctx.user["id"], now=ctx.now(), backup_dir=_backup_dir(request)
+                ctx.db,
+                doc,
+                opts,
+                actor_id=ctx.user["id"],
+                now=t,
+                backup_dir=_backup_dir(request),
+                on_applied=lambda conn, res: audit_events.import_applied(conn, ctx.user, res, t),
             )
         )
     except dt.TransferError as e:

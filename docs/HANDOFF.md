@@ -38,6 +38,7 @@ TasksSheets 是給實驗室內部用的多人任務 / 專案管理網站。本�
 | 資料管理 `/admin/data`                | JSON 匯出 / 匯入（預覽、衝突策略）、完整 .db 備份下載（root）                                                        |
 | 資料同步 `/admin/data/sync`           | 多台電腦 sync-push 的來源金鑰與待確認衝突                                                                            |
 | 權限設定 `/admin/permissions`         | root 調整管理者 / 成員各項權限，即時生效                                                                             |
+| 稽核紀錄 `/admin/audit`               | 重要改動的前後內容與一鍵還原（`audit.view` / `audit.revert`，含衝突保護）；任務詳情底部「活動歷史」（[audit-log.md](design/audit-log.md)） |
 | 全站                                  | 即時同步（SSE）、在線感知（頂欄雲朵頭像）、登入逾時與鎖定                                                            |
 | 全站復原 / 重做                       | `Ctrl+Z` / `Ctrl+Shift+Z`（頂欄按鈕）：任務編輯 / 拖曳 / 新增 / 刪除、個人待辦、回饋新增；純記憶體（[design/undo.md](design/undo.md)） |
 
@@ -221,6 +222,7 @@ npx prettier --check .
 10. 同步依各電腦時鐘判斷新舊，時鐘誤差大會誤判；同步單向，中央變更不回寫。
 11. 在線感知：多分頁以最後回報為準；重啟後即時狀態全部視為離線。
 12. 匯入「取代全部」後可能留下沒有對應問題的附件檔，用 `python -m server.cli attachments-prune` 清除。
+13. 稽核紀錄（feat/audit-log，[audit-log.md](design/audit-log.md)）：留言、描述鎖定、待辦清單、相關任務、依賴等尚未接入（呼叫 `server/app/audit.py` 的 `record_audit` 即可）；匯入與同步只記一筆摘要、不可逐筆還原，同步衝突的手動處理不記錄；個人待辦、問題回饋、工程追蹤不記錄；專案與成員的「建立」、狀態「改移並刪除」不可還原；保留 `AUDIT_RETENTION_DAYS`（預設 365）天後自動刪除。即時更新沿用各資料本身的變更流水（不另寫 `audit` 流水）。
 
 **UI 小瑕疵（依 PROGRESS，未重驗）**
 

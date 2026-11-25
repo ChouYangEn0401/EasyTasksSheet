@@ -50,6 +50,7 @@ export const NAV_ENTRIES: NavEntry[] = [
     capability: 'sync.resolve',
     anyOf: ['sync.manage', 'sync.resolve'],
   },
+  { key: 'admin-audit', label: '稽核紀錄', to: '/admin/audit', icon: 'clock', capability: 'audit.view' },
   {
     key: 'admin-permissions',
     label: '權限設定',

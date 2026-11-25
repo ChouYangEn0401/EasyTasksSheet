@@ -9,6 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
+from .. import audit_events
 from ..changes import record_change
 from ..context import Ctx, get_ctx
 from ..db import next_sort_order, row_to_dict, rows_to_dicts
@@ -40,6 +41,7 @@ async def create_project(request: Request, ctx: Ctx = Depends(require("projects.
         pid = int(cur.lastrowid)  # type: ignore[arg-type]
         record_change(conn, "project", pid, "create", ctx.user["id"], t)
         row = conn.execute("SELECT * FROM projects WHERE id = ?", (pid,)).fetchone()
+        audit_events.project_created(conn, ctx.user, row, t)
     return JSONResponse(row_to_dict(row), status_code=201)
 
 
@@ -51,12 +53,14 @@ async def update_project(request: Request, id: str, ctx: Ctx = Depends(require("
     t = ctx.now()
     fields["updated_at"] = t
     with ctx.db.tx() as conn:
+        before = conn.execute("SELECT * FROM projects WHERE id = ?", (pid,)).fetchone()
         sets = ", ".join(f"{col} = ?" for col in fields)
         cur = conn.execute(f"UPDATE projects SET {sets} WHERE id = ?", (*fields.values(), pid))
         if cur.rowcount == 0:
             raise not_found("找不到專案")
         record_change(conn, "project", pid, "update", ctx.user["id"], t)
         row = conn.execute("SELECT * FROM projects WHERE id = ?", (pid,)).fetchone()
+        audit_events.project_updated(conn, ctx.user, before, row, t)
     return row_to_dict(row)
 
 
@@ -89,6 +93,7 @@ async def create_status(request: Request, ctx: Ctx = Depends(require("statuses.m
         sid = int(cur.lastrowid)  # type: ignore[arg-type]
         record_change(conn, "status", sid, "create", ctx.user["id"], t)
         row = conn.execute("SELECT * FROM statuses WHERE id = ?", (sid,)).fetchone()
+        audit_events.status_created(conn, ctx.user, row, t)
     return JSONResponse(row_to_dict(row), status_code=201)
 
 
@@ -100,12 +105,14 @@ async def update_status(request: Request, id: str, ctx: Ctx = Depends(require("s
     t = ctx.now()
     fields["updated_at"] = t
     with ctx.db.tx() as conn:
+        before = conn.execute("SELECT * FROM statuses WHERE id = ?", (sid,)).fetchone()
         sets = ", ".join(f"{col} = ?" for col in fields)
         cur = conn.execute(f"UPDATE statuses SET {sets} WHERE id = ?", (*fields.values(), sid))
         if cur.rowcount == 0:
             raise not_found(_STATUS_NOT_FOUND)
         record_change(conn, "status", sid, "update", ctx.user["id"], t)
         row = conn.execute("SELECT * FROM statuses WHERE id = ?", (sid,)).fetchone()
+        audit_events.status_updated(conn, ctx.user, before, row, t)
     return row_to_dict(row)
 
 
@@ -114,7 +121,8 @@ async def delete_status(id: str, ctx: Ctx = Depends(require("statuses.manage")))
     """刪除狀態：仍有任務（含已刪除、可還原的任務）使用時 409；至少保留一個狀態"""
     sid = parse_id(id)
     with ctx.db.tx() as conn:
-        if conn.execute("SELECT 1 FROM statuses WHERE id = ?", (sid,)).fetchone() is None:
+        before = conn.execute("SELECT * FROM statuses WHERE id = ?", (sid,)).fetchone()
+        if before is None:
             raise not_found(_STATUS_NOT_FOUND)
         used = conn.execute("SELECT count(*) FROM tasks WHERE status_id = ?", (sid,)).fetchone()[0]
         if used:
@@ -122,7 +130,9 @@ async def delete_status(id: str, ctx: Ctx = Depends(require("statuses.manage")))
         if conn.execute("SELECT count(*) FROM statuses").fetchone()[0] <= 1:
             raise conflict("至少需保留一個狀態")
         conn.execute("DELETE FROM statuses WHERE id = ?", (sid,))
-        record_change(conn, "status", sid, "delete", ctx.user["id"], ctx.now())
+        t = ctx.now()
+        record_change(conn, "status", sid, "delete", ctx.user["id"], t)
+        audit_events.status_deleted(conn, ctx.user, before, t)
     return {"ok": True}
 
 
@@ -135,16 +145,17 @@ async def migrate_and_delete_status(request: Request, id: str, ctx: Ctx = Depend
     if target == sid:
         raise bad_request("目標狀態不可與要刪除的狀態相同")
     with ctx.db.tx() as conn:
-        if conn.execute("SELECT 1 FROM statuses WHERE id = ?", (sid,)).fetchone() is None:
+        source_row = conn.execute("SELECT * FROM statuses WHERE id = ?", (sid,)).fetchone()
+        if source_row is None:
             raise not_found(_STATUS_NOT_FOUND)
-        dest = conn.execute("SELECT category FROM statuses WHERE id = ?", (target,)).fetchone()
+        dest = conn.execute("SELECT * FROM statuses WHERE id = ?", (target,)).fetchone()
         if dest is None:
             raise not_found("找不到目標狀態")
         if conn.execute("SELECT count(*) FROM statuses").fetchone()[0] <= 1:
             raise conflict("至少需保留一個狀態")
         t = ctx.now()
         src_done = conn.execute("SELECT category FROM statuses WHERE id = ?", (sid,)).fetchone()["category"] == "done"
-        moved = conn.execute("SELECT id FROM tasks WHERE status_id = ?", (sid,)).fetchall()
+        moved = conn.execute("SELECT id, title FROM tasks WHERE status_id = ?", (sid,)).fetchall()
         if moved:
             # 完成時間：非 done → done 設為此刻；done → 非 done 清除；其餘不變
             dest_done = dest["category"] == "done"
@@ -161,4 +172,8 @@ async def migrate_and_delete_status(request: Request, id: str, ctx: Ctx = Depend
                 record_change(conn, "task", int(r["id"]), "update", ctx.user["id"], t)
         conn.execute("DELETE FROM statuses WHERE id = ?", (sid,))
         record_change(conn, "status", sid, "delete", ctx.user["id"], t)
+        if moved:
+            audit_events.status_migrated(conn, ctx.user, source_row, dest, moved, t)
+        else:
+            audit_events.status_deleted(conn, ctx.user, source_row, t)
     return {"ok": True, "moved": len(moved)}

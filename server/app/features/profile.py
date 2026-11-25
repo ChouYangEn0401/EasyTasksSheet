@@ -13,6 +13,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, StringConstraints
 
+from .. import audit_events
 from ..changes import record_change
 from ..context import Ctx, get_ctx
 from ..errors import HttpError, bad_request
@@ -97,6 +98,7 @@ async def update_profile(request: Request) -> dict[str, Any]:
                 )
             record_change(conn, "user", user["id"], "update", user["id"], t)
             updated = conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+            audit_events.profile_updated(conn, updated, user, updated, t)
     except sqlite3.IntegrityError:
         raise HttpError(409, "CONFLICT", USERNAME_TAKEN_MESSAGE, {"field": "username"}) from None
     return _profile(ctx, updated)

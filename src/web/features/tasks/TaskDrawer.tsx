@@ -22,6 +22,7 @@ import {
   Textarea,
   UpdatedAt,
 } from '../../ui/index.ts';
+import { TaskHistorySection } from '../audit/TaskHistorySection.tsx';
 import { PinButton } from '../personal/PinButton.tsx';
 import { DependenciesSection } from '../delay-link/DependenciesSection.tsx';
 import { TaskPresenceHint } from '../presence/TaskPresence.tsx';
@@ -369,6 +370,7 @@ function TaskDetail({ task, titleId }: { task: Task; titleId: string }) {
       <DependenciesSection task={task} />
       <Description task={task} fx={fieldFx('description')} />
       <Checklist taskId={task.id} />
+      <TaskHistorySection taskId={task.id} />
     </>
   );
 }

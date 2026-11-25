@@ -31,6 +31,7 @@ from typing import Annotated, Any, Literal, Optional
 
 from pydantic import Field, StringConstraints, ValidationError, create_model
 
+from . import audit_events
 from . import data_transfer as dt
 from .backup import DEFAULT_KEEP
 from .changes import record_change
@@ -561,6 +562,7 @@ def apply_push(
                 "last_backup_at = COALESCE(?, last_backup_at) WHERE id = ?",
                 (now, _canon(summary), now if backup_file else None, source_id),
             )
+            audit_events.sync_applied(conn, source, src["machineName"], totals, now)
     return {
         "source": {"name": source["name"]},
         "batch": batch,

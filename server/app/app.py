@@ -25,6 +25,7 @@ from .features import eng_paste, eng_status
 from .features import task_relations
 from .features import dependencies
 from .features import task_checklist
+from .features import audit_log
 
 #: 不需登入的路由。/api/eng/worktrees/report 由端點自行以 WORKTREE_REPORT_TOKEN 驗證（仍受 CSRF 檢查約束）
 PUBLIC_PATHS = {
@@ -88,6 +89,7 @@ def create_app(
     app.include_router(tasks.router, prefix="/api/tasks")
     app.include_router(task_relations.router, prefix="/api/tasks")
     app.include_router(task_checklist.router, prefix="/api/tasks")
+    app.include_router(audit_log.task_router, prefix="/api/tasks")
     app.include_router(properties.router, prefix="/api/properties")
     app.include_router(overview.router, prefix="/api/overview")
     app.include_router(feedback.router, prefix="/api/feedback")
@@ -101,6 +103,7 @@ def create_app(
     app.include_router(data_admin.router, prefix="/api/admin/data")
     app.include_router(permissions_admin.router, prefix="/api/admin/permissions")
     app.include_router(sync_push.admin_router, prefix="/api/admin/sync")
+    app.include_router(audit_log.router, prefix="/api/admin/audit")
     app.include_router(sync_push.push_router, prefix="/api/sync")
     app.include_router(admin.router, prefix="/api/admin")
     app.include_router(sync.changes_router, prefix="/api/changes")

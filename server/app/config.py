@@ -43,6 +43,8 @@ class Config:
     ADMIN_PASSWORD: str = "password"
 
     CHANGES_RETENTION_DAYS: float = 30
+    #: 稽核紀錄保留天數（啟動時與每日修剪；docs/design/audit-log.md）
+    AUDIT_RETENTION_DAYS: float = 365
     #: 備份目錄（CLI backup 與匯入前自動備份共用）
     BACKUP_DIR: str = "backups"
     #: 資料匯入檔大小上限（MB）
@@ -97,6 +99,7 @@ _POSITIVE_FLOAT = {
     "LOGIN_WINDOW_MINUTES",
     "LOGIN_LOCK_MINUTES",
     "CHANGES_RETENTION_DAYS",
+    "AUDIT_RETENTION_DAYS",
     "DATA_IMPORT_MAX_MB",
     "SYNC_AUTO_RESOLVE_MINUTES",
     "ISSUE_CACHE_MINUTES",

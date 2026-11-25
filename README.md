@@ -113,6 +113,7 @@ npm run dev                   # 後端 uvicorn :3000（自動重載）+ Vite :51
 | `ADMIN_USERNAME`           | `admin`         | 首次啟動（尚無帳號時）建立的預設管理員帳號；可選覆寫，首次登入強制重設帳號與密碼                    |
 | `ADMIN_PASSWORD`           | `password`      | 預設管理員的初始密碼；可選覆寫（留空即 `password`）                                                 |
 | `CHANGES_RETENTION_DAYS`   | `30`            | 變更流水保留天數（即時同步用）                                                                      |
+| `AUDIT_RETENTION_DAYS`     | `365`           | 稽核紀錄保留天數（啟動時與每日自動修剪，見「稽核紀錄與還原」）                                      |
 | `PRESENCE_ONLINE_SECONDS`  | `45`            | 在線感知：最後一次回報在幾秒內算「在線」                                                            |
 | `PRESENCE_IDLE_SECONDS`    | `300`           | 在線感知：幾秒內算「閒置」，超過即「離線」                                                          |
 | `WORKTREE_REPORT_TOKEN`    | （空）          | 各人電腦回報 worktree 用的 token；空白 = 停用回報端點（一律 403）                                   |
@@ -362,6 +363,16 @@ docker compose -f deploy/docker-compose.yml exec app python -m server.cli backup
 - 邊界由你決定：例如授予成員「管理成員」等於允許成員把自己升為管理者；取消某角色的「編輯任務」後，該角色仍可瀏覽但不能修改。
 
 預設矩陣、受保護項目與限制見 [docs/permissions.md](docs/permissions.md)。
+
+## 稽核紀錄與還原
+
+所有重要改動（任務、專案、狀態、自訂欄位、成員、權限設定、匯入 / 同步摘要）都會留下「誰、何時、改了什麼（前後內容）」的紀錄，用來**回溯原因與還原失誤，而非評比個人**。
+
+- 管理者以上在側邊導覽「稽核紀錄」（`/admin/audit`）可依時間、操作者、類型、動作篩選，展開看「修改前 / 修改後」（長描述有行內差異），按「還原」一鍵改回。若那個欄位之後又被別人改過，會先提示目前的內容，確認後才「仍要還原（覆蓋）」。
+- 所有成員可在任務詳情最下方的「活動歷史」看到這個任務的修改紀錄（沒有還原按鈕）。
+- 個人待辦不記錄；密碼內容一律不記錄。紀錄保留 `AUDIT_RETENTION_DAYS`（預設 365）天。
+
+可還原 / 不可還原的規則與資料模型見 [docs/design/audit-log.md](docs/design/audit-log.md)。
 
 ## 多人同時使用與在線感知
 

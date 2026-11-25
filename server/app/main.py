@@ -9,6 +9,7 @@ import os
 import time
 
 from .app import create_app
+from .audit import prune_on_startup
 from .config import config
 from .db import create_db, run_migrations, run_seed
 from .features.users import ensure_admin
@@ -20,6 +21,7 @@ if hasattr(time, "tzset"):
 db = create_db(config.DATABASE_PATH)
 run_migrations(db)
 run_seed(db)
+prune_on_startup(db)  # 稽核紀錄保留期限（AUDIT_RETENTION_DAYS）；之後寫入時每日檢查一次
 ensure_admin(db, config.ADMIN_USERNAME, config.ADMIN_PASSWORD, log=lambda m: print(m, flush=True))
 
 # 前端已建置（dist/web 存在）就由同一個行程提供，不論是否為正式模式；

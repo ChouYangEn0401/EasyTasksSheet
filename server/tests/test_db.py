@@ -13,6 +13,7 @@ ALL_MIGRATIONS = [f.stem for f in sorted(MIGRATIONS_DIR.glob("*.sql"))]
 
 ALL_TABLES = [
     "attachments",
+    "audit_log",
     "changes",
     "eng_github_links",
     "eng_statuses",

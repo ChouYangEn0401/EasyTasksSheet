@@ -52,6 +52,9 @@ PROBES = {
     "permissions.configure": lambda: ("GET", "/api/admin/permissions", None),
     "sync.manage": lambda: ("GET", "/api/admin/sync/sources", None),
     "sync.resolve": lambda: ("GET", "/api/admin/sync/conflicts", None),
+    "audit.view": lambda: ("GET", "/api/admin/audit", None),
+    "audit.revert": lambda: ("POST", "/api/admin/audit/999999/revert", {}),
+    "audit.view_task_history": lambda: ("GET", "/api/tasks/1/history", None),
 }
 
 
@@ -100,6 +103,8 @@ def test_matrix_shape():
         "data.import_merge",
         "sync.manage",
         "sync.resolve",
+        "audit.view",
+        "audit.revert",
     }
     assert by_role["root"] - by_role["manager"] == {
         "data.backup_db",

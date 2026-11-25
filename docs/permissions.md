@@ -25,6 +25,9 @@
 | `projects.create`       | 建立專案                                                     |  ✓   |    ✓    |  ✓   |
 | `properties.edit`       | 自訂欄位（property）                                         |  ✓   |    ✓    |  ✓   |
 | `profile.edit`          | 自己的個人資料與密碼                                         |  ✓   |    ✓    |  ✓   |
+| `audit.view_task_history` | 任務詳情的「活動歷史」（看不到還原按鈕與全站稽核頁；docs/design/audit-log.md） |  ✓   |    ✓    |  ✓   |
+| `audit.view`            | 後台「稽核紀錄」頁：查看所有重要改動的前後內容               |      |    ✓    |  ✓   |
+| `audit.revert`          | 從稽核紀錄還原改動（另需該項目原本的管理權限，例如還原權限設定需 `permissions.configure`） |      |    ✓    |  ✓   |
 | `members.manage`        | 成員新增 / 停用 / 啟用 / 重設密碼 / 解鎖 / 編輯；角色限 user ↔ manager |      |    ✓    |  ✓   |
 | `statuses.manage`       | 狀態新增 / 改名 / 改色 / 排序 / 刪除                         |      |    ✓    |  ✓   |
 | `projects.manage`       | 專案改名 / 改色 / 排序 / 封存                                |      |    ✓    |  ✓   |
@@ -81,6 +84,9 @@ root 在「權限設定」頁勾選 / 取消 manager 與 user 的各項權限，
 | `/api/admin/sync/sources*`                                     | `sync.manage`                                             |
 | `/api/admin/sync/conflicts*`                                   | `sync.resolve`                                            |
 | `POST /api/sync/push`                                          | 不需登入；以同步來源金鑰驗證（docs/sync.md）              |
+| `GET /api/admin/audit`、`GET /api/admin/audit/:id`             | `audit.view`（只讀；不提供修改 / 刪除稽核的 API）          |
+| `POST /api/admin/audit/:id/revert`                             | `audit.revert`，另需該項目的權限：任務 `tasks.edit`、專案 `projects.manage`、狀態 `statuses.manage`、自訂欄位 `properties.edit`、成員 `members.manage`（涉及 root 另需 `roles.assign_root`）、權限設定 `permissions.configure` |
+| `GET /api/tasks/:id/history`                                   | `audit.view_task_history`                                 |
 | `POST /api/projects`                                           | `projects.create`（預設 user 以上；root 可調整各層設定）  |
 | `PATCH /api/projects/:id`                                      | `projects.manage`                                         |
 | `POST / PATCH / DELETE /api/statuses`                          | `statuses.manage`；刪除時仍有任務（含已刪除任務）使用 → 409，且至少保留一個狀態 |

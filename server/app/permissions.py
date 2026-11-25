@@ -47,7 +47,10 @@ CAPABILITIES: dict[str, Role] = {
     "projects.create": "user",  # 建立專案
     "properties.edit": "user",  # 自訂欄位（property）
     "profile.edit": "user",  # 自己的個人資料與密碼
+    "audit.view_task_history": "user",  # 任務詳情的「活動歷史」（不含還原、不含全站稽核頁）
     # ── manager（danger-command）──
+    "audit.view": "manager",  # 後台「稽核紀錄」頁（docs/design/audit-log.md）
+    "audit.revert": "manager",  # 從稽核紀錄還原（另需該項目原本的管理權限；root 恆有）
     "members.manage": "manager",  # 成員新增 / 停用 / 啟用 / 重設密碼 / 解鎖 / 編輯（角色限 user ↔ manager）
     "statuses.manage": "manager",  # 狀態新增 / 改名 / 改色 / 排序 / 刪除
     "projects.manage": "manager",  # 專案改名 / 改色 / 排序 / 封存
@@ -77,6 +80,7 @@ CAPABILITY_GROUPS: tuple[tuple[str, str], ...] = (
     ("eng", "工程追蹤"),
     ("members", "成員"),
     ("data", "資料"),
+    ("audit", "稽核"),
     ("system", "系統"),
     ("other", "其他"),
 )
@@ -104,6 +108,9 @@ CAPABILITY_INFO: dict[str, tuple[str, str, str]] = {
     "data.backup_db": ("完整備份下載", "下載含密碼雜湊的資料庫備份檔", "data"),
     "sync.manage": ("同步來源管理", "建立、停用、刪除同步來源並產生各台電腦的同步金鑰", "data"),
     "sync.resolve": ("處理同步衝突", "決定兩邊幾乎同時修改的資料要保留哪一份，並檢視處理紀錄", "data"),
+    "audit.view": ("查看稽核紀錄", "在後台查看所有重要改動的前後內容，用來回溯原因", "audit"),
+    "audit.revert": ("還原改動", "從稽核紀錄把一次改動還原（仍需該項目原本的管理權限）", "audit"),
+    "audit.view_task_history": ("任務活動歷史", "在任務詳情查看這個任務的修改歷史", "audit"),
     "permissions.configure": ("權限設定", "調整各角色可執行的操作", "system"),
 }
 

@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from .. import audit_events
 from ..changes import record_change
 from ..context import get_ctx
 from ..errors import bad_request, not_found, validation_error
@@ -153,6 +154,7 @@ async def create_property(request: Request):
         pid = int(cur.lastrowid)  # type: ignore[arg-type]
         record_change(conn, "property", pid, "create", ctx.user["id"], t)
         row = conn.execute("SELECT * FROM property_defs WHERE id = ?", (pid,)).fetchone()
+        audit_events.property_created(conn, ctx.user, row, t)
     return JSONResponse(row_to_dict(row), status_code=201)
 
 
@@ -173,12 +175,14 @@ async def update_property(request: Request, id: str):
             fields["sort_order"] = v
     fields["updated_at"] = t
     with ctx.db.tx() as conn:
+        before = conn.execute("SELECT * FROM property_defs WHERE id = ?", (pid,)).fetchone()
         sets = ", ".join(f"{col} = ?" for col in fields)
         cur = conn.execute(f"UPDATE property_defs SET {sets} WHERE id = ?", (*fields.values(), pid))
         if cur.rowcount == 0:
             raise not_found("找不到自訂欄位")
         record_change(conn, "property", pid, "update", ctx.user["id"], t)
         row = conn.execute("SELECT * FROM property_defs WHERE id = ?", (pid,)).fetchone()
+        audit_events.property_updated(conn, ctx.user, before, row, t)
     return row_to_dict(row)
 
 
@@ -187,8 +191,11 @@ async def delete_property(request: Request, id: str):
     ctx = get_ctx(request)
     pid = parse_id(id)
     with ctx.db.tx() as conn:
+        before = conn.execute("SELECT * FROM property_defs WHERE id = ?", (pid,)).fetchone()
         cur = conn.execute("DELETE FROM property_defs WHERE id = ?", (pid,))
         if cur.rowcount == 0:
             raise not_found("找不到自訂欄位")
-        record_change(conn, "property", pid, "delete", ctx.user["id"], ctx.now())
+        t = ctx.now()
+        record_change(conn, "property", pid, "delete", ctx.user["id"], t)
+        audit_events.property_deleted(conn, ctx.user, before, t)
     return {"ok": True}

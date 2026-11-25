@@ -15,20 +15,22 @@ import { createRealtimeClient, type ChangesResponse, type RealtimeClient } from 
 
 // ── 實體 → 查詢鍵 ───────────────────────────────────
 
-const TASK_DEPENDENT: QueryKey[] = [queryKeys.tasks.all, ['overview'], ['personal']];
+// 稽核紀錄（features/audit）：寫入稽核時沿用主操作本身的流水，收到這些實體的變更即重抓稽核頁與任務活動歷史
+const AUDIT: QueryKey = ['audit'];
+const TASK_DEPENDENT: QueryKey[] = [queryKeys.tasks.all, ['overview'], ['personal'], AUDIT];
 
 export const ENTITY_QUERY_KEYS: Record<EntityType, QueryKey[]> = {
   task: TASK_DEPENDENT,
   project: [queryKeys.projects, ...TASK_DEPENDENT],
   status: [queryKeys.statuses, ...TASK_DEPENDENT],
-  property: [queryKeys.properties, queryKeys.tasks.all],
-  user: [queryKeys.users, ['admin'], ['overview'], ['personal']],
+  property: [queryKeys.properties, queryKeys.tasks.all, AUDIT],
+  user: [queryKeys.users, ['admin'], ['overview'], ['personal'], AUDIT],
   feedback: [['feedback'], ['overview']],
   personal: [['personal']],
   repo: [['eng']],
   worktree_plan: [['eng']],
   // 權限設定變更：在線使用者重抓 me（capabilities），畫面即時顯示 / 隱藏功能
-  permission: [queryKeys.me, ['admin', 'permissions']],
+  permission: [queryKeys.me, ['admin', 'permissions'], AUDIT],
 };
 
 /** 一批變更需要 invalidate 的查詢鍵（去重；meId 被修改時一併重抓 me） */

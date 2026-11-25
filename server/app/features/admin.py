@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 from pydantic import AfterValidator, BaseModel, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
+from .. import audit_events
 from ..changes import record_change
 from ..context import Ctx
 from ..db import Database
@@ -183,6 +184,7 @@ async def create_admin_user(request: Request, ctx: Ctx = _members):
     # 同名帳號先前的登入失敗紀錄不延續到新帳號
     with ctx.db.tx() as conn:
         clear_login_failures(conn, row["username"])
+        audit_events.user_created(conn, ctx.user, row, t)
     return JSONResponse({"user": to_admin_user(ctx, row), "tempPassword": temp}, status_code=201)
 
 
@@ -220,6 +222,7 @@ async def update_admin_user(request: Request, id: str, ctx: Ctx = _members):
             revoke_sessions(conn, target["id"])
         record_change(conn, "user", target["id"], "update", ctx.user["id"], t)
         row = conn.execute("SELECT * FROM users WHERE id = ?", (target["id"],)).fetchone()
+        audit_events.user_updated(conn, ctx.user, target, row, t)
     return to_admin_user(ctx, row)
 
 
@@ -242,6 +245,7 @@ async def reset_password(id: str, ctx: Ctx = _members):
         clear_login_failures(conn, target["username"])
         record_change(conn, "user", target["id"], "update", ctx.user["id"], t)
         row = conn.execute("SELECT * FROM users WHERE id = ?", (target["id"],)).fetchone()
+        audit_events.user_password_reset(conn, ctx.user, row, t)
     return {"user": to_admin_user(ctx, row), "tempPassword": temp}
 
 
@@ -251,8 +255,10 @@ async def unlock_user(id: str, ctx: Ctx = _members):
     assert_can_touch(ctx, target["role"])
     with ctx.db.tx() as conn:
         clear_login_failures(conn, target["username"])
-        record_change(conn, "user", target["id"], "update", ctx.user["id"], ctx.now())
+        t = ctx.now()
+        record_change(conn, "user", target["id"], "update", ctx.user["id"], t)
         row = conn.execute("SELECT * FROM users WHERE id = ?", (target["id"],)).fetchone()
+        audit_events.user_unlocked(conn, ctx.user, row, t)
     return to_admin_user(ctx, row)
 
 

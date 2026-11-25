@@ -23,7 +23,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any, Literal, Optional
+from typing import Annotated, Any, Callable, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, create_model
 
@@ -1094,13 +1094,17 @@ def apply_import(
     actor_id: int | None,
     now: int,
     backup_dir: str | Path | None,
+    on_applied: Callable[[sqlite3.Connection, dict[str, Any]], Any] | None = None,
 ) -> dict[str, Any]:
-    """套用匯入：先自動備份（backup_dir 為 None 時略過），再於單一 transaction 內寫入；任何錯誤全數回滾"""
+    """套用匯入：先自動備份（backup_dir 為 None 時略過），再於單一 transaction 內寫入；任何錯誤全數回滾。
+    on_applied(conn, result)：在同一 transaction 內呼叫（寫入稽核摘要用）"""
     check_options(opts)
     with db.lock:
         backup_file = snapshot(db, backup_dir, "pre-import") if backup_dir is not None else None
         with db.tx() as conn:
             result = _apply_in_tx(conn, doc, opts, actor_id, now)
+            if on_applied is not None:
+                on_applied(conn, result)
     result["backupFile"] = backup_file.name if backup_file else None
     result["backupPath"] = str(backup_file) if backup_file else None
     return result

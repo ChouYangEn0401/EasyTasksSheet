@@ -136,7 +136,12 @@ describe('同步：實體 → 查詢鍵', () => {
   });
   it('任務變更會重抓任務、總覽與個人清單；去重', () => {
     const keys = keysForChanges([c('task'), c('task', 2)], 1);
-    expect(keys).toEqual([['tasks'], ['overview'], ['personal']]);
+    expect(keys).toEqual([['tasks'], ['overview'], ['personal'], ['audit']]);
+  });
+  it('稽核紀錄：任務 / 成員 / 權限等變更都重抓稽核查詢，個人清單不會', () => {
+    for (const t of ['task', 'project', 'status', 'property', 'user', 'permission'] as const)
+      expect(keysForChanges([c(t)], 1)).toContainEqual(['audit']);
+    expect(keysForChanges([c('personal')], 1)).not.toContainEqual(['audit']);
   });
   it('修改到自己時一併重抓 me', () => {
     expect(keysForChanges([c('user', 7)], 7)).toContainEqual(['auth', 'me']);

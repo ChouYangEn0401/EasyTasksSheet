@@ -16,6 +16,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
+from .. import audit_events
 from ..changes import record_change
 from ..context import Ctx
 from ..db import Database
@@ -137,9 +138,11 @@ async def update_permissions(request: Request, ctx: Ctx = _configure) -> dict[st
         t = ctx.now()
         try:
             with ctx.db.tx() as conn:
+                before = audit_events.permission_cells(conn)
                 for change in data.changes:
                     _write(conn, change, ctx.user["id"], t)
                 record_change(conn, "permission", 0, "update", ctx.user["id"], t)
+                audit_events.permissions_changed(conn, ctx.user, before, t)
         finally:
             invalidate(ctx.db)
     return permission_matrix(ctx.db)
@@ -152,11 +155,13 @@ async def reset_permissions(request: Request, ctx: Ctx = _configure) -> dict[str
     t = ctx.now()
     try:
         with ctx.db.tx() as conn:
+            before = audit_events.permission_cells(conn)
             if data.role is None:
                 conn.execute("DELETE FROM role_permissions")
             else:
                 conn.execute("DELETE FROM role_permissions WHERE role = ?", (data.role,))
             record_change(conn, "permission", 0, "update", ctx.user["id"], t)
+            audit_events.permissions_changed(conn, ctx.user, before, t, reset=data.role or "all")
     finally:
         invalidate(ctx.db)
     return permission_matrix(ctx.db)

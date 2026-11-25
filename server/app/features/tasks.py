@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from .. import audit_events
 from ..changes import record_change
 from ..context import get_ctx
 from ..db import next_sort_order, row_to_dict, rows_to_dicts
@@ -172,6 +173,7 @@ async def create_task(request: Request):
         tid = int(cur.lastrowid)  # type: ignore[arg-type]
         record_change(conn, "task", tid, "create", uid, t)
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (tid,)).fetchone()
+        audit_events.task_created(conn, ctx.user, row, t)
         out = with_checklist_counts(conn, [row_to_dict(row)])[0]
     return JSONResponse(out, status_code=201)
 
@@ -222,6 +224,7 @@ async def update_task(request: Request, id: str):
         )
         record_change(conn, "task", tid, "update", uid, t)
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (tid,)).fetchone()
+        audit_events.task_updated(conn, ctx.user, current, row, t)
         return with_checklist_counts(conn, [row_to_dict(row)])[0]
 
 
@@ -231,11 +234,13 @@ async def delete_task(request: Request, id: str):
     tid = parse_id(id)
     uid = ctx.user["id"]
     with ctx.db.tx() as conn:
-        if _find_task(conn, tid) is None:
+        current = _find_task(conn, tid)
+        if current is None:
             raise not_found("此任務不存在或已被刪除")
         t = ctx.now()
         conn.execute("UPDATE tasks SET deleted_at = ?, updated_by = ?, updated_at = ? WHERE id = ?", (t, uid, t, tid))
         record_change(conn, "task", tid, "delete", uid, t)
+        audit_events.task_deleted(conn, ctx.user, current, t)
     return {"ok": True}
 
 

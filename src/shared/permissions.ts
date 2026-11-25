@@ -13,7 +13,10 @@ export const CAPABILITIES = {
   'projects.create': 'user',
   'properties.edit': 'user',
   'profile.edit': 'user',
+  'audit.view_task_history': 'user',
   // manager（danger-command）
+  'audit.view': 'manager',
+  'audit.revert': 'manager',
   'members.manage': 'manager',
   'statuses.manage': 'manager',
   'projects.manage': 'manager',
