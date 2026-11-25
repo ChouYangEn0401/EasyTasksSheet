@@ -18,7 +18,7 @@ from ..errors import bad_request, forbidden, not_found, validation_error
 from ..permissions import can, denied
 from ..schemas import TaskCreateInput, TaskUpdateInput
 from ..validate import parse_id, present, read_json
-from .dependencies import attach_dependency_fields
+from .dependencies import attach_dependency_fields, attach_dependency_fields_conn
 from .properties import merge_custom_values
 from .task_checklist import with_checklist_counts
 from .task_comments import comment_stats, with_comment_stats
@@ -81,10 +81,18 @@ def _find_task(conn: sqlite3.Connection, task_id: int) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM tasks WHERE id = ? AND deleted_at IS NULL", (task_id,)).fetchone()
 
 
-def _task_out(conn: sqlite3.Connection, row: sqlite3.Row, user_id: int | None) -> dict[str, Any]:
-    """單一任務回應：附上留言數與目前使用者的未讀數、待辦清單進度"""
-    out = with_comment_stats(row_to_dict(row), comment_stats(conn, user_id, [row["id"]]))  # type: ignore[arg-type]
-    return with_checklist_counts(conn, [out])[0]
+def task_out(conn: sqlite3.Connection, task_id: int, user_id: int | None, now_ms: int) -> dict[str, Any]:
+    """單一任務回應：與 GET /api/tasks 列表的每筆欄位集合一致——relationCount、待辦清單進度
+    （checklistTotal / checklistDone）、留言數與目前使用者的未讀數、依賴欄位（isBlocked、blockedByCount、
+    blocksCount、delayDays、projectedEnd）。可在 transaction 內呼叫。"""
+    row = conn.execute(
+        f"WITH {RELATION_COUNT_CTE} SELECT tasks.*, coalesce(rc.n, 0) AS relation_count FROM tasks "
+        "LEFT JOIN rc ON rc.task_id = tasks.id WHERE tasks.id = ?",
+        (task_id,),
+    ).fetchone()
+    out = with_comment_stats(row_to_dict(row), comment_stats(conn, user_id, [task_id]))  # type: ignore[arg-type]
+    out = with_checklist_counts(conn, [out])[0]
+    return attach_dependency_fields_conn(conn, [out], now_ms)[0]
 
 
 def _apply_lock(fields: dict[str, Any], sets: dict[str, Any], uid: int, t: int) -> None:
@@ -204,7 +212,7 @@ async def create_task(request: Request):
         record_change(conn, "task", tid, "create", uid, t)
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (tid,)).fetchone()
         audit_events.task_created(conn, ctx.user, row, t)
-        out = _task_out(conn, row, uid)
+        out = task_out(conn, tid, uid, t)
     return JSONResponse(out, status_code=201)
 
 
@@ -215,7 +223,7 @@ async def get_task(request: Request, id: str):
         task = _find_task(ctx.db.conn, parse_id(id))
         if task is None:
             raise not_found("此任務不存在或已被刪除")
-        return _task_out(ctx.db.conn, task, ctx.user["id"] if ctx.user else None)
+        return task_out(ctx.db.conn, task["id"], ctx.user["id"] if ctx.user else None, ctx.now())
 
 
 @router.patch("/{id}")
@@ -267,7 +275,7 @@ async def update_task(request: Request, id: str):
         record_change(conn, "task", tid, "update", uid, t)
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (tid,)).fetchone()
         audit_events.task_updated(conn, ctx.user, current, row, t)
-        out = _task_out(conn, row, uid)
+        out = task_out(conn, tid, uid, t)
     return out
 
 
@@ -306,4 +314,4 @@ async def restore_task(request: Request, id: str):
             record_change(conn, "task", tid, "create", uid, t)
             row = conn.execute("SELECT * FROM tasks WHERE id = ?", (tid,)).fetchone()
             audit_events.task_restored(conn, ctx.user, row, t)
-        return _task_out(conn, row, uid)
+        return task_out(conn, tid, uid, ctx.now())

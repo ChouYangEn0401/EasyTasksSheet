@@ -558,7 +558,10 @@ def test_cli_export_import(tmp_path, capsys):
     db.close()
 
     bad = tmp_path / "bad.json"
-    bad.write_text('{"format": "tasks-sheets-export", "schemaVersion": 2, "exportedAt": 1}', encoding="utf-8")
+    bad.write_text(
+        json.dumps({"format": "tasks-sheets-export", "schemaVersion": dt.SCHEMA_VERSION + 1, "exportedAt": 1}),
+        encoding="utf-8",
+    )
     assert cli.main(["import", str(bad), "--db", dst]) == 1
     assert "較新版本" in capsys.readouterr().err
     assert cli.main(["import", out, "--db", dst, "--replace"]) == 1

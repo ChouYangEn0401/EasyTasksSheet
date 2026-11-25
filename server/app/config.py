@@ -56,7 +56,6 @@ class Config:
     GITHUB_API_URL: str = "https://api.github.com"
     #: 前端載入問題列表時，距上次同步超過幾分鐘就自動同步一次
     GITHUB_SYNC_MINUTES: float = 5
-    ISSUE_CACHE_MINUTES: float = 5
     #: 電腦超過幾天沒有回報，工作樹頁面就標示「未回報（最後看到 N 天前）」（資料不會因此刪除）
     WORKTREE_STALE_DAYS: float = 2
     WORKTREE_REPORT_TOKEN: str | None = None
@@ -102,7 +101,6 @@ _POSITIVE_FLOAT = {
     "AUDIT_RETENTION_DAYS",
     "DATA_IMPORT_MAX_MB",
     "SYNC_AUTO_RESOLVE_MINUTES",
-    "ISSUE_CACHE_MINUTES",
     "GITHUB_SYNC_MINUTES",
     "WORKTREE_STALE_DAYS",
 }

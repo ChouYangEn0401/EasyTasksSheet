@@ -370,7 +370,7 @@ def property_deleted(conn: sqlite3.Connection, actor: Any, row: Any, ts: int) ->
 
 # ── 成員 ─────────────────────────────────────────────────
 
-_USER_FIELDS = ("displayName", "role", "isActive")
+_USER_FIELDS = ("displayName", "role", "isActive", "inOverview")
 
 
 def user_created(conn: sqlite3.Connection, actor: Any, row: Any, ts: int) -> int | None:
@@ -399,6 +399,8 @@ def user_updated(conn: sqlite3.Connection, actor: Any, before_row: Any, after_ro
     fields = list(b)
     if fields == ["isActive"]:
         summary = f"重新啟用成員{quote(name)}" if a["isActive"] else f"停用了成員{quote(name)}"
+    elif fields == ["inOverview"]:
+        summary = f"把成員{quote(name)}列入總覽統計" if a["inOverview"] else f"把成員{quote(name)}設為不列入總覽統計"
     elif fields == ["displayName"]:
         summary = f"把成員{quote(b['displayName'])}的顯示名稱改為{quote(a['displayName'])}"
     elif len(fields) == 1:

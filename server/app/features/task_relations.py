@@ -22,11 +22,11 @@ from fastapi.responses import JSONResponse
 from .. import audit_events
 from ..changes import record_change
 from ..context import get_ctx
-from ..db import next_sort_order, row_to_dict
+from ..db import next_sort_order
 from ..errors import bad_request, not_found
 from ..schemas import TaskDuplicateInput, TaskRelationCreateInput
 from ..validate import parse_id, read_json
-from .tasks import RELATION_COUNT_CTE, _find_task, _is_done
+from .tasks import _find_task, _is_done, task_out
 
 router = APIRouter()
 
@@ -223,9 +223,5 @@ async def duplicate_task(request: Request, id: str):
             rel, _created = insert_relation(conn, tid, new_id, "related", uid, t)
             _touch(conn, (tid,), uid, t)
             audit_events.link_created(conn, ctx.user, "relation", rel, t, task_id=new_id)
-        row = conn.execute(
-            f"WITH {RELATION_COUNT_CTE} SELECT tasks.*, coalesce(rc.n, 0) AS relation_count FROM tasks "
-            "LEFT JOIN rc ON rc.task_id = tasks.id WHERE tasks.id = ?",
-            (new_id,),
-        ).fetchone()
-    return JSONResponse(row_to_dict(row), status_code=201)
+        out = task_out(conn, new_id, uid, t)
+    return JSONResponse(out, status_code=201)

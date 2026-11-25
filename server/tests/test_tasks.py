@@ -100,7 +100,20 @@ def test_create_with_title_only():
         "unreadComments": 0,
     }
     assert {k: t[k] for k in expected} == expected
-    assert set(t) == {*expected, "id", "sortOrder", "checklistTotal", "checklistDone"}
+    single_extra = {
+        "id",
+        "sortOrder",
+        "checklistTotal",
+        "checklistDone",
+        "relationCount",
+        "isBlocked",
+        "blockedByCount",
+        "blocksCount",
+        "delayDays",
+        "projectedEnd",
+    }
+    assert set(t) == {*expected, *single_extra}
+    assert (t["relationCount"], t["isBlocked"], t["delayDays"]) == (0, False, None)
     assert a.request("POST", "/api/tasks", {"title": ""}).status_code == 400
     assert a.request("POST", "/api/tasks", {"title": "x", "statusId": 999}).status_code == 400
     assert a.request("POST", "/api/tasks", {"title": "x", "projectId": None}).status_code == 400
@@ -392,3 +405,24 @@ def test_property_update_delete():
     )
     assert dup.status_code == 400
     assert change_count() == before + 4
+
+
+def test_single_task_responses_match_list_fields():
+    """POST / GET / PATCH / restore / duplicate 的單筆回應與 GET /api/tasks 每筆的欄位集合一致"""
+    _t, _clock, _alice, _bob, a, _b, _cc = setup()
+    t1 = a.request("POST", "/api/tasks", {"title": "甲"}).json()
+    t2 = a.request("POST", "/api/tasks", {"title": "乙"}).json()
+    a.request("POST", f"/api/tasks/{t1['id']}/relations", {"targetId": t2["id"]})
+    a.request("POST", f"/api/tasks/{t2['id']}/dependencies", {"targetId": t1["id"], "direction": "blocked_by"})
+    listed = next(x for x in a.get("/api/tasks").json() if x["id"] == t2["id"])
+    keys = set(listed)
+    got = a.get(f"/api/tasks/{t2['id']}").json()
+    patched = a.request("PATCH", f"/api/tasks/{t2['id']}", {"progress": 10}).json()
+    a.request("DELETE", f"/api/tasks/{t2['id']}")
+    restored = a.request("POST", f"/api/tasks/{t2['id']}/restore").json()
+    dup = a.request("POST", f"/api/tasks/{t2['id']}/duplicate", {}).json()
+    for out in (got, patched, restored, dup, t1):
+        assert set(out) == keys
+    assert (got["relationCount"], got["isBlocked"], got["blockedByCount"]) == (1, True, 1)
+    assert patched["isBlocked"] is True and restored["blockedByCount"] == 1
+    assert dup["relationCount"] == 1  # 複製時預設與原任務建立關聯

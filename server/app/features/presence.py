@@ -15,11 +15,12 @@ from __future__ import annotations
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, StringConstraints
 
 from ..context import get_ctx
 from ..presence import TITLE_MAX, VIEW_MAX, presence_options, registry_for
 from ..validate import read_json
+from ..schemas import DbId
 
 router = APIRouter()
 
@@ -27,7 +28,7 @@ router = APIRouter()
 class PresenceEntityInput(BaseModel):
     model_config = {"extra": "ignore"}
     type: Literal["task"]
-    id: Annotated[int, Field(gt=0)]
+    id: DbId
     mode: Literal["viewing", "editing"] = "viewing"
 
 

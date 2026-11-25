@@ -1,6 +1,6 @@
 """任務依賴（阻擋關係）的純函式：循環偵測、延遲推算、連通元件（延遲鏈）。
 
-不碰資料庫與時鐘：呼叫端傳入任務、依賴邊與「今天」（台北時區的 YYYY-MM-DD，見 today_taipei()）。
+不碰資料庫與時鐘：呼叫端傳入任務、依賴邊與「今天」（config.TZ 時區的 YYYY-MM-DD，見 today_local()）。
 規格見 docs/design/delay-link.md。
 
 名詞：
@@ -21,15 +21,15 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
-from typing import Any, Iterable
+from datetime import date, timedelta
+from typing import Any, Iterable, Iterator, Mapping
 
-TAIPEI = timezone(timedelta(hours=8))
+def today_local(now_ms: int, time_zone: str | None = None) -> str:
+    """unix ms → 伺服器設定時區（config.TZ，預設 Asia/Taipei）的日期字串；與總覽 / 報告的「今天」一致"""
+    from . import config as _config
+    from .features._overview_compute import date_in_zone
 
-
-def today_taipei(now_ms: int) -> str:
-    """unix ms → 台北時區的日期字串（台灣無日光節約，固定 +08:00）"""
-    return datetime.fromtimestamp(now_ms / 1000, TAIPEI).date().isoformat()
+    return date_in_zone(now_ms, time_zone or _config.config.TZ)
 
 
 def _d(s: str | None) -> date | None:
@@ -121,6 +121,89 @@ def find_cycle(edges: Iterable[tuple[int, int]], blocker: int, blocked: int) -> 
                 parent[nxt] = node
                 stack.append(nxt)
     return None
+
+
+class IncrementalDag:
+    """逐筆加邊並即時偵測循環（Pearce–Kelly 動態拓撲排序）：維護一個與目前所有邊一致的節點順序，
+    新邊 x → y 若 ord[x] < ord[y] 必不成環、O(1)；否則只在 [ord[y], ord[x]] 範圍內搜尋並局部重排。
+
+    initial_order：初始順序（所有會出現的節點；用「完整圖」的 DFS 逆後序可讓絕大多數邊一開始就順向）。
+    add() 的結果與 find_cycle（逐筆對全部既有邊做 DFS）相同：成環時回傳環（[x, y, …, x]）且不加入。"""
+
+    def __init__(self, initial_order: Iterable[int]):
+        self.ord: dict[int, int] = {}
+        for n in initial_order:
+            if n not in self.ord:
+                self.ord[n] = len(self.ord)
+        self.out: dict[int, list[int]] = defaultdict(list)
+        self.inc: dict[int, list[int]] = defaultdict(list)
+
+    def _ord(self, n: int) -> int:
+        if n not in self.ord:
+            self.ord[n] = len(self.ord)
+        return self.ord[n]
+
+    def add(self, x: int, y: int) -> list[int] | None:
+        if x == y:
+            return [x, x]
+        ox, oy = self._ord(x), self._ord(y)
+        if ox > oy:
+            # 往前搜尋：從 y 出發、只走 ord ≤ ord[x] 的節點；碰到 x 即成環
+            parent: dict[int, int | None] = {y: None}
+            stack = [y]
+            while stack:
+                node = stack.pop()
+                for nxt in self.out.get(node, ()):
+                    if nxt == x:
+                        path = [x, node]
+                        while parent[path[-1]] is not None:
+                            path.append(parent[path[-1]])  # type: ignore[arg-type]
+                        path.reverse()  # y … node, x
+                        return [x, *path]
+                    if nxt not in parent and self.ord[nxt] < ox:
+                        parent[nxt] = node
+                        stack.append(nxt)
+            fwd = list(parent)
+            # 往後搜尋：從 x 出發沿反向邊、只走 ord ≥ ord[y] 的節點
+            seen = {x}
+            stack = [x]
+            while stack:
+                node = stack.pop()
+                for prv in self.inc.get(node, ()):
+                    if prv not in seen and self.ord[prv] > oy:
+                        seen.add(prv)
+                        stack.append(prv)
+            back = sorted(seen, key=self.ord.__getitem__)
+            fwd.sort(key=self.ord.__getitem__)
+            slots = sorted(self.ord[n] for n in (*back, *fwd))
+            for n, o in zip((*back, *fwd), slots):
+                self.ord[n] = o
+        self.out[x].append(y)
+        self.inc[y].append(x)
+        return None
+
+
+def dfs_postorder_reversed(nodes: Iterable[int], out: Mapping[int, Iterable[int]]) -> list[int]:
+    """迭代 DFS 的逆後序（無環時即拓撲順序；有環時大多數邊仍為順向）"""
+    seen: set[int] = set()
+    post: list[int] = []
+    for root in nodes:
+        if root in seen:
+            continue
+        seen.add(root)
+        work: list[tuple[int, Iterator[int]]] = [(root, iter(out.get(root, ())))]
+        while work:
+            node, it = work[-1]
+            for nxt in it:
+                if nxt not in seen:
+                    seen.add(nxt)
+                    work.append((nxt, iter(out.get(nxt, ()))))
+                    break
+            else:
+                work.pop()
+                post.append(node)
+    post.reverse()
+    return post
 
 
 # ── 延遲推算 ──────────────────────────────────────────────

@@ -21,7 +21,7 @@ from ..changes import record_change
 from ..context import get_ctx
 from ..db import row_to_dict, rows_to_dicts
 from ..errors import bad_request, not_found, validation_error
-from ..schemas import _Input
+from ..schemas import FiniteFloat, _Input
 from ..validate import parse_id, present, read_json
 
 router = APIRouter()
@@ -45,13 +45,13 @@ class ChecklistCreateInput(_Input):
     items: Annotated[list[_NewItem], Field(max_length=MAX_BATCH)] = None  # type: ignore[assignment]
     isDone: bool = False
     #: 只在單項（text）建立時有效：指定排序值（插入到指定位置）；未給則排在最後
-    sortOrder: float = None  # type: ignore[assignment]
+    sortOrder: FiniteFloat = None  # type: ignore[assignment]
 
 
 class ChecklistUpdateInput(_Input):
     text: ItemText = None  # type: ignore[assignment]
     isDone: bool = None  # type: ignore[assignment]
-    sortOrder: float = None  # type: ignore[assignment]
+    sortOrder: FiniteFloat = None  # type: ignore[assignment]
 
 
 def _task_exists(conn: sqlite3.Connection, task_id: int) -> None:

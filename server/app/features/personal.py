@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-import math
 import sqlite3
 from typing import Annotated, Literal
 
@@ -29,7 +28,7 @@ from ..db import row_to_dict, rows_to_dicts
 from ..errors import bad_request, forbidden, not_found, validation_error
 from ..personal_report import build_report, parse_include, parse_range
 from ..schemas import DateString, Title
-from ..validate import parse_id, present, read_json
+from ..validate import parse_id, parse_positive_int, present, read_json
 
 router = APIRouter()
 
@@ -82,13 +81,10 @@ def _user_query(request: Request) -> int | None:
     raw = request.query_params.get("user")
     if raw is None:
         return None
-    try:
-        f = float(raw.strip()) if raw.strip() else 0.0
-    except ValueError:
-        f = math.nan
-    if not math.isfinite(f) or f != int(f) or f <= 0:
+    n = parse_positive_int(raw)
+    if n is None:
         raise validation_error([{"path": ["user"], "message": "須為正整數", "code": "invalid_type"}])
-    return int(f)
+    return n
 
 
 def _read_target(request: Request, ctx: Ctx) -> int:

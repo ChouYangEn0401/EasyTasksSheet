@@ -46,9 +46,11 @@ def create_user(
     actor_id: int | None = None,
     now: int | None = None,
     in_overview: bool | None = None,
+    on_created: Callable[[sqlite3.Connection, sqlite3.Row], Any] | None = None,
 ) -> sqlite3.Row:
     """建立帳號（雜湊密碼、記錄變更）；帳號重複時由 DB unique 約束拋 sqlite3.IntegrityError。
-    in_overview 未指定時依角色：root 預設不列入總覽統計，其餘列入"""
+    in_overview 未指定時依角色：root 預設不列入總覽統計，其餘列入。
+    on_created(conn, row)：在同一 transaction 內呼叫（寫稽核紀錄等，與建立帳號一起提交或回滾）"""
     password_hash = hash_password(password)
     t = now_ms() if now is None else now
     if in_overview is None:
@@ -70,7 +72,10 @@ def create_user(
         )
         uid = int(cur.lastrowid)  # type: ignore[arg-type]
         record_change(conn, "user", uid, "create", actor_id, t)
-        return conn.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+        if on_created is not None:
+            on_created(conn, row)
+        return row
 
 
 #: 預設管理員帳密（可由 ADMIN_USERNAME / ADMIN_PASSWORD 覆寫）

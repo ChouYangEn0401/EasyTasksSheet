@@ -12,7 +12,7 @@ from server.app.dependency_calc import (
     critical_path,
     find_cycle,
     layer_depths,
-    today_taipei,
+    today_local,
 )
 
 from .helpers import FakeClock, TestApp, client, create_test_db, create_test_user, login_as
@@ -109,10 +109,10 @@ def test_components_depth_critical_path():
     assert critical_path([1, 2, 3, 4], p, depth) == [1, 2, 4]
 
 
-def test_today_taipei():
-    assert today_taipei(FakeClock().now()) == TODAY
+def test_today_local():
+    assert today_local(FakeClock().now()) == TODAY
     # UTC 2026-01-05 16:30 = 台北 01-06 00:30
-    assert today_taipei(1767630600000) == "2026-01-06"
+    assert today_local(1767630600000) == "2026-01-06"
 
 
 # ── API ───────────────────────────────────────────────────

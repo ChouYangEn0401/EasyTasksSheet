@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-import math
+import re
 from typing import TypeVar
 
 from fastapi import Request
@@ -27,15 +27,26 @@ async def read_json(request: Request, model: type[M]) -> M:
         raise validation_error(pydantic_issues(e)) from None
 
 
+#: 路徑／查詢參數中的 id：只接受十進位數字（拒絕 1e30、+1、1.0、前後空白）
+_ID_RE = re.compile(r"[0-9]{1,19}")
+#: SQLite INTEGER 上限（超過會在查詢時 OverflowError → 500）
+ID_MAX = 2**63 - 1
+
+
+def parse_positive_int(value: str | None) -> int | None:
+    """嚴格的正整數解析：十進位數字、1 ≤ n ≤ 2^63-1；不合格回 None"""
+    if value is None or not _ID_RE.fullmatch(value):
+        return None
+    n = int(value)
+    return n if 1 <= n <= ID_MAX else None
+
+
 def parse_id(value: str) -> int:
-    """對應 z.coerce.number().int().positive()"""
-    try:
-        f = float(value.strip()) if value.strip() else 0.0
-    except ValueError:
-        f = math.nan
-    if not math.isfinite(f) or f != int(f) or f <= 0:
+    """路徑 id：嚴格正整數（見 parse_positive_int）；不合格 400 VALIDATION_ERROR"""
+    n = parse_positive_int(value)
+    if n is None:
         raise validation_error([{"path": [], "message": "須為正整數 id", "code": "invalid_id"}])
-    return int(f)
+    return n
 
 
 def present(model: BaseModel) -> dict:

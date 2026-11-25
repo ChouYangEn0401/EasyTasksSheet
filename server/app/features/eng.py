@@ -40,6 +40,7 @@ from ..github import GitHubClient, GitHubClientProtocol, GitHubError, normalize_
 from ..permissions import can, require
 from ..validate import parse_id, present, read_json
 from .. import worktree_scan as ws
+from ..schemas import SQL_INT_MAX, DbId, SqlInt
 from . import eng_attach
 from .eng_status import check_value, default_key, keys_in_category
 
@@ -82,7 +83,7 @@ class IssueUpdateInput(_Input):
     description: _text(5000) = None  # type: ignore[valid-type]
     project: _text(100) = None  # type: ignore[valid-type]
     status: _text(50, 1) = None  # type: ignore[valid-type]
-    assigneeId: int | None = None
+    assigneeId: DbId | None = None
     url: OptionalUrl = None
 
 
@@ -94,7 +95,7 @@ class RecordUpdateInput(_Input):
     machine: _text(100, 1) = None  # type: ignore[valid-type]
     path: _text(500, 1) = None  # type: ignore[valid-type]
     branch: _text(200) = None  # type: ignore[valid-type]
-    ownerId: int | None = None
+    ownerId: DbId | None = None
     purpose: _text(200) = None  # type: ignore[valid-type]
     status: _text(50, 1) = None  # type: ignore[valid-type]
     note: _text(2000) = None  # type: ignore[valid-type]
@@ -118,9 +119,9 @@ class ReportedWorktree(_Input):
     branch: Annotated[str, StringConstraints(max_length=300)] | None = None
     headSha: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{7,64}$")] | None = None
     isDirty: bool = False
-    ahead: Annotated[int, Field(ge=0)] | None = None
-    behind: Annotated[int, Field(ge=0)] | None = None
-    lastCommitAt: int | None = None
+    ahead: Annotated[int, Field(ge=0, le=SQL_INT_MAX)] | None = None
+    behind: Annotated[int, Field(ge=0, le=SQL_INT_MAX)] | None = None
+    lastCommitAt: SqlInt | None = None
     isPrunable: bool = False
     isMerged: bool = False
 
@@ -371,7 +372,7 @@ class GithubLinksInput(_Input):
 
 
 class SyncInput(_Input):
-    id: Annotated[int, Field(gt=0)] | None = None
+    id: DbId | None = None
 
 
 class ImportInput(_Input):

@@ -18,6 +18,7 @@ from ..errors import bad_request
 from ..permissions import require
 from ..validate import read_json
 from .. import worktree_paste as wp
+from ..schemas import DbId, SqlInt
 from .eng import _same_machine, check_active_owner, path_key
 from .eng_status import check_value, default_key
 
@@ -40,11 +41,11 @@ class PreviewInput(_PasteBase):
 class ApplyInput(_PasteBase):
     machine: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
     #: 行號（int）或路徑（str）；伺服器只用來從「自己重新解析的結果」挑選
-    selected: Annotated[list[int | Annotated[str, StringConstraints(max_length=1000)]], Field(max_length=wp.MAX_ENTRIES)]
+    selected: Annotated[list[SqlInt | Annotated[str, StringConstraints(max_length=1000)]], Field(max_length=wp.MAX_ENTRIES)]
     updateExisting: bool = False
     status: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)] | None = None
     #: 新登記紀錄的負責人（選填；預設為呼叫者；必須存在且啟用）
-    ownerId: Annotated[int, Field(ge=1)] | None = None
+    ownerId: DbId | None = None
 
 
 def _parse(text: str) -> wp.ParseResult:

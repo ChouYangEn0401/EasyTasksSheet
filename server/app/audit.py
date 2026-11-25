@@ -94,9 +94,15 @@ ENTITY_FIELDS: dict[str, dict[str, str]] = {
     "project": {"name": "name", "color": "color", "isArchived": "is_archived", "sortOrder": "sort_order"},
     "status": {"name": "name", "color": "color", "category": "category", "sortOrder": "sort_order"},
     "property": {"name": "name", "type": "type", "projectId": "project_id", "options": "options", "sortOrder": "sort_order"},
-    "user": {"username": "username", "displayName": "display_name", "role": "role", "isActive": "is_active"},
+    "user": {
+        "username": "username",
+        "displayName": "display_name",
+        "role": "role",
+        "isActive": "is_active",
+        "inOverview": "in_overview",
+    },
 }
-_BOOL_FIELDS = {"isArchived", "isActive", "descriptionLocked"}
+_BOOL_FIELDS = {"isArchived", "isActive", "descriptionLocked", "inOverview"}
 _JSON_FIELDS = {"options"}
 
 #: 還原時需同時具備的權限（除 audit.revert 外）
@@ -132,7 +138,7 @@ FIELD_LABELS: dict[str, dict[str, str]] = {
     "project": {"name": "名稱", "color": "顏色", "isArchived": "封存", "sortOrder": "順序"},
     "status": {"name": "名稱", "color": "顏色", "category": "類別", "sortOrder": "順序"},
     "property": {"name": "名稱", "type": "型別", "projectId": "適用專案", "options": "選項", "sortOrder": "順序"},
-    "user": {"username": "帳號", "displayName": "顯示名稱", "role": "角色", "isActive": "帳號狀態"},
+    "user": {"username": "帳號", "displayName": "顯示名稱", "role": "角色", "isActive": "帳號狀態", "inOverview": "列入總覽統計"},
     "relation": {"taskAId": "任務", "taskBId": "相關任務", "type": "類型"},
     "dependency": {"blockerTaskId": "前置任務", "blockedTaskId": "等待中的任務", "lagDays": "間隔天數", "note": "備註"},
     "checklist": {"items": "項目", "completed": "完成", "reopened": "取消完成", "count": "項數"},
@@ -661,6 +667,8 @@ class Labeler:
             return "已鎖定" if v else "未鎖定"
         if field == "isActive":
             return "啟用" if v else "停用"
+        if field == "inOverview":
+            return "列入" if v else "不列入"
         if field == "role":
             return ROLE_LABELS.get(v, str(v))
         if field == "category":
@@ -734,7 +742,14 @@ def changes_of(lab: Labeler, row: Any) -> list[dict[str, Any]]:
     return out
 
 
-def entry_to_dict(lab: Labeler, row: Any) -> dict[str, Any]:
+#: 任務歷史（audit.view_task_history，預設全員可看）不回傳內容的類型：留言內容（含已刪除 / 編輯前）只在
+#: 全站稽核頁（audit.view）可見，避免已刪除留言的內容仍可被一般成員讀到。docs/design/audit-log.md
+CONTENT_HIDDEN_IN_TASK_HISTORY = frozenset({"comment"})
+
+
+def entry_to_dict(lab: Labeler, row: Any, *, redact: bool = False) -> dict[str, Any]:
+    """redact=True（任務歷史）：CONTENT_HIDDEN_IN_TASK_HISTORY 類型的紀錄不帶 changes（只留摘要句）"""
+    hide = redact and row["entity_type"] in CONTENT_HIDDEN_IN_TASK_HISTORY
     return {
         "id": row["id"],
         "ts": row["ts"],
@@ -755,7 +770,7 @@ def entry_to_dict(lab: Labeler, row: Any) -> dict[str, Any]:
         "revertedBy": row["reverted_by"],
         "revertedByName": row["reverted_by_name"],
         "revertEntryId": row["revert_entry_id"],
-        "changes": changes_of(lab, row),
+        "changes": [] if hide else changes_of(lab, row),
     }
 
 
@@ -771,6 +786,8 @@ class AuditQuery:
     revertable: bool | None = None
     limit: int = 50
     before: int | None = None
+    #: 任務歷史：隱藏留言內容（見 CONTENT_HIDDEN_IN_TASK_HISTORY）
+    redact_content: bool = False
 
 
 def query_audit(conn: sqlite3.Connection, f: AuditQuery) -> dict[str, Any]:
@@ -811,7 +828,7 @@ def query_audit(conn: sqlite3.Connection, f: AuditQuery) -> dict[str, Any]:
     rows = rows[: f.limit]
     lab = Labeler(conn)
     return {
-        "items": [entry_to_dict(lab, r) for r in rows],
+        "items": [entry_to_dict(lab, r, redact=f.redact_content) for r in rows],
         "nextBefore": rows[-1]["id"] if has_more and rows else None,
     }
 
@@ -925,6 +942,16 @@ def plan_revert(conn: sqlite3.Connection, entry: Any, lab: Labeler | None = None
     if et in LINK_FIELDS:
         return _plan_link(conn, plan, et, action, row, before)
 
+    if et == "comment" and action == "restore":
+        # 「還原管理刪除的留言」的再還原：重新刪除
+        if row is None:
+            plan.blocked = "這則留言已不存在"
+        elif row["deleted_at"] is not None:
+            plan.blocked = "這則留言已經是刪除狀態"
+        else:
+            plan.kind = "delete_comment"
+        return plan
+
     if et == "comment" and action == "delete":
         if row is None:
             plan.blocked = "這則留言已不存在"
@@ -970,7 +997,7 @@ def plan_revert(conn: sqlite3.Connection, entry: Any, lab: Labeler | None = None
             plan.kind = "undelete"
         return plan
 
-    if et in ("status", "property") and action == "create":
+    if et in ("status", "property") and action in ("create", "restore"):
         if row is None:
             plan.blocked = "這筆資料已被刪除"
             return plan
@@ -1007,8 +1034,8 @@ def _link_tasks(et: str, snap: Mapping[str, Any]) -> tuple[Any, Any]:
 def _plan_link(
     conn: sqlite3.Connection, plan: RevertPlan, et: str, action: str, row: Any, before: dict[str, Any]
 ) -> RevertPlan:
-    """相關任務 / 依賴：建立 → 移除；移除 → 以原編號重新建立"""
-    if action == "create":
+    """相關任務 / 依賴：建立（或「移除」的還原）→ 移除；移除 → 以原編號重新建立"""
+    if action in ("create", "restore"):
         if row is None:
             plan.blocked = "這個連結已經被移除了"
         else:
@@ -1288,6 +1315,14 @@ def _execute(conn: sqlite3.Connection, entry: Any, plan: RevertPlan, actor: Any,
         )
         record_change(conn, "task_comment", eid, "update", actor_id, t)
         new_after = dict(before or {})
+    elif plan.kind == "delete_comment":
+        conn.execute(
+            "UPDATE task_comments SET deleted_at = ?, deleted_by = ?, updated_at = ? WHERE id = ?",
+            (t, actor_id, t, eid),
+        )
+        record_change(conn, "task_comment", eid, "update", actor_id, t)
+        after_, _ = load_fields(entry["after_json"])
+        new_before = dict(after_ or {})
     elif plan.kind == "delete_link":
         row = _load_row(conn, et, eid)
         new_before = link_snapshot(et, row)

@@ -286,6 +286,9 @@ class _Applier:
         self.stats = _empty_stats()
         self.reasons: list[str] = []
         self.display_names = {u["username"]: u["displayName"] for u in doc["users"]}
+        self.in_overview = {u["username"]: u.get("inOverview") for u in doc["users"]}
+        #: 中央任務描述已鎖定、因此未套用來源描述的筆數（docs/sync.md）
+        self.lock_skipped = 0
         self.auto_create = bool(source["auto_create_users"])
 
     # 成員 ------------------------------------------------------------
@@ -305,10 +308,11 @@ class _Applier:
             c.missing_users.add(username)
             return False
         display = (self.display_names.get(username) or username)[:100]
+        ov = self.in_overview.get(username)
         cur = c.conn.execute(
             "INSERT INTO users (username, display_name, password_hash, role, is_active, must_change_password, "
-            "created_at, updated_at) VALUES (?, ?, ?, 'user', 1, 1, ?, ?)",
-            (username, display, hash_password(generate_temp_password()), c.now, c.now),
+            "created_at, updated_at, in_overview) VALUES (?, ?, ?, 'user', 1, 1, ?, ?, ?)",
+            (username, display, hash_password(generate_temp_password()), c.now, c.now, 1 if ov is None or ov else 0),
         )
         new_id = int(cur.lastrowid)  # type: ignore[arg-type]
         record_change(c.conn, "user", new_id, "create", None, c.now)
@@ -404,9 +408,11 @@ class _Applier:
             return
         row = self.find_central(spec, norm, batch_keys)
         if row is None:
+            if spec.key == "tasks":
+                _unlocked(norm)
             new_id = c.writer.insert(spec, norm)
             if new_id is None:
-                self.skip(spec, item, "同一成員的個人清單已對應此任務")
+                self.skip(spec, item, _unapplied_reason(spec))
                 return
             s["created"] += 1
             if spec.natural == "uid":
@@ -416,6 +422,8 @@ class _Applier:
         if spec.natural == "uid":
             norm["uid"] = key
         view = dt._export_row(spec, row, c.idx)
+        if spec.key == "tasks" and _keep_lock(view, norm):
+            self.lock_skipped += 1
         diff = dt._diff(spec, view, norm)
         pending = self._pending(spec.key, key)
         if not diff:
@@ -429,7 +437,7 @@ class _Applier:
                     s["updated"] += 1
                     self._close(pending, "use_incoming")
                 else:
-                    self.skip(spec, item, "同一成員的個人清單已對應此任務")
+                    self.skip(spec, item, _unapplied_reason(spec))
             else:
                 s["older"] += 1
                 self._close(pending, "keep_local")
@@ -477,6 +485,37 @@ class _Applier:
             (c.source_id, self.source["name"], spec.key, key, *args, c.now, c.now),
         )
         self.stats[spec.key]["conflict"] += 1
+
+
+def _unapplied_reason(spec: dt.Spec) -> str:
+    """_Writer.insert / update 回傳 None / False 的原因（依類別）"""
+    if spec.key == "personalItems":
+        return "同一成員的個人清單已對應此任務（或缺少成員）"
+    if spec.key == "taskChecklistItems":
+        return "空白的待辦項目無法存入"
+    return "缺少必要的成員"
+
+
+_LOCK_FIELDS = ("descriptionLocked", "lockedByUsername", "lockedAt")
+
+
+def _unlocked(norm: dict[str, Any]) -> None:
+    """同步新建的任務一律不帶描述鎖定（鎖定只能由中央有 tasks.lock 權限的人設定）"""
+    norm["descriptionLocked"] = False
+    norm["lockedByUsername"] = None
+    norm["lockedAt"] = None
+
+
+def _keep_lock(central: dict[str, Any], norm: dict[str, Any]) -> bool:
+    """同步不得改變描述鎖定：鎖定欄位一律沿用中央；中央已鎖定時也保留中央的描述。
+    回傳是否因此略過了不同的描述（摘要計數用）。"""
+    for k in _LOCK_FIELDS:
+        norm[k] = central.get(k)
+    if not central.get("descriptionLocked"):
+        return False
+    changed = norm.get("description") != central.get("description")
+    norm["description"] = central.get("description")
+    return changed
 
 
 def totals_of(categories: list[dict[str, Any]]) -> dict[str, int]:
@@ -556,6 +595,7 @@ def apply_push(
                 "totals": acc,
                 "pendingConflicts": pending,
                 "missingUsers": sorted(c.missing_users)[:50],
+                "descriptionLockSkipped": ap.lock_skipped,
             }
             conn.execute(
                 "UPDATE sync_sources SET last_push_at = ?, last_push_summary = ?, "
@@ -570,6 +610,8 @@ def apply_push(
         "totals": totals,
         "pendingConflicts": pending,
         "skipped": ap.reasons,
+        #: 中央描述已鎖定而未套用來源描述的任務數
+        "descriptionLockSkipped": ap.lock_skipped,
         "missingUsers": sorted(c.missing_users),
         "createdUsers": c.created_users,
         "backupFile": backup_file.name if backup_file else None,
@@ -732,6 +774,12 @@ def _resolve_one(
                 item["updatedAt"] = max(int(incoming.get("updatedAt") or 0), int(local.get("updatedAt") or 0))
         if spec.natural == "uid":
             item["uid"] = r["entity_uid"]
+        if spec.key == "tasks":
+            # 衝突內容來自同步來源：同樣不得改變描述鎖定或已鎖定的描述
+            if local is None:
+                _unlocked(item)
+            else:
+                _keep_lock(local, item)
         try:
             if row is None:
                 new_id = c.writer.insert(spec, item)
@@ -801,6 +849,11 @@ def export_changes(db: Database, since: int | None) -> tuple[list[tuple[str, dic
     return out, users
 
 
+def export_user_flags(db: Database) -> dict[str, bool]:
+    """本機帳號 → 是否列入總覽統計（中央「自動建立缺少的成員」時沿用；既有帳號不受影響）"""
+    return {r["username"]: bool(r["in_overview"]) for r in db.all("SELECT username, in_overview FROM users")}
+
+
 def _referenced(items: list[tuple[str, dict[str, Any]]]) -> set[str]:
     names: set[str] = set()
     for key, item in items:
@@ -822,6 +875,7 @@ def build_batches(
     since: int | None,
     push_id: str,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    in_overview: dict[str, bool] | None = None,
 ) -> list[dict[str, Any]]:
     """切成每批 batch_size 筆的上傳文件（至少一批，空批用來回報「有同步但無變動」）"""
     chunks = [items[i : i + batch_size] for i in range(0, len(items), batch_size)] or [[]]
@@ -835,7 +889,13 @@ def build_batches(
             "incremental": since is not None,
             "batch": {"index": i, "total": len(chunks)},
             "users": [
-                {"username": u, "displayName": (users.get(u) or u)[:100]} for u in sorted(_referenced(chunk)) if u in users
+                {
+                    "username": u,
+                    "displayName": (users.get(u) or u)[:100],
+                    **({"inOverview": in_overview[u]} if in_overview and u in in_overview else {}),
+                }
+                for u in sorted(_referenced(chunk))
+                if u in users
             ],
         }
         for spec in SPECS:

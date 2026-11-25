@@ -124,9 +124,10 @@ async def revert(request: Request, id: str, ctx: Ctx = Depends(require("audit.re
 async def task_history(
     request: Request, id: str, ctx: Ctx = Depends(require("audit.view_task_history"))
 ) -> dict[str, Any]:
-    """該任務的活動歷史（含已刪除的任務；不存在的任務回傳空列表）"""
+    """該任務的活動歷史（含已刪除的任務；不存在的任務回傳空列表）。
+    留言類紀錄不回傳內容（changes 為空，只留摘要句）；完整內容只在 /api/admin/audit（audit.view）可見。"""
     tid = parse_id(id)
     qp = request.query_params
-    f = audit.AuditQuery(task_id=tid, before=_int_param(qp, "before"), limit=_limit(qp, 20))
+    f = audit.AuditQuery(task_id=tid, before=_int_param(qp, "before"), limit=_limit(qp, 20), redact_content=True)
     with ctx.db.lock:
         return audit.query_audit(ctx.db.conn, f)

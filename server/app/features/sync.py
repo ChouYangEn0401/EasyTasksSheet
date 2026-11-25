@@ -30,6 +30,7 @@ from ..db import Database
 from ..errors import validation_error
 from ..presence import PresenceEvent, registry_for
 from ..sync_hub import Change, changes_since, first_change_id, hub_for, latest_change_id, sync_options
+from ..validate import ID_MAX
 
 changes_router = APIRouter()
 events_router = APIRouter()
@@ -64,7 +65,7 @@ def _read_since(request: Request) -> int | None:
         raise validation_error([{"path": ["since"], "message": "須為整數", "code": "invalid_type"}])
     if n < 0:
         raise validation_error([{"path": ["since"], "message": "不得小於 0", "code": "too_small"}])
-    return int(n)
+    return min(int(n), ID_MAX)
 
 
 # ── 讀流水 ──
@@ -153,7 +154,7 @@ SSE_HEADERS = {
 async def events(request: Request) -> SSEResponse:
     since_param = _read_since(request)
     leid = js_number(request.headers.get("last-event-id"))
-    since = int(leid) if math.isfinite(leid) and leid == int(leid) and leid > 0 else since_param
+    since = min(int(leid), ID_MAX) if math.isfinite(leid) and leid == int(leid) and leid > 0 else since_param
     ctx = get_ctx(request)
     db, now, idle_ms, session_id = ctx.db, ctx.now, ctx.settings.idle_timeout_ms, ctx.session.id
 

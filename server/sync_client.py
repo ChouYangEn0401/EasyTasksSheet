@@ -141,6 +141,7 @@ def sync_push_cmd(argv: list[str]) -> int:
         run_migrations(db)
         exported_at = now_ms()
         items, users = sp.export_changes(db, since)
+        flags = sp.export_user_flags(db)
     finally:
         db.close()
 
@@ -153,6 +154,7 @@ def sync_push_cmd(argv: list[str]) -> int:
         since=since,
         push_id=secrets.token_urlsafe(12),
         batch_size=args.batch_size,
+        in_overview=flags,
     )
     mode = "全量" if since is None else f"增量（自 {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(since / 1000))} 起）"
     counts = {s.key: 0 for s in sp.SPECS}

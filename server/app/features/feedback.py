@@ -18,7 +18,7 @@ from ..changes import record_change
 from ..context import get_ctx
 from ..db import row_to_dict, rows_to_dicts
 from ..errors import bad_request, not_found, validation_error
-from ..schemas import DATE_PATTERN, DateString, Title
+from ..schemas import DATE_PATTERN, DateString, DbId, Title
 from ..validate import parse_id, present, read_json
 
 router = APIRouter()
@@ -48,8 +48,8 @@ class FeedbackCreateInput(BaseModel):
     kind: FeedbackKind
     title: Title
     body: Body = None  # type: ignore[assignment]
-    projectId: int | None = None
-    assigneeId: int | None = None
+    projectId: DbId | None = None
+    assigneeId: DbId | None = None
     scheduledDate: CalendarDate | None = None
 
 
@@ -60,8 +60,8 @@ class FeedbackUpdateInput(BaseModel):
     kind: FeedbackKind = None  # type: ignore[assignment]
     title: Title = None  # type: ignore[assignment]
     body: Body = None  # type: ignore[assignment]
-    projectId: int | None = None
-    assigneeId: int | None = None
+    projectId: DbId | None = None
+    assigneeId: DbId | None = None
     scheduledDate: CalendarDate | None = None
     resolved: bool = None  # type: ignore[assignment]
 

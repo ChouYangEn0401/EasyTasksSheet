@@ -63,7 +63,14 @@ def push_raw(e, token: str | None, doc, headers=None):
 def push(e, token: str, since=None, batch_size=500, machine="A") -> list[dict]:
     items, users = sp.export_changes(e["local"], since)
     docs = sp.build_batches(
-        items, users, machine_name=machine, exported_at=e["clock"].now(), since=since, push_id="p1", batch_size=batch_size
+        items,
+        users,
+        machine_name=machine,
+        exported_at=e["clock"].now(),
+        since=since,
+        push_id="p1",
+        batch_size=batch_size,
+        in_overview=sp.export_user_flags(e["local"]),
     )
     out = []
     for d in docs:
@@ -504,3 +511,111 @@ def test_cli_sync_push_watermark(env, monkeypatch, capsys):
     assert sync_client.sync_push_cmd(["--server", "http://example.com", "--token", token, "--db", str(ldb_path)]) == 1
     out = capsys.readouterr()
     assert "只允許 https" in out.err
+
+
+# ── 待辦清單同步（taskChecklistItems 在 SPECS 內）────────────────
+
+
+def add_item(db: Database, task_uid: str, text: str, at: int, **cols) -> str:
+    tid = task(db, task_uid)["id"]
+    values = {"task_id": tid, "text": text, "sort_order": 1, "created_at": at, "updated_at": at, **cols}
+    with db.tx() as conn:
+        cur = conn.execute(
+            f"INSERT INTO task_checklist_items ({', '.join(values)}) VALUES ({', '.join('?' * len(values))})",
+            tuple(values.values()),
+        )
+        return conn.execute("SELECT uid FROM task_checklist_items WHERE id = ?", (cur.lastrowid,)).fetchone()[0]
+
+
+def item(db: Database, uid: str):
+    return db.one("SELECT * FROM task_checklist_items WHERE uid = ?", (uid,))
+
+
+def test_checklist_items_synced_idempotent_and_conflict(env):
+    e = env
+    _sid, token = make_source(e)
+    a = add_task(e["local"], "有清單的任務", T0 - 120 * MIN)
+    i1 = add_item(e["local"], a, "買材料", T0 - 120 * MIN)
+    i2 = add_item(e["local"], a, "組裝", T0 - 120 * MIN, is_done=1, done_at=T0 - 100 * MIN)
+    res = push(e, token)
+    cat = next(c for c in res[0]["categories"] if c["key"] == "taskChecklistItems")
+    assert cat["created"] == 2
+    cdb = e["central"].db
+    assert item(cdb, i1)["task_id"] == task(cdb, a)["id"] and item(cdb, i2)["is_done"] == 1
+    # 冪等：重送不變
+    before = changes_count(cdb)
+    cat = next(c for c in push(e, token)[0]["categories"] if c["key"] == "taskChecklistItems")
+    assert cat["created"] == 0 and cat["updated"] == 0 and cat["unchanged"] == 2
+    assert changes_count(cdb) == before
+    # 兩邊在門檻內各自修改 → 待確認衝突，不套用
+    cdb.execute("UPDATE task_checklist_items SET text = '買材料（中央）', updated_at = ? WHERE uid = ?", (T0, i1))
+    e["local"].execute("UPDATE task_checklist_items SET text = '買材料（本機）', updated_at = ? WHERE uid = ?", (T0 + MIN, i1))
+    cat = next(c for c in push(e, token)[0]["categories"] if c["key"] == "taskChecklistItems")
+    assert cat["conflict"] == 1 and item(cdb, i1)["text"] == "買材料（中央）"
+    row = cdb.one("SELECT * FROM sync_conflicts WHERE category = 'taskChecklistItems'")
+    assert row["entity_uid"] == i1 and row["status"] == "pending"
+
+
+def test_blank_checklist_item_skip_reason(env):
+    e = env
+    _sid, token = make_source(e)
+    a = add_task(e["local"], "任務", T0 - 60 * MIN)
+    add_item(e["local"], a, "x", T0 - 60 * MIN)
+    items, users = sp.export_changes(e["local"], None)
+    doc = sp.build_batches(items, users, machine_name="A", exported_at=T0, since=None, push_id="b")[0]
+    doc["taskChecklistItems"][0]["text"] = "   "
+    res = push_raw(e, token, doc)
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert any("空白的待辦項目" in r for r in body["skipped"])
+    assert not any("個人清單" in r for r in body["skipped"])
+
+
+# ── 描述鎖定不受同步改寫 ──────────────────────────────────────
+
+
+def test_sync_cannot_change_description_lock(env):
+    e = env
+    _sid, token = make_source(e)
+    cdb = e["central"].db
+    mgr = e["manager"]["id"]
+    a = add_task(e["local"], "會被鎖定", T0 - 120 * MIN, description="原描述")
+    b = add_task(e["local"], "本機想鎖", T0 - 120 * MIN)
+    # 本機自行鎖定的新任務：中央建立時不帶鎖
+    c = add_task(e["local"], "本機新建已鎖", T0 - 120 * MIN, description_locked=1, locked_at=T0 - 120 * MIN)
+    push(e, token)
+    assert task(cdb, c)["description_locked"] == 0 and task(cdb, c)["locked_at"] is None
+
+    # 中央鎖定 a；本機很久之後改了 a 的描述與標題 → 標題更新、描述與鎖定保留中央
+    set_task(cdb, a, T0, description="PM 定稿", description_locked=1, locked_by=mgr, locked_at=T0)
+    set_task(e["local"], a, T0 + 60 * MIN, title="會被鎖定（改名）", description="本機亂改", description_locked=0)
+    # 本機想替 b 加鎖 → 中央不變
+    set_task(e["local"], b, T0 + 60 * MIN, description_locked=1, locked_at=T0)
+    res = push(e, token)
+    ta, tb = task(cdb, a), task(cdb, b)
+    assert ta["title"] == "會被鎖定（改名）" and ta["description"] == "PM 定稿"
+    assert (ta["description_locked"], ta["locked_by"], ta["locked_at"]) == (1, mgr, T0)
+    assert tb["description_locked"] == 0 and tb["locked_at"] is None
+    assert res[0]["descriptionLockSkipped"] == 1
+    src = e["apis"]["manager"].get("/api/admin/sync/sources").json()["sources"][0]
+    assert src["lastPushSummary"]["descriptionLockSkipped"] == 1
+
+    # 只有描述不同（中央已鎖定）→ 視為相同，不產生衝突
+    set_task(e["local"], a, T0 + 61 * MIN, description="又改一次")
+    r = totals(push(e, token))
+    assert r["conflict"] == 0 and task(cdb, a)["description"] == "PM 定稿"
+
+
+def test_sync_auto_created_user_follows_in_overview(env):
+    e = env
+    ldb = e["local"]
+    with ldb.tx() as conn:
+        conn.execute(
+            "INSERT INTO users (username, display_name, password_hash, role, created_at, updated_at, in_overview) "
+            "VALUES ('quiet', '安靜', 'x', 'user', 1, 1, 0)"
+        )
+    q = ldb.scalar("SELECT id FROM users WHERE username = 'quiet'")
+    add_task(ldb, "給 quiet", T0 - 60 * MIN, assignee_id=q)
+    _sid, token = make_source(e, name="自動", autoCreateUsers=True)
+    push(e, token)
+    assert e["central"].db.scalar("SELECT in_overview FROM users WHERE username = 'quiet'") == 0

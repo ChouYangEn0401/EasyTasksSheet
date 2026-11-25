@@ -24,6 +24,7 @@ from ..config import config
 from ..context import Ctx
 from ..errors import HttpError, bad_request, forbidden, not_found, pydantic_issues, too_many_requests, validation_error
 from ..permissions import require
+from ..schemas import DbId
 from .auth import client_ip
 from .data_admin import _read_limited
 
@@ -260,7 +261,7 @@ class ResolveInput(BaseModel):
 
 class BulkInput(BaseModel):
     model_config = {"extra": "forbid"}
-    ids: Annotated[list[Annotated[int, Field(ge=1)]], Field(min_length=1, max_length=500)]
+    ids: Annotated[list[DbId], Field(min_length=1, max_length=500)]
     resolution: Literal["keep_local", "use_incoming"]
 
 

@@ -34,7 +34,10 @@ from .errors import pydantic_issues
 from .schemas import DATE_PATTERN, TAG_COLORS
 
 FORMAT = "tasks-sheets-export"
-SCHEMA_VERSION = 1
+#: 匯出格式版本。2：加入 taskChecklistItems / taskRelations / taskDependencies / taskComments、任務描述鎖定欄位、
+#: 成員 inOverview、個人清單 doneAt。新版同時接受 1（缺少的鍵 / 欄位用預設值）與 2；舊版系統（只支援 1）遇到 2 會由
+#: 版本檢查提示「請先更新系統」，而不是籠統的驗證失敗。
+SCHEMA_VERSION = 2
 STRATEGIES = ("keep_newer", "keep_local", "use_import")
 REPLACE_CONFIRM = "取代全部資料"
 #: 單一類別最多筆數（防止惡意檔案）
@@ -362,7 +365,6 @@ FIELD_LABELS = {
     "ownerUsername": "負責人",
     "purpose": "用途",
     "text": "內容",
-    "doneAt": "完成時間",
     "doneByUsername": "完成者",
     "descriptionLocked": "描述鎖定",
     "lockedByUsername": "鎖定者",
@@ -423,7 +425,7 @@ UserItem = create_model(
     # admin / member 為 0006_roles 之前的舊匯出檔；匯入建立的成員一律為 user，不沿用此值
     role=(Literal["root", "manager", "user", "admin", "member"], "user"),
     isActive=(bool, True),
-    # 是否列入總覽統計；舊匯出檔沒有此欄位（匯入建立的成員為 user，預設列入）
+    # 是否列入總覽統計：只用於「匯入新建立」的成員（既有帳號不覆寫）；舊匯出檔沒有此欄位時依角色預設（user → 列入）
     inOverview=(Optional[bool], None),
     createdAt=(Optional[_Int], None),
     updatedAt=(Optional[_Int], None),
@@ -1175,12 +1177,22 @@ def _create_missing_users(w: _Writer, missing: list[dict[str, Any]]) -> list[dic
     from .security import hash_password
 
     created = []
+    in_overview = {u["username"]: u.get("inOverview") for u in w.doc.get("users", [])}
     for m in missing:
         temp = generate_temp_password()
+        # 匯入建立的成員一律為 user：列入總覽依匯出檔的 inOverview，缺漏時依角色預設（user → 列入）
+        ov = in_overview.get(m["username"])
         cur = w.conn.execute(
             "INSERT INTO users (username, display_name, password_hash, role, is_active, must_change_password, "
-            "created_at, updated_at) VALUES (?, ?, ?, 'user', 1, 1, ?, ?)",
-            (m["username"], (m["displayName"] or m["username"])[:100], hash_password(temp), w.now, w.now),
+            "created_at, updated_at, in_overview) VALUES (?, ?, ?, 'user', 1, 1, ?, ?, ?)",
+            (
+                m["username"],
+                (m["displayName"] or m["username"])[:100],
+                hash_password(temp),
+                w.now,
+                w.now,
+                1 if ov is None or ov else 0,
+            ),
         )
         uid = int(cur.lastrowid)  # type: ignore[arg-type]
         record_change(w.conn, "user", uid, "create", w.actor, w.now)
@@ -1429,27 +1441,46 @@ def _dependency_preview(plan: Plan, doc: dict[str, Any]) -> dict[str, Any]:
 
 
 def _apply_dependencies(w: _Writer, doc: dict[str, Any], opts: ApplyOptions, stats: dict[str, Any]) -> list[str]:
-    """在任務套用完成後寫入依賴；回傳略過原因（例如會形成循環）"""
-    from .dependency_calc import find_cycle
+    """在任務套用完成後寫入依賴；回傳略過原因（例如會形成循環）。
+
+    效能（持有 db.lock）：既有依賴只載入一次，之後全在記憶體中以增量方式檢查循環（dependency_calc.IncrementalDag：
+    以「既有 + 待新增」整張圖的 DFS 逆後序為初始順序，順向的邊 O(1)，只有逆向的邊才做局部搜尋）。
+    略過與否與逐筆對全部邊做 DFS 的結果相同。"""
+    from .dependency_calc import IncrementalDag, dfs_postorder_reversed
 
     conn = w.conn
     issues: list[str] = []
     local_task = {r["uid"]: r["id"] for r in conn.execute("SELECT id, uid FROM tasks")}
     titles = {r["id"]: r["title"] for r in conn.execute("SELECT id, title FROM tasks")}
+    rows = [dict(r) for r in conn.execute("SELECT id, uid, blocker_task_id, blocked_task_id, lag_days, note, updated_at FROM task_dependencies")]
+    by_uid: dict[str, dict[str, Any]] = {r["uid"]: r for r in rows}
+    by_pair: dict[tuple[int, int], dict[str, Any]] = {}
+    for r in rows:
+        by_pair.setdefault((r["blocker_task_id"], r["blocked_task_id"]), r)
+    full: dict[int, list[int]] = {}
+    for r in rows:
+        full.setdefault(r["blocker_task_id"], []).append(r["blocked_task_id"])
 
     def task_id(uid: str) -> int | None:
         return w.maps["tasks"].get(uid) or local_task.get(uid)
 
-    for item in doc.get(DEP_KEY) or []:
-        blocker, blocked = task_id(item["blockerTaskUid"]), task_id(item["blockedTaskUid"])
+    items = doc.get(DEP_KEY) or []
+    resolved = [(item, task_id(item["blockerTaskUid"]), task_id(item["blockedTaskUid"])) for item in items]
+    # 整張圖（既有 + 可能新增）的 DFS 逆後序作為初始順序，再把既有邊依序加入
+    for item, a, b in resolved:
+        if a is not None and b is not None and a != b and item["uid"] not in by_uid and (a, b) not in by_pair:
+            full.setdefault(a, []).append(b)
+    nodes = sorted({n for a, bs in full.items() for n in (a, *bs)})
+    dag = IncrementalDag(dfs_postorder_reversed(nodes, full))
+    for r in rows:
+        dag.add(r["blocker_task_id"], r["blocked_task_id"])
+
+    for item, blocker, blocked in resolved:
         if blocker is None or blocked is None or blocker == blocked:
             stats["skipped"] += 1
             issues.append(f"{DEP_LABEL}（{item['uid']}）：對應的任務不存在，已略過")
             continue
-        existing = conn.execute(
-            "SELECT * FROM task_dependencies WHERE uid = ? OR (blocker_task_id = ? AND blocked_task_id = ?)",
-            (item["uid"], blocker, blocked),
-        ).fetchone()
+        existing = by_uid.get(item["uid"]) or by_pair.get((blocker, blocked))
         if existing is not None:
             same_pair = existing["blocker_task_id"] == blocker and existing["blocked_task_id"] == blocked
             same = same_pair and existing["lag_days"] == item["lagDays"] and existing["note"] == item["note"]
@@ -1457,22 +1488,24 @@ def _apply_dependencies(w: _Writer, doc: dict[str, Any], opts: ApplyOptions, sta
             if same or choice == "keep_local" or not same_pair:
                 stats["unchanged"] += 1
                 continue
+            updated_at = item["updatedAt"] or w.now
             conn.execute(
                 "UPDATE task_dependencies SET lag_days = ?, note = ?, updated_at = ? WHERE id = ?",
-                (item["lagDays"], item["note"], item["updatedAt"] or w.now, existing["id"]),
+                (item["lagDays"], item["note"], updated_at, existing["id"]),
             )
+            existing.update(lag_days=item["lagDays"], note=item["note"], updated_at=updated_at)
             record_change(conn, "task", blocked, "update", w.actor, w.now)
             stats["updated"] += 1
             continue
-        pairs = [(r[0], r[1]) for r in conn.execute("SELECT blocker_task_id, blocked_task_id FROM task_dependencies")]
-        cycle = find_cycle(pairs, blocker, blocked)
+        cycle = dag.add(blocker, blocked)
         if cycle is not None:
             stats["skipped"] += 1
             names = " → ".join(f"「{titles.get(i, i)}」" for i in cycle)
             issues.append(f"{DEP_LABEL}：{names} 會形成循環，已略過")
             continue
         created_by = w.user_id.get(item["createdByUsername"]) if item["createdByUsername"] else None
-        conn.execute(
+        updated_at = item["updatedAt"] or w.now
+        cur = conn.execute(
             "INSERT INTO task_dependencies (uid, blocker_task_id, blocked_task_id, type, lag_days, note, created_by, "
             "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
@@ -1484,35 +1517,102 @@ def _apply_dependencies(w: _Writer, doc: dict[str, Any], opts: ApplyOptions, sta
                 item["note"],
                 created_by,
                 item["createdAt"] or w.now,
-                item["updatedAt"] or w.now,
+                updated_at,
             ),
         )
+        row = {
+            "id": int(cur.lastrowid),  # type: ignore[arg-type]
+            "uid": item["uid"],
+            "blocker_task_id": blocker,
+            "blocked_task_id": blocked,
+            "lag_days": item["lagDays"],
+            "note": item["note"],
+            "updated_at": updated_at,
+        }
+        by_uid[item["uid"]] = row
+        by_pair.setdefault((blocker, blocked), row)
         record_change(conn, "task", blocked, "update", w.actor, w.now)
         stats["created"] += 1
     return issues
 
 
+def _comment_thread_issue(c: dict[str, Any], by_uid: dict[str, dict[str, Any]]) -> str | None:
+    """檔案內的討論串結構檢查：父留言須同任務且本身是根訊息（只有兩層）；replyTo 須在同一串"""
+    puid, ruid = c["parentUid"], c["replyToUid"]
+    if puid is not None:
+        parent = by_uid.get(puid)
+        if parent is None:
+            return f"留言 {c['uid']}：找不到父留言 {puid}"
+        if parent["taskUid"] != c["taskUid"]:
+            return f"留言 {c['uid']}：父留言屬於另一個任務"
+        if parent["parentUid"] is not None:
+            return f"留言 {c['uid']}：父留言本身是回覆（討論串只有兩層）"
+    if ruid is not None:
+        target = by_uid.get(ruid)
+        if puid is None:
+            return f"留言 {c['uid']}：根訊息不可指定 replyTo"
+        if target is None or (target["uid"] != puid and target["parentUid"] != puid):
+            return f"留言 {c['uid']}：replyTo 不在同一個討論串"
+    return None
+
+
 def _import_comments(w: _Writer, opts: ApplyOptions) -> dict[str, Any]:
     """匯入任務討論區（在任務之後）：同 uid 視為同一則，依策略（updatedAt）決定是否覆寫；
-    所屬任務未匯入（例如被略過）時略過；成員不存在時該欄位留空（留言本身保留）。"""
-    stats = {"key": "taskComments", "label": "任務討論", "created": 0, "updated": 0, "unchanged": 0, "skipped": 0}
+    所屬任務未匯入（例如被略過）時略過；成員不存在時該欄位留空（留言本身保留）。
+    討論串結構不合法（父留言不同任務 / 超過兩層 / replyTo 不在同串）時略過並記錄原因（skippedReasons）。
+    更新既有留言時不改動其所屬任務與討論串（task_id / parent_id / reply_to_id）。"""
+    stats: dict[str, Any] = {
+        "key": "taskComments",
+        "label": "任務討論",
+        "created": 0,
+        "updated": 0,
+        "unchanged": 0,
+        "skipped": 0,
+        "skippedReasons": [],
+    }
     items = w.doc.get("taskComments", [])
     if not items:
         return stats
     conn = w.conn
-    local = {r["uid"]: r for r in conn.execute("SELECT id, uid, updated_at FROM task_comments")}
+    local = {r["uid"]: r for r in conn.execute("SELECT id, uid, task_id, parent_id, updated_at FROM task_comments")}
     task_ids = w.maps["tasks"]
     comment_id: dict[str, int] = {u: r["id"] for u, r in local.items()}
+    #: 本次寫入的留言：id → (task_id, parent_id)
+    placed: dict[int, tuple[int, int | None]] = {r["id"]: (r["task_id"], r["parent_id"]) for r in local.values()}
+    by_uid = {c["uid"]: c for c in items}
+    reasons: list[str] = stats["skippedReasons"]
+
+    def skip(reason: str | None) -> None:
+        stats["skipped"] += 1
+        if reason and len(reasons) < 50:
+            reasons.append(reason)
+
     # 根訊息先於回覆（回覆的 parent 必須已存在）
     ordered = sorted(items, key=lambda c: (c["parentUid"] is not None, c["createdAt"]))
     for c in ordered:
         tid = task_ids.get(c["taskUid"])
         parent = comment_id.get(c["parentUid"]) if c["parentUid"] else None
-        if tid is None or (c["parentUid"] and parent is None):
-            stats["skipped"] += 1
+        if tid is None:
+            skip(None)
             continue
+        issue = _comment_thread_issue(c, by_uid)
+        if issue is not None:
+            skip(issue)
+            continue
+        if c["parentUid"] and parent is None:
+            skip(f"留言 {c['uid']}：父留言未匯入，已略過")
+            continue
+        if parent is not None:
+            # 本機實際的父留言（同 uid 的既有資料可能屬於別的任務）也須同任務且為根訊息
+            ptask, pparent = placed.get(parent, (None, None))
+            if ptask != tid or pparent is not None:
+                skip(f"留言 {c['uid']}：本機的父留言不屬於同一任務或不是根訊息，已略過")
+                continue
         cols: dict[str, Any] = {"task_id": tid, "parent_id": parent}
-        cols["reply_to_id"] = comment_id.get(c["replyToUid"]) if c["replyToUid"] else None
+        reply_to = comment_id.get(c["replyToUid"]) if c["replyToUid"] else None
+        if reply_to is not None and reply_to != parent and placed.get(reply_to, (None, None))[1] != parent:
+            reply_to = None  # 本機對應的留言不在同一串：不保留回覆對象
+        cols["reply_to_id"] = reply_to
         for name, col in _COMMENT_USER_FIELDS:
             cols[col] = w.user_id.get(c[name]) if c[name] is not None else None
         for name, col in _COMMENT_PLAIN_FIELDS:
@@ -1527,6 +1627,7 @@ def _import_comments(w: _Writer, opts: ApplyOptions) -> dict[str, Any]:
             )
             cid = int(cur.lastrowid)  # type: ignore[arg-type]
             comment_id[c["uid"]] = cid
+            placed[cid] = (tid, parent)
             record_change(conn, "task_comment", cid, "create", w.actor, w.now)
             stats["created"] += 1
             continue
@@ -1534,6 +1635,8 @@ def _import_comments(w: _Writer, opts: ApplyOptions) -> dict[str, Any]:
         if same_time or resolve(opts.strategy, None, existing["updated_at"], c["updatedAt"]) == "keep_local":
             stats["unchanged"] += 1
             continue
+        for k in ("task_id", "parent_id", "reply_to_id"):
+            cols.pop(k)
         conn.execute(
             f"UPDATE task_comments SET {', '.join(f'{k} = ?' for k in cols)} WHERE id = ?",
             (*cols.values(), existing["id"]),

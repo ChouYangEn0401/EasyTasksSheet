@@ -35,10 +35,10 @@ from ..dependency_calc import (
     critical_path,
     find_cycle,
     layer_depths,
-    today_taipei,
+    today_local,
 )
 from ..errors import HttpError, bad_request, not_found, validation_error
-from ..schemas import _Input
+from ..schemas import DbId, _Input
 from ..validate import parse_id, present, read_json
 
 router = APIRouter()
@@ -50,7 +50,7 @@ Note = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
 
 class DependencyCreateInput(_Input):
     direction: Literal["blocked_by", "blocks"]
-    targetId: Annotated[int, Field(gt=0)]
+    targetId: DbId
     lagDays: LagDays = None  # type: ignore[assignment]
     note: Note = None  # type: ignore[assignment]
 
@@ -112,7 +112,14 @@ EMPTY_FIELDS: dict[str, Any] = {
 def attach_dependency_fields(db: Database, items: list[dict[str, Any]], now_ms: int) -> list[dict[str, Any]]:
     """GET /api/tasks 用：一次批次推算後把依賴欄位加到每筆任務（不改既有欄位）"""
     with db.lock:
-        _tasks, _deps, proj = _project(db.conn, today_taipei(now_ms))
+        return attach_dependency_fields_conn(db.conn, items, now_ms)
+
+
+def attach_dependency_fields_conn(
+    conn: sqlite3.Connection, items: list[dict[str, Any]], now_ms: int
+) -> list[dict[str, Any]]:
+    """同 attach_dependency_fields，但使用呼叫端已持有的連線（可在 transaction 內呼叫，如單筆任務回應）"""
+    _tasks, _deps, proj = _project(conn, today_local(now_ms))
     for item in items:
         p = proj.get(item["id"])
         if p is None:
@@ -358,7 +365,7 @@ async def delay_chains(request: Request):
     qp = request.query_params
     filters = _parse_filters(qp)
     include_done = (qp.get("includeDone") or "").lower() in ("1", "true", "yes")
-    today = today_taipei(ctx.now())
+    today = today_local(ctx.now())
     with ctx.db.lock:
         tasks, deps, proj = _project(ctx.db.conn, today)
     chains = build_delay_chains(tasks, deps, proj, filters, include_done)
@@ -372,7 +379,7 @@ async def delay_chains(request: Request):
 async def list_dependencies(request: Request, id: str):
     ctx = get_ctx(request)
     tid = parse_id(id)
-    today = today_taipei(ctx.now())
+    today = today_local(ctx.now())
     with ctx.db.lock:
         conn = ctx.db.conn
         if _task_row(conn, tid) is None:
@@ -404,7 +411,7 @@ async def create_dependency(request: Request, id: str):
         raise bad_request("任務不能等待自己完成")
     blocker, blocked = (target, tid) if data.direction == "blocked_by" else (tid, target)
     actor = ctx.user["id"]
-    today = today_taipei(ctx.now())
+    today = today_local(ctx.now())
     with ctx.db.tx() as conn:
         if _task_row(conn, tid) is None:
             raise not_found("此任務不存在或已被刪除")
@@ -438,7 +445,7 @@ async def update_dependency(request: Request, id: str, dep_id: str):
     tid, did = parse_id(id), parse_id(dep_id)
     fields = present(await read_json(request, DependencyUpdateInput))
     actor = ctx.user["id"]
-    today = today_taipei(ctx.now())
+    today = today_local(ctx.now())
     with ctx.db.tx() as conn:
         if _task_row(conn, tid) is None:
             raise not_found("此任務不存在或已被刪除")

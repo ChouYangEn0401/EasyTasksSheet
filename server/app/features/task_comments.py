@@ -23,8 +23,8 @@ from ..changes import record_change
 from ..context import get_ctx
 from ..errors import bad_request, conflict, not_found, too_many_requests
 from ..permissions import can, denied
-from ..schemas import _Input
-from ..validate import parse_id, read_json
+from ..schemas import DbId, _Input
+from ..validate import ID_MAX, parse_id, read_json
 
 router = APIRouter()
 
@@ -46,8 +46,8 @@ _MENTION = re.compile(r"(?<![A-Za-z0-9._-])@([A-Za-z0-9][A-Za-z0-9._-]{0,63})")
 
 class CommentCreateInput(_Input):
     body: Body
-    parentId: int | None = None
-    replyToId: int | None = None
+    parentId: DbId | None = None
+    replyToId: DbId | None = None
 
 
 class CommentUpdateInput(_Input):
@@ -155,8 +155,8 @@ def _parse_cursor(raw: str | None) -> tuple[int, int] | None:
     """討論串游標：`<最新活動時間>_<根訊息 id>`"""
     if not raw:
         return None
-    m = re.fullmatch(r"([0-9]+)_([0-9]+)", raw)
-    if not m:
+    m = re.fullmatch(r"([0-9]{1,19})_([0-9]{1,19})", raw)
+    if not m or int(m.group(1)) > ID_MAX or int(m.group(2)) > ID_MAX:
         raise bad_request("before 格式錯誤")
     return int(m.group(1)), int(m.group(2))
 

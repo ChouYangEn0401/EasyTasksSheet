@@ -164,6 +164,12 @@ async def create_admin_user(request: Request, ctx: Ctx = _members):
         raise _username_taken()
     temp = generate_temp_password()
     t = ctx.now()
+
+    def on_created(conn: sqlite3.Connection, row: sqlite3.Row) -> None:
+        # 與建立帳號同一 transaction：同名帳號先前的登入失敗紀錄不延續到新帳號；寫入稽核
+        clear_login_failures(conn, row["username"])
+        audit_events.user_created(conn, ctx.user, row, t)
+
     try:
         row = await run_in_threadpool(
             lambda: create_user(
@@ -176,15 +182,12 @@ async def create_admin_user(request: Request, ctx: Ctx = _members):
                 must_change_password=True,
                 actor_id=ctx.user["id"],
                 now=t,
+                on_created=on_created,
             )
         )
     except sqlite3.IntegrityError:
         # 並行建立同帳號：由 DB unique 約束擋下
         raise _username_taken() from None
-    # 同名帳號先前的登入失敗紀錄不延續到新帳號
-    with ctx.db.tx() as conn:
-        clear_login_failures(conn, row["username"])
-        audit_events.user_created(conn, ctx.user, row, t)
     return JSONResponse({"user": to_admin_user(ctx, row), "tempPassword": temp}, status_code=201)
 
 

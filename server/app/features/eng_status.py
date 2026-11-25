@@ -23,6 +23,7 @@ from ..context import Ctx, get_ctx
 from ..errors import HttpError, bad_request, not_found
 from ..permissions import require
 from ..validate import parse_id, present, read_json
+from ..schemas import FiniteFloat
 
 router = APIRouter()
 
@@ -59,7 +60,7 @@ class StatusUpdateInput(_Input):
     label: Label = None  # type: ignore[assignment]
     color: Color = None  # type: ignore[assignment]
     category: Annotated[str, StringConstraints(max_length=20)] = None  # type: ignore[assignment]
-    sortOrder: float = None  # type: ignore[assignment]
+    sortOrder: FiniteFloat = None  # type: ignore[assignment]
     isArchived: bool = None  # type: ignore[assignment]
 
 

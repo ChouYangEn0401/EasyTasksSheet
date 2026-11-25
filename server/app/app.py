@@ -59,7 +59,9 @@ def create_app(
 
     @app.middleware("http")
     async def api_guard(request: Request, call_next):  # type: ignore[no-untyped-def]
-        path = request.url.path
+        # 與路由器比對同一個值（scope["path"]：已解碼、不含 root_path / query）；request.url.path 會重新編碼，
+        # 兩者不一致時可能讓授權判斷與實際命中的路由不同
+        path = request.scope["path"]
         if path == "/api" or path.startswith("/api/"):
             st = request.app.state
             try:

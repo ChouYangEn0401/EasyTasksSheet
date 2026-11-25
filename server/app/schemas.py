@@ -26,6 +26,15 @@ Username = trimmed(1, 64)
 Name100 = trimmed(1, 100)
 Title = trimmed(1, 500)
 
+#: 有限浮點數：拒絕 NaN / Infinity / 超出範圍（如 1e400 → inf）——寫入後 JSON 輸出會失敗
+FiniteFloat = Annotated[float, Field(allow_inf_nan=False)]
+#: SQLite INTEGER 上限（超過會在寫入／查詢時 OverflowError → 500）
+SQL_INT_MAX = 2**63 - 1
+#: 資料列 id：正整數且不超過 SQLite INTEGER 上限
+DbId = Annotated[int, Field(ge=1, le=SQL_INT_MAX)]
+#: 任意 SQLite INTEGER
+SqlInt = Annotated[int, Field(ge=-SQL_INT_MAX - 1, le=SQL_INT_MAX)]
+
 
 class _Input(BaseModel):
     model_config = {"extra": "ignore"}
@@ -54,7 +63,7 @@ class ProjectUpdateInput(_Input):
     name: Name100 = None  # type: ignore[assignment]
     color: TagColor = None  # type: ignore[assignment]
     isArchived: bool = None  # type: ignore[assignment]
-    sortOrder: float = None  # type: ignore[assignment]
+    sortOrder: FiniteFloat = None  # type: ignore[assignment]
 
 
 # ── statuses ──
@@ -65,35 +74,35 @@ class StatusCreateInput(_Input):
     name: Name100
     color: TagColor = None  # type: ignore[assignment]
     category: StatusCategory = None  # type: ignore[assignment]
-    sortOrder: float = None  # type: ignore[assignment]
+    sortOrder: FiniteFloat = None  # type: ignore[assignment]
 
 
 class StatusUpdateInput(_Input):
     name: Name100 = None  # type: ignore[assignment]
     color: TagColor = None  # type: ignore[assignment]
     category: StatusCategory = None  # type: ignore[assignment]
-    sortOrder: float = None  # type: ignore[assignment]
+    sortOrder: FiniteFloat = None  # type: ignore[assignment]
 
 
 class StatusMigrateInput(_Input):
     """POST /api/statuses/:id/migrate-and-delete：把使用此狀態的任務改移到 targetStatusId 後刪除"""
 
-    targetStatusId: int
+    targetStatusId: DbId
 
 
 # ── tasks ──
 class TaskUpdateInput(_Input):
     title: Title = None  # type: ignore[assignment]
-    projectId: int = None  # type: ignore[assignment]
+    projectId: DbId = None  # type: ignore[assignment]
     description: Annotated[str, StringConstraints(max_length=20_000)] = None  # type: ignore[assignment]
-    statusId: int = None  # type: ignore[assignment]
-    assigneeId: int | None = None
+    statusId: DbId = None  # type: ignore[assignment]
+    assigneeId: DbId | None = None
     priority: TaskPriority = None  # type: ignore[assignment]
     startDate: DateString | None = None
     dueDate: DateString | None = None
-    estimateHours: Annotated[float, Field(ge=0)] | None = None
+    estimateHours: Annotated[float, Field(ge=0, allow_inf_nan=False)] | None = None
     progress: Annotated[int, Field(ge=0, le=100)] = None  # type: ignore[assignment]
-    sortOrder: float = None  # type: ignore[assignment]
+    sortOrder: FiniteFloat = None  # type: ignore[assignment]
     custom: dict[str, Any] = None  # type: ignore[assignment]
     #: 描述鎖定（需 tasks.lock；docs/design/task-discussion.md）
     descriptionLocked: bool = None  # type: ignore[assignment]
@@ -109,7 +118,7 @@ TaskRelationType = Literal["related"]
 class TaskRelationCreateInput(_Input):
     """POST /api/tasks/:id/relations"""
 
-    targetId: int
+    targetId: DbId
     type: TaskRelationType = "related"
 
 
@@ -129,7 +138,7 @@ class TaskDuplicateInput(_Input):
 
     title: Title = None  # type: ignore[assignment]
     copy_: TaskDuplicateCopy = Field(default_factory=TaskDuplicateCopy, alias="copy")
-    statusId: int = None  # type: ignore[assignment]
+    statusId: DbId = None  # type: ignore[assignment]
     relate: bool = True
 
 
@@ -141,7 +150,7 @@ class SelectOption(_Input):
 
 
 class PropertyCreateInput(_Input):
-    projectId: int | None = None
+    projectId: DbId | None = None
     name: Name100
     type: PropertyType
     options: list[SelectOption] = None  # type: ignore[assignment]
@@ -150,7 +159,7 @@ class PropertyCreateInput(_Input):
 class PropertyUpdateInput(_Input):
     name: Name100 = None  # type: ignore[assignment]
     options: list[SelectOption] = None  # type: ignore[assignment]
-    sortOrder: float = None  # type: ignore[assignment]
+    sortOrder: FiniteFloat = None  # type: ignore[assignment]
 
 
 def dump_options(options: list[SelectOption] | None) -> list[dict[str, Any]]:
