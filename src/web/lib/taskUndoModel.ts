@@ -1,4 +1,5 @@
 import type { Task, TaskUpdateInput } from '../../shared/tasks.ts';
+import { truncate } from './format.ts';
 
 /*
  * 任務復原的純函式（docs/design/undo.md）：把 PATCH 攤平成「欄位 → 值」、比對衝突、合併、組文案。
@@ -123,8 +124,7 @@ export function fieldLabel(field: string, propertyName?: (key: string) => string
 
 /** 名稱用『』包住並截斷為 20 字 */
 export function quote(name: string, max = 20): string {
-  const chars = [...name.trim()];
-  return `『${chars.length > max ? `${chars.slice(0, max).join('')}…` : chars.join('')}』`;
+  return `『${truncate(name, max)}』`;
 }
 
 /**

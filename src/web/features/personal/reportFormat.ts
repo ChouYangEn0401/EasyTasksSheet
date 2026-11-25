@@ -4,6 +4,7 @@ import {
   type ReportTask,
   type ReportTodo,
 } from '../../../shared/personal.ts';
+import { toDateString } from '../../lib/format.ts';
 
 /*
  * 個人頁「匯報報告」的純函式：日期區間、依專案分組、各輸出格式、CSV 跳脫、空狀態文案。
@@ -15,11 +16,7 @@ export const REPORT_TITLE = '匯報報告';
 
 /* ── 日期 ─────────────────────── */
 
-const pad = (n: number) => String(n).padStart(2, '0');
-
-export function toDateString(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+export { toDateString };
 
 function parseDate(s: string): Date {
   const [y, m, d] = s.split('-').map(Number);

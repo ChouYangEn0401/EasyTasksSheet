@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { ToastTone } from '../ui/Toast.tsx';
+import { truncate } from './format.ts';
 
 /*
  * Toast 佇列（docs/design/realtime-feedback.md §2）。純邏輯、不碰 DOM，計時以 setTimeout（可用假時鐘測試）。
@@ -213,17 +214,12 @@ export function useToasts() {
 
 // ── 文案工具（§2 文案規則） ─────────────────────────
 
+/** 截斷為 max 字（不加引號）；實作在 format.ts，這裡保留匯出讓既有 import 可用 */
+export { truncate };
+
 /** 項目名稱用「」包住並截斷為 20 字 */
 export function quoteName(name: string, max = 20): string {
-  const chars = [...name.trim()];
-  const text = chars.length > max ? `${chars.slice(0, max).join('')}…` : chars.join('');
-  return `「${text}」`;
-}
-
-/** 截斷為 max 字（不加引號） */
-export function truncate(name: string, max = 20): string {
-  const chars = [...name.trim()];
-  return chars.length > max ? `${chars.slice(0, max).join('')}…` : chars.join('');
+  return `「${truncate(name, max)}」`;
 }
 
 let createdCount = 0;

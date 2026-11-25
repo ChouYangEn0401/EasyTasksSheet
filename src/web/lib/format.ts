@@ -36,16 +36,26 @@ export function formatDateOnly(date: string | null | undefined): string {
   return date ? date.replaceAll('-', '/') : '';
 }
 
+/** Date → YYYY-MM-DD（本地時區） */
+export function toDateString(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 /** 今天的 YYYY-MM-DD（本地時區） */
 export function todayString(now: number = Date.now()): string {
-  const d = new Date(now);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return toDateString(new Date(now));
 }
 
 /** 顯示名稱首字（Avatar）：中文取第一字，英文取首字母大寫 */
 export function initialOf(name: string): string {
   const ch = [...name.trim()][0] ?? '?';
   return ch.toUpperCase();
+}
+
+/** 去頭尾空白後截斷為 max 字（以字元計，不切斷 emoji 等代理對），超過時補「…」 */
+export function truncate(name: string, max = 20): string {
+  const chars = [...name.trim()];
+  return chars.length > max ? `${chars.slice(0, max).join('')}…` : chars.join('');
 }
 
 /** 到期日是否已逾期（不含今天） */

@@ -2,9 +2,10 @@ import { useSyncExternalStore } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import type { Project, Status } from '../../shared/projects.ts';
 import type { PropertyDef } from '../../shared/properties.ts';
-import type { Task, TaskUpdateInput } from '../../shared/tasks.ts';
+import { TASK_PRIORITY_LABELS, type Task, type TaskUpdateInput } from '../../shared/tasks.ts';
 import type { PublicUser } from '../../shared/users.ts';
 import { ApiError, api } from './api.ts';
+import { truncate } from './format.ts';
 import { enterItem, taskFxKey } from './motion.ts';
 import { queryKeys } from './queryClient.ts';
 import {
@@ -89,14 +90,6 @@ function lookups(qc: QueryClient) {
   };
 }
 
-const PRIORITY_LABELS: Record<string, string> = {
-  none: '無',
-  low: '低',
-  medium: '中',
-  high: '高',
-  urgent: '緊急',
-};
-
 /** 衝突對話框用：把欄位值轉成可讀文字 */
 export function formatFieldValue(qc: QueryClient, field: string, value: unknown): string {
   if (value == null || value === '' || (Array.isArray(value) && value.length === 0)) return '空白';
@@ -104,14 +97,14 @@ export function formatFieldValue(qc: QueryClient, field: string, value: unknown)
   if (field === 'statusId') return l.statusName(Number(value)) ?? String(value);
   if (field === 'assigneeId') return l.userName(Number(value)) ?? String(value);
   if (field === 'projectId') return l.projectName(Number(value)) ?? String(value);
-  if (field === 'priority') return PRIORITY_LABELS[String(value)] ?? String(value);
+  if (field === 'priority')
+    return (TASK_PRIORITY_LABELS as Record<string, string>)[String(value)] ?? String(value);
   if (field === 'progress') return `${String(value)}%`;
   if (field.startsWith('custom.') && l.propertyType(field.slice(7)) === 'person')
     return l.userName(Number(value)) ?? String(value);
   if (typeof value === 'boolean') return value ? '是' : '否';
   if (Array.isArray(value)) return value.join('、');
-  const text = String(value).replace(/\s+/g, ' ').trim();
-  return [...text].length > 30 ? `${[...text].slice(0, 30).join('')}…` : text;
+  return truncate(String(value).replace(/\s+/g, ' '), 30);
 }
 
 // ── 以 mutation 執行（復原 / 重做本身） ─────────────────

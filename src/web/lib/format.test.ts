@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDateOnly, formatDateTime, formatRelative, initialOf, isOverdue } from './format.ts';
+import { formatDateOnly, formatDateTime, formatRelative, initialOf, isOverdue, truncate } from './format.ts';
 
 const at = (s: string) => new Date(s).getTime();
 
@@ -36,5 +36,11 @@ describe('其他格式', () => {
     expect(initialOf('王小明')).toBe('王');
     expect(initialOf('alice')).toBe('A');
     expect(initialOf('  ')).toBe('?');
+  });
+  it('truncate 以字元計並去頭尾空白', () => {
+    expect(truncate('  abc  ')).toBe('abc');
+    expect(truncate('一二三四五', 3)).toBe('一二三…');
+    expect(truncate('😀😀😀', 2)).toBe('😀😀…');
+    expect(truncate('一二三', 3)).toBe('一二三');
   });
 });

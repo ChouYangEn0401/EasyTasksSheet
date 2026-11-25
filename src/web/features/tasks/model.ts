@@ -7,6 +7,7 @@ import type { PropertyDef, PropertyType, SelectOption } from '../../../shared/pr
 import { TAG_COLORS, type TagColor } from '../../../shared/projects.ts';
 import {
   TASK_PRIORITIES,
+  TASK_PRIORITY_LABELS,
   type Task,
   type TaskPriority,
   type TaskUpdateInput,
@@ -284,13 +285,7 @@ export function formatShortDate(date: string | null | undefined, now: number = D
   return Number(y) === new Date(now).getFullYear() ? `${m}/${d}` : `${y}/${m}/${d}`;
 }
 
-export const PRIORITY_LABELS: Record<TaskPriority, string> = {
-  none: '無',
-  low: '低',
-  medium: '中',
-  high: '高',
-  urgent: '緊急',
-};
+export const PRIORITY_LABELS = TASK_PRIORITY_LABELS;
 export const PRIORITY_TONES: Record<TaskPriority, 'neutral' | 'gray' | 'blue' | 'orange' | 'red'> = {
   none: 'neutral',
   low: 'gray',
