@@ -19,7 +19,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, StringConstraints
 
 from ..changes import record_change
 from ..config import config
@@ -27,7 +27,7 @@ from ..context import Ctx, get_ctx
 from ..db import row_to_dict, rows_to_dicts
 from ..errors import bad_request, forbidden, not_found, validation_error
 from ..personal_report import build_report, parse_include, parse_range
-from ..schemas import DateString, Title
+from ..schemas import DateString, FiniteFloat, Title
 from ..validate import parse_id, parse_positive_int, present, read_json
 
 router = APIRouter()
@@ -62,7 +62,7 @@ class PersonalUpdateInput(BaseModel):
     status: PersonalStatus = None  # type: ignore[assignment]
     dueDate: DateString | None = None  # 明確送 null = 清除到期日
     detail: Detail = None  # type: ignore[assignment]
-    sortOrder: Annotated[float, Field(allow_inf_nan=False)] = None  # type: ignore[assignment]
+    sortOrder: FiniteFloat = None  # type: ignore[assignment]
 
 
 _COLUMNS = {

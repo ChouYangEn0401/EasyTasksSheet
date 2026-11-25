@@ -34,6 +34,8 @@ SQL_INT_MAX = 2**63 - 1
 DbId = Annotated[int, Field(ge=1, le=SQL_INT_MAX)]
 #: 任意 SQLite INTEGER
 SqlInt = Annotated[int, Field(ge=-SQL_INT_MAX - 1, le=SQL_INT_MAX)]
+#: 跨資料庫識別碼（資料列 uid、電腦 machine id）：8–64 個英數、底線、連字號
+UID_PATTERN = r"^[A-Za-z0-9_-]{8,64}$"
 
 
 class _Input(BaseModel):

@@ -34,7 +34,7 @@ from .changes import record_change
 from .data_transfer_specs import _META_FIELDS, FIELD_LABELS, SPEC_BY_KEY, SPECS, F, Spec  # noqa: F401
 from .db import Database
 from .errors import pydantic_issues
-from .schemas import DATE_PATTERN
+from .schemas import DATE_PATTERN, UID_PATTERN, FiniteFloat, SqlInt
 
 FORMAT = "tasks-sheets-export"
 #: 匯出格式版本。2：加入 taskChecklistItems / taskRelations / taskDependencies / taskComments、任務描述鎖定欄位、
@@ -63,10 +63,10 @@ class TransferError(ValueError):
 
 # ── pydantic 模型（匯入檔驗證） ─────────────────────────────
 
-Uid = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{8,64}$")]
+Uid = Annotated[str, StringConstraints(pattern=UID_PATTERN)]
 UsernameRef = Annotated[str, StringConstraints(min_length=1, max_length=64)]
-_Int = Annotated[int, Field(ge=-(2**63), le=2**63 - 1)]
-_Float = Annotated[float, Field(allow_inf_nan=False)]
+_Int = SqlInt
+_Float = FiniteFloat
 _STRICT = ConfigDict(extra="forbid", strict=True)
 
 

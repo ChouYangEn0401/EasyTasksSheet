@@ -40,7 +40,7 @@ from ..github import GitHubClient, GitHubClientProtocol, GitHubError, normalize_
 from ..permissions import can, require
 from ..validate import parse_id, present, read_json
 from .. import worktree_scan as ws
-from ..schemas import SQL_INT_MAX, DbId, SqlInt
+from ..schemas import SQL_INT_MAX, UID_PATTERN, DbId, SqlInt
 from . import eng_attach
 from .eng_status import check_value, default_key, keys_in_category
 
@@ -103,7 +103,7 @@ class RecordUpdateInput(_Input):
     headSha: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{7,64}$")] | None = None
 
 
-MachineId = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{8,64}$")]
+MachineId = Annotated[str, StringConstraints(pattern=UID_PATTERN)]
 
 
 class RecordCreateInput(RecordUpdateInput):
