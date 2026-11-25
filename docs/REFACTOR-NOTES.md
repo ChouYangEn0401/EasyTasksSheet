@@ -61,5 +61,9 @@
   - `timeutil.py`：時區 / 日期純函式與 `DAY_MS`、`MINUTE_MS`
   - `audit.py` / `audit_revert.py` / `audit_events.py`：稽核紀錄（寫入與顯示 / 還原 / 各操作的稽核事件）
   - `data_transfer.py` + `data_transfer_specs.py`：JSON 匯出匯入核心（流程 / 資料類別定義 SPECS）
-- §11 已知問題第 18 項（「6 處 Python docstring 仍寫『行為同 src/server/…』」）已處理，可刪除。
+- §2 功能對應表「稽核與還原」列：`audit_log.py` + `audit.py` + `audit_events.py` 之外補 `audit_revert.py`；
+  同節「`audit.py`、`audit_events.py`、`dependency_calc.py`、`personal_report.py` 位於 `server/app/`」一句補上
+  `audit_revert.py`、`timeutil.py`、`data_transfer_specs.py`。
+- §11 已知問題第 18 項（後端 5 處與測試 5 個檔案的 docstring 仍寫「行為同 / 對應 src/server/…」）已處理，可刪除。
+- §11 第 9 項提到 `data_transfer.SPECS`：定義已移到 `data_transfer_specs.py`，但 `data_transfer.SPECS` 仍可取用，敘述不必改。
 - （選擇性）若決定刪除 `lib/hooks.ts` 的 `useCreateTask` / `useDeleteTask`，`docs/core-interfaces.md` 第 11 行與 `docs/design/undo.md` 第 45–46 行要一起改為 `features/tasks/data.ts` 的 `useOptimisticCreate` / `useDeleteTaskOptimistic`。
