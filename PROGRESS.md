@@ -65,3 +65,10 @@
 - 驗收：vitest 147、pytest 168、E2E 26/26。
 - 注意：舊的 data/app.db 內管理員密碼是隨機的；要得到 admin/password 需刪除 data/app.db 後重新啟動。
 - 預設密碼 password 很弱，僅靠「首次登入強制重設」保護；部署到對外環境前務必先自己登入完成重設。
+
+## 第四輪修正（2026-11-25，使用者指示）
+- 甘特圖改版（docs/design/gantt-polish.md）：時間軸填滿容器、預設刻度自動、長條內顯示標題、今天標籤不遮擋刻度、週末/今天淡底、分組標頭與「無排程任務」摘要列、左欄改為狀態點+標題+日期區間、未排程區併入同卡片。
+- 新增「資料管理」（管理員）：完整資料庫備份下載（.db）、可攜 JSON 匯出、匯入（預覽→選策略 keep_newer/keep_local/use_import、可逐筆覆寫→套用前自動備份→單一 transaction）、取代模式需輸入確認字樣；CLI `server.cli export/import`；migration 0005 為業務表加 uid（trigger 自動補）。
+- 驗收：vitest 160、pytest 190、E2E 28/28；前端已重建（dist/web）。
+- 已知小問題：長條起點在畫面左側外時條內標題被切；768 寬分組標頭同時有逾期 Badge 時成員名稱會被截斷；匯入預覽 token 存在記憶體，重啟即失效；E2E 匯入的自動備份寫到 backups/（已 gitignore）。
+- 提醒：啟動新版時會自動套用 migration 0005（為既有資料補 uid）；建議先 `python -m server.cli backup` 備份。
