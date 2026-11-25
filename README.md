@@ -11,12 +11,13 @@ python -m venv .venv                       # 建立虛擬環境
 .venv/Scripts/activate                     # Windows（Linux / macOS：source .venv/bin/activate）
 pip install -r requirements.txt            # 安裝後端相依套件
 cp .env.example .env                       # 可選；Windows PowerShell：Copy-Item .env.example .env
-python main.py --prod                      # 啟動，開啟 http://localhost:3000
+python main.py                             # 啟動，開啟 http://localhost:3000
 ```
 
 > 預設只綁 `127.0.0.1`，只有本機連得上，請開 `http://localhost:3000`。要讓同一網路的其他電腦連線，在 `.env` 設 `HOST=0.0.0.0`，其他人再開 `http://<這台電腦的 IP>:3000`（注意：**瀏覽器不能開 `0.0.0.0` 這個位址**，會出現 `ERR_ADDRESS_INVALID`）。
 
-- 前端已建置在 `dist/web`；若是第一次取得原始碼或改了前端，需先 `npm ci && npm run build`（Node 只用在建置前端）。
+- 前端已建置在 `dist/web` 時，後端會一併提供頁面；若是第一次取得原始碼或改了前端，需先 `npm ci && npm run build`（Node 只用在建置前端）。
+- `python main.py --prod` 是正式模式：登入 cookie 會要求 HTTPS（`Secure`），請搭配 Caddy 等反向代理使用；用純 http 在區網測試請不要加 `--prod`。
 - 第一次啟動會自動建立資料庫與預設管理員，帳號與密碼會印在主控台（或由 `.env` 的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 指定），首次登入要先改密碼。
 - 開發時用 `python main.py --reload`（後端自動重載）；管理指令（新增帳號、備份、還原）用 `python -m server.cli --help`。
 - 後端程式碼在 [`server/app/`](server/app)：`main.py` 組裝應用、`app.py` 掛路由、`features/` 每個功能一個檔案、`migrations/` 放資料表 SQL。

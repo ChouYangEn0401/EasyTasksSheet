@@ -6,7 +6,7 @@
 用法：
     python main.py              開發模式（HOST / PORT 讀 .env，預設 http://127.0.0.1:3000）
     python main.py --reload     程式修改後自動重載
-    python main.py --prod       正式模式：同一個行程也提供 dist/web 前端（需先 npm run build）
+    python main.py --prod       正式模式（cookie 要求 HTTPS，請搭配反向代理）
 
 其他管理指令：`python -m server.cli --help`（新增帳號、備份、還原）。
 """
