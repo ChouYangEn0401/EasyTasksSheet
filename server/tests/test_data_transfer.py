@@ -25,6 +25,7 @@ UID_TABLES = [
     "personal_items",
     "manual_issues",
     "worktree_records",
+    "task_checklist_items",
 ]
 
 
@@ -71,6 +72,14 @@ def populate(env: Env) -> dict:
                 "estimateHours": 2.5,
                 "custom": {str(person["id"]): member_id, str(select["id"]): "a"},
             },
+        ),
+        201,
+    )
+    ok(
+        api.request(
+            "POST",
+            f"/api/tasks/{task['id']}/checklist",
+            {"items": [{"text": "收集資料", "isDone": True}, {"text": "寫結論"}]},
         ),
         201,
     )
@@ -409,7 +418,7 @@ def test_keep_newer_takes_import_when_file_is_newer(tmp_path):
     apply(env, pv["token"])
     row = env.db.one("SELECT * FROM tasks WHERE id = ?", (task["id"],))
     assert row["title"] == "檔案較新" and row["updated_at"] == item["updatedAt"]
-    assert env.db.scalar("SELECT count(*) FROM changes WHERE entity_type='task' AND entity_id=? AND action='update'", (task["id"],)) == 2
+    assert env.db.scalar("SELECT count(*) FROM changes WHERE entity_type='task' AND entity_id=? AND action='update'", (task["id"],)) == 3  # 含 populate 的待辦清單建立
 
 
 def test_per_item_override(tmp_path):

@@ -324,3 +324,15 @@
 - **清單列**：標題旁小鎖頭（被擋住時）與 Tooltip。
 - **任務詳情**：在「自訂欄位」與「描述」之間新增「依賴」區（等待這些任務完成 / 完成後可開始的任務、＋ 新增、移除附復原）。
 - 資料來自 `GET /api/tasks` 附帶的 `isBlocked`、`blockedByCount`、`blocksCount`、`delayDays`、`projectedEnd`。
+## 16. 待辦清單（feat/task-checklist）
+
+任務詳情抽屜在「描述」下方新增**結構化待辦清單**：每項獨立可勾選（不是在描述裡寫 Markdown）。
+
+- **資料**：`task_checklist_items`（migration 0014；id、uid、task_id、text 1–500 字、is_done、sort_order REAL、done_at / done_by、created_by / updated_by、created_at / updated_at）。任務實際刪除時連動刪除；軟刪除的任務清單保留（但不可再讀寫）。每任務最多 500 項。
+- **API**（`/api/tasks/:id/checklist`，讀取登入即可；寫入沿用 `tasks.edit`）：`GET`；`POST`（`{text}`、`{text, sortOrder}` 插入指定位置，或 `{items:[{text,isDone?}]}` 批次，單次 ≤ 100 項，回傳建立的項目陣列）；`PATCH /:itemId`（text / isDone / sortOrder，isDone 變動寫 done_at / done_by）；`DELETE /:itemId`；`POST /clear-done`。所有寫入更新任務的 updated_at / updated_by 並 record_change(task, update)，因此列表與他人畫面經既有 SSE 即時更新。`GET /api/tasks`、`GET/POST/PATCH /api/tasks/:id` 回應多 `checklistTotal`、`checklistDone`（單一聚合查詢）。
+- **抽屜**：標題列「3 / 5」與細進度條；每項勾選框、點擊或 F2 就地編輯（Enter 儲存並在下方新增下一項、Esc 取消、空項 Backspace 刪除）；已完成項目淡化加刪除線並收在可摺疊的「已完成 N 項」；底部「新增待辦…」連續新增；拖曳把手排序（hover 顯示）與 Alt+↑/↓ 鍵盤移動；「清除已完成」需確認；全部完成時只顯示低調的「全部完成」，**不自動改任務狀態**。
+- **貼上多行**：貼到新增列或編輯中的項目時，辨識 `- [ ] x`、`- [x] x`、`* x`、`1. x`、`☐ x` 與純文字每行一項（保留勾選、忽略空行與縮排、超過 100 項或 500 字會提示並截斷），先顯示「將建立 N 項」確認，建立後 toast 可「復原」。
+- **徽章**：列表標題旁與看板卡片顯示「☑ 3/5」（`checklistTotal > 0` 才顯示；全部完成變綠色勾；Tooltip「待辦清單 3/5 完成」）。≤ 1023px 時徽章移到標題前面，避免被列操作鈕蓋住。
+- **即時更新**：清單查詢鍵在 `['tasks','checklist',id]` 之下，隨 task 變更自動重抓；正在編輯的項目文字不會被覆蓋。
+- **匯出匯入**：`taskChecklistItems` 類別（以任務 uid 關聯、各項 uid 對應、冪等）。**sync-push 目前不同步清單**（已知限制）。
+- 實作檔：後端 `server/app/features/task_checklist.py`；前端 `src/web/features/tasks/Checklist*.tsx`、`checklistModel.ts`、`checklistData.ts`、`checklist.css`。

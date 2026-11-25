@@ -30,6 +30,9 @@ export const task = z.object({
   completedAt: z.number().int().nullable().optional(),
   /** 相關任務數（只在 GET /api/tasks 清單與複製回應中提供；不含已刪除的對方任務） */
   relationCount: z.number().int().optional(),
+  /** 待辦清單項目數 / 已完成數（後端以單一聚合查詢附加；選填以相容既有資料） */
+  checklistTotal: z.number().int().min(0).optional(),
+  checklistDone: z.number().int().min(0).optional(),
   ...timestamps,
 });
 export type Task = z.infer<typeof task>;

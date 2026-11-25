@@ -10,6 +10,7 @@ import { TaskPresenceDots } from '../presence/TaskPresence.tsx';
 import { RelationBadge } from '../tasks/RelationBadge.tsx';
 import { BlockedLock, DependencyBadges } from '../delay-link/DependencyBadge.tsx';
 import { dependencyAriaSuffix, useDependencyCardClass } from '../delay-link/depFields.ts';
+import { ChecklistBadge } from '../tasks/ChecklistBadge.tsx';
 import { cardAriaLabel, dueDisplay, formatHours } from './kanbanModel.ts';
 
 /** 16px 線條圖示（core Icon 尚無日曆 / 時鐘，僅供卡片中繼列使用） */
@@ -82,6 +83,7 @@ export function KanbanCardContent({ task, project, showProject, isDone }: CardVi
           </span>
         )}
         <RelationBadge count={task.relationCount} />
+        {task.id > 0 && <ChecklistBadge task={task} />}
         {task.estimateHours != null && (
           <span className="kanban-meta-item">
             <MetaIcon name="clock" />

@@ -18,6 +18,7 @@ from ..schemas import TaskCreateInput, TaskUpdateInput
 from ..validate import parse_id, present, read_json
 from .dependencies import attach_dependency_fields
 from .properties import merge_custom_values
+from .task_checklist import with_checklist_counts
 
 router = APIRouter()
 
@@ -118,14 +119,17 @@ async def list_tasks(request: Request):
             params.append(q)
 
     ctx = get_ctx(request)
-    # relationCount：每個任務的相關任務數（不含已刪除的對方任務），以單一查詢聚合（task_relations.py）
-    rows = ctx.db.all(
-        f"WITH {RELATION_COUNT_CTE} SELECT tasks.*, coalesce(rc.n, 0) AS relation_count FROM tasks "
-        f"LEFT JOIN rc ON rc.task_id = tasks.id WHERE {' AND '.join(conds)} ORDER BY tasks.sort_order, tasks.id",
-        tuple(params),
-    )
+    with ctx.db.lock:
+        # relationCount：每個任務的相關任務數（不含已刪除的對方任務），以單一查詢聚合（task_relations.py）
+        rows = ctx.db.all(
+            f"WITH {RELATION_COUNT_CTE} SELECT tasks.*, coalesce(rc.n, 0) AS relation_count FROM tasks "
+            f"LEFT JOIN rc ON rc.task_id = tasks.id WHERE {' AND '.join(conds)} ORDER BY tasks.sort_order, tasks.id",
+            tuple(params),
+        )
+        # 待辦清單聚合 checklistTotal / checklistDone（單一 GROUP BY 查詢）
+        items = with_checklist_counts(ctx.db.conn, rows_to_dicts(rows), all_tasks=True)
     # 依賴（阻擋關係）欄位：isBlocked / blockedByCount / blocksCount / delayDays / projectedEnd（單次批次推算）
-    return attach_dependency_fields(ctx.db, rows_to_dicts(rows), ctx.now())
+    return attach_dependency_fields(ctx.db, items, ctx.now())
 
 
 @router.post("")
@@ -168,7 +172,8 @@ async def create_task(request: Request):
         tid = int(cur.lastrowid)  # type: ignore[arg-type]
         record_change(conn, "task", tid, "create", uid, t)
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (tid,)).fetchone()
-    return JSONResponse(row_to_dict(row), status_code=201)
+        out = with_checklist_counts(conn, [row_to_dict(row)])[0]
+    return JSONResponse(out, status_code=201)
 
 
 @router.get("/{id}")
@@ -176,9 +181,9 @@ async def get_task(request: Request, id: str):
     ctx = get_ctx(request)
     with ctx.db.lock:
         task = _find_task(ctx.db.conn, parse_id(id))
-    if task is None:
-        raise not_found("此任務不存在或已被刪除")
-    return row_to_dict(task)
+        if task is None:
+            raise not_found("此任務不存在或已被刪除")
+        return with_checklist_counts(ctx.db.conn, [row_to_dict(task)])[0]
 
 
 @router.patch("/{id}")
@@ -217,7 +222,7 @@ async def update_task(request: Request, id: str):
         )
         record_change(conn, "task", tid, "update", uid, t)
         row = conn.execute("SELECT * FROM tasks WHERE id = ?", (tid,)).fetchone()
-    return row_to_dict(row)
+        return with_checklist_counts(conn, [row_to_dict(row)])[0]
 
 
 @router.delete("/{id}")
@@ -252,4 +257,4 @@ async def restore_task(request: Request, id: str):
             )
             record_change(conn, "task", tid, "create", uid, t)
             row = conn.execute("SELECT * FROM tasks WHERE id = ?", (tid,)).fetchone()
-    return row_to_dict(row)
+        return with_checklist_counts(conn, [row_to_dict(row)])[0]

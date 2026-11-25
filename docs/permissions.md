@@ -87,7 +87,7 @@ root 在「權限設定」頁勾選 / 取消 manager 與 user 的各項權限，
 | `POST /api/statuses/:id/migrate-and-delete`                    | `statuses.manage`；body `{ targetStatusId }`，單一 transaction 把任務（含已刪除）改移到目標狀態後刪除，並為每筆任務寫入變更流水；仍至少保留一個狀態 |
 | `GET /api/statuses/usage`                                      | 全員；各狀態被任務使用的筆數（管理狀態對話框用）          |
 | `PUT /api/eng/github-links`                                    | `github.manage`                                           |
-| 寫入 `/api/tasks*`                                             | `tasks.edit`                                              |
+| 寫入 `/api/tasks*`（含 `/api/tasks/:id/checklist*` 待辦清單）  | `tasks.edit`                                              |
 | `POST / DELETE /api/tasks/:id/relations*`、`POST /api/tasks/:id/duplicate` | 沿用 `tasks.edit`（同屬寫入 `/api/tasks*`，由寫入守門 middleware 檢查）；`GET /api/tasks/:id/relations` 登入即可 |
 | `POST /api/tasks/:id/restore`                                  | `tasks.edit`（同上寫入守門）；還原軟刪除的任務（復原用），未刪除時冪等回傳、不存在 404 |
 | `POST / PATCH / DELETE /api/tasks/:id/dependencies*`             | `tasks.edit`（沿用上一列的寫入守門）；讀取 `GET /api/tasks/:id/dependencies`、`GET /api/tasks/delay-chains` 登入即可（[design/delay-link.md](design/delay-link.md)） |

@@ -28,7 +28,7 @@ TasksSheets 是給實驗室內部用的多人任務 / 專案管理網站。本�
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | 總覽 `/`                              | 每位成員的進行中任務卡、近三週完成 / 處理件數；語氣中性、不排名（[product-principles.md](product-principles.md)）   |
 | 任務 `/tasks/list` `kanban` `gantt`   | 清單（就地編輯、快速新增、自訂欄位、詳情抽屜）、看板（拖曳改狀態與排序）、甘特圖；可直接管理狀態與專案；抽屜內可建立相關任務（`task_relations`，0013）與複製任務（`features/task_relations.py`，規格見 [design/task-list.md §13](design/task-list.md)） |
-| 任務 `/tasks/list` `kanban` `gantt`   | 清單（就地編輯、快速新增、自訂欄位、詳情抽屜、拖曳列換群組 / 排序）、看板（拖曳改狀態與排序）、甘特圖；可直接管理狀態與專案               |
+| 任務 `/tasks/list` `kanban` `gantt`   | 清單（就地編輯、快速新增、自訂欄位、詳情抽屜含待辦清單 checklist（`task_checklist_items` 0014，列表 / 看板顯示 ☑ 3/5 徽章，[design/task-list.md §16](design/task-list.md)）、拖曳列換群組 / 排序）、看板（拖曳改狀態與排序）、甘特圖；可直接管理狀態與專案               |
 | 延遲鏈 `/tasks/delay-link`          | 任務依賴（前置任務 → 等待中的任務，禁止循環）、看板琥珀色「等待中 · 預計延後 N 天」、整條依賴鏈與最長延遲路徑（[design/delay-link.md](design/delay-link.md)） |
 | 問題回饋 `/feedback`                  | 回饋 / 問題清單與月曆排程（拖曳排程）                                                                                |
 | 個人清單 `/me`                        | 我的任務、釘選、自由待辦（含延後 / 取消等小狀態）；「產生匯報報告」依日期區間彙整完成事項（`personal_report.py`、`personal_items.done_at` 0020，規格見 [design/personal.md §10](design/personal.md)） |
@@ -217,7 +217,7 @@ npx prettier --check .
 6. 預設管理員密碼 `password` 很弱，僅靠首次登入強制重設保護（見[第 9 節](#9-安全注意事項)）。
 7. 匯入預覽 token 存在記憶體，服務重啟即失效（重新預覽即可）。
 8. 權限：一般協作權限（`tasks.edit` 等）只限制寫入、不隱藏前端控制項，被收回的人操作時才看到「沒有權限」；授予 user `members.manage` 等於可把自己升為 manager；直接用 SQL 改 `role_permissions` 需重啟才生效；權限設定不在 JSON 匯出入 / 同步範圍。
-9. 附件不隨 JSON 匯入 / sync-push 同步（紀錄與檔案都不會建立）。
+9. 附件不隨 JSON 匯入 / sync-push 同步（紀錄與檔案都不會建立）。任務待辦清單（checklist）隨 JSON 匯出入，但 sync-push 目前不同步。
 10. 同步依各電腦時鐘判斷新舊，時鐘誤差大會誤判；同步單向，中央變更不回寫。
 11. 在線感知：多分頁以最後回報為準；重啟後即時狀態全部視為離線。
 12. 匯入「取代全部」後可能留下沒有對應問題的附件檔，用 `python -m server.cli attachments-prune` 清除。

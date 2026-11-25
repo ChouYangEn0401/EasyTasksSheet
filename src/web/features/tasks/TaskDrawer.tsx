@@ -32,6 +32,7 @@ import { DuplicateDialog } from './DuplicateDialog.tsx';
 import { RelatedTasks } from './RelatedTasks.tsx';
 import { EditableField, type EditState } from './EditableField.tsx';
 import type { FieldCol } from './fields.tsx';
+import { Checklist } from './Checklist.tsx';
 import { applicableProperties, propertyColumn } from './model.ts';
 import { Popover } from './Popover.tsx';
 import { NewPropertyForm } from './PropertyPanel.tsx';
@@ -367,6 +368,7 @@ function TaskDetail({ task, titleId }: { task: Task; titleId: string }) {
       <RelatedTasks task={task} />
       <DependenciesSection task={task} />
       <Description task={task} fx={fieldFx('description')} />
+      <Checklist taskId={task.id} />
     </>
   );
 }

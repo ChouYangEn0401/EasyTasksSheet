@@ -144,7 +144,7 @@ test('登入 → 強制改密碼 → 走訪導覽 → 快速新增 → 另一瀏
   await page.goto(`/tasks/list?task=${created!.id}`);
   const drawer = page.getByRole('dialog', { name: title });
   await expect(drawer).toBeVisible();
-  await expect(drawer.getByText('待辦')).toBeVisible();
+  await expect(drawer.getByText('待辦', { exact: true })).toBeVisible();
   await expect(drawer.getByText(/更新於/)).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(drawer).toHaveCount(0);

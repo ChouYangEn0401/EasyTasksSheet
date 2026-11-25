@@ -174,6 +174,26 @@ SPECS: tuple[Spec, ...] = (
         ),
         title="title",
     ),
+    # 任務待辦清單（0014）：以任務 uid 關聯；寫入時的變更流水記在所屬任務上（entity=task）
+    Spec(
+        "taskChecklistItems",
+        "task_checklist_items",
+        "待辦清單",
+        "task",
+        (
+            F("taskUid", "task_id", "ref", extra="tasks"),
+            F("text", "text", "str", extra=500),
+            F("isDone", "is_done", "bool"),
+            F("sortOrder", "sort_order", "float"),
+            _ts("doneAt", "done_at", True),
+            F("doneByUsername", "done_by", "user", True),
+            F("createdByUsername", "created_by", "user", True),
+            F("updatedByUsername", "updated_by", "user", True),
+            _CREATED,
+            _UPDATED,
+        ),
+        title="text",
+    ),
     Spec(
         "feedbackItems",
         "feedback_items",
@@ -332,6 +352,9 @@ FIELD_LABELS = {
     "branch": "分支",
     "ownerUsername": "負責人",
     "purpose": "用途",
+    "text": "內容",
+    "doneAt": "完成時間",
+    "doneByUsername": "完成者",
 }
 
 # ── pydantic 模型（匯入檔驗證） ─────────────────────────────
@@ -935,6 +958,7 @@ def snapshot(db: Database, out_dir: str | Path, label: str) -> Path:
 
 _BUSINESS_DELETE_ORDER = (
     "personalItems",
+    "taskChecklistItems",
     "feedbackItems",
     "tasks",
     "propertyDefs",
@@ -973,6 +997,8 @@ class _Writer:
 
     def columns(self, spec: Spec, item: dict[str, Any]) -> dict[str, Any] | None:
         """匯入資料 → DB 欄位；必要的成員不存在時回傳 None（略過此筆）"""
+        if spec.key == "taskChecklistItems" and not item["text"].strip():
+            return None  # 空白項目無法存入（DB 限制 1–500 字）：略過
         cols: dict[str, Any] = {}
         for f in spec.fields:
             v = item[f.name]
@@ -1015,7 +1041,10 @@ class _Writer:
             tuple(cols.values()),
         )
         new_id = int(cur.lastrowid)  # type: ignore[arg-type]
-        record_change(self.conn, spec.entity, new_id, "create", self.actor, self.now)  # type: ignore[arg-type]
+        if spec.key == "taskChecklistItems":
+            record_change(self.conn, "task", cols["task_id"], "update", self.actor, self.now)
+        else:
+            record_change(self.conn, spec.entity, new_id, "create", self.actor, self.now)  # type: ignore[arg-type]
         return new_id
 
     def update(self, spec: Spec, item: dict[str, Any], local_id: int) -> bool:
@@ -1026,7 +1055,10 @@ class _Writer:
             f"UPDATE {spec.table} SET {', '.join(f'{c} = ?' for c in cols)} WHERE id = ?",
             (*cols.values(), local_id),
         )
-        record_change(self.conn, spec.entity, local_id, "update", self.actor, self.now)  # type: ignore[arg-type]
+        if spec.key == "taskChecklistItems":
+            record_change(self.conn, "task", cols["task_id"], "update", self.actor, self.now)
+        else:
+            record_change(self.conn, spec.entity, local_id, "update", self.actor, self.now)  # type: ignore[arg-type]
         return True
 
 
@@ -1136,7 +1168,8 @@ def _apply_in_tx(
             spec = SPEC_BY_KEY[key]
             ids = [r[0] for r in conn.execute(f"SELECT id FROM {spec.table}")]
             conn.execute(f"DELETE FROM {spec.table}")
-            for i in ids:
+            # 清單項目隨任務一併刪除，任務本身會記錄 delete
+            for i in ids if key != "taskChecklistItems" else ():
                 record_change(conn, spec.entity, i, "delete", actor_id, now)  # type: ignore[arg-type]
             stats[key]["deleted"] = len(ids)
 

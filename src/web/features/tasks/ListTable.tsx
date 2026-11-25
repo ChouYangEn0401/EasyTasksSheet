@@ -40,6 +40,7 @@ import {
   type SortState,
   type TaskGroup,
 } from './model.ts';
+import { ChecklistBadge } from './ChecklistBadge.tsx';
 import { Popover } from './Popover.tsx';
 import { EditOptionsForm, NewPropertyForm } from './PropertyPanel.tsx';
 import { QuickAdd } from './QuickAdd.tsx';
@@ -873,6 +874,7 @@ function TaskCell({
       {col.kind === 'title' && <BlockedLock task={task} mode="list" />}
       {col.kind === 'title' && task.id > 0 && <RelationBadge count={task.relationCount} />}
       {col.kind === 'title' && task.id > 0 && <TaskPresenceDots taskId={task.id} />}
+      {col.kind === 'title' && task.id > 0 && <ChecklistBadge task={task} />}
       {extra}
     </div>
   );

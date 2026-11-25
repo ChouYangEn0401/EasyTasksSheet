@@ -95,7 +95,7 @@ def test_create_with_title_only():
         "completedAt": None,
     }
     assert {k: t[k] for k in expected} == expected
-    assert set(t) == {*expected, "id", "sortOrder"}
+    assert set(t) == {*expected, "id", "sortOrder", "checklistTotal", "checklistDone"}
     assert a.request("POST", "/api/tasks", {"title": ""}).status_code == 400
     assert a.request("POST", "/api/tasks", {"title": "x", "statusId": 999}).status_code == 400
     assert a.request("POST", "/api/tasks", {"title": "x", "projectId": None}).status_code == 400
