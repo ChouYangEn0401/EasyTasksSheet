@@ -47,6 +47,7 @@ ENTITY_TYPES = (
     "relation",
     "dependency",
     "checklist",
+    "comment",
 )
 ACTIONS = ("create", "update", "delete", "restore", "reorder", "reset_password", "unlock", "apply")
 
@@ -60,6 +61,7 @@ ENTITY_TABLES = {
     "user": "users",
     "relation": "task_relations",
     "dependency": "task_dependencies",
+    "comment": "task_comments",
 }
 
 #: 任務之間的連結（相關任務 / 依賴）：稽核快照欄位（API 名 → DB 欄位）。建立 ↔ 移除可互相還原
@@ -87,13 +89,14 @@ ENTITY_FIELDS: dict[str, dict[str, str]] = {
         "estimateHours": "estimate_hours",
         "progress": "progress",
         "sortOrder": "sort_order",
+        "descriptionLocked": "description_locked",
     },
     "project": {"name": "name", "color": "color", "isArchived": "is_archived", "sortOrder": "sort_order"},
     "status": {"name": "name", "color": "color", "category": "category", "sortOrder": "sort_order"},
     "property": {"name": "name", "type": "type", "projectId": "project_id", "options": "options", "sortOrder": "sort_order"},
     "user": {"username": "username", "displayName": "display_name", "role": "role", "isActive": "is_active"},
 }
-_BOOL_FIELDS = {"isArchived", "isActive"}
+_BOOL_FIELDS = {"isArchived", "isActive", "descriptionLocked"}
 _JSON_FIELDS = {"options"}
 
 #: 還原時需同時具備的權限（除 audit.revert 外）
@@ -107,6 +110,7 @@ ENTITY_CAPABILITY = {
     "relation": "tasks.edit",
     "dependency": "tasks.edit",
     "checklist": "tasks.edit",
+    "comment": "comments.moderate",
 }
 
 FIELD_LABELS: dict[str, dict[str, str]] = {
@@ -122,7 +126,9 @@ FIELD_LABELS: dict[str, dict[str, str]] = {
         "estimateHours": "預估工時",
         "progress": "進度",
         "sortOrder": "順序",
+        "descriptionLocked": "描述鎖定",
     },
+    "comment": {"excerpt": "內容（前 200 字）", "authorName": "發表者"},
     "project": {"name": "名稱", "color": "顏色", "isArchived": "封存", "sortOrder": "順序"},
     "status": {"name": "名稱", "color": "顏色", "category": "類別", "sortOrder": "順序"},
     "property": {"name": "名稱", "type": "型別", "projectId": "適用專案", "options": "選項", "sortOrder": "順序"},
@@ -651,6 +657,8 @@ class Labeler:
             return COLOR_LABELS.get(v, str(v))
         if field == "isArchived":
             return "已封存" if v else "未封存"
+        if field == "descriptionLocked":
+            return "已鎖定" if v else "未鎖定"
         if field == "isActive":
             return "啟用" if v else "停用"
         if field == "role":
@@ -917,6 +925,17 @@ def plan_revert(conn: sqlite3.Connection, entry: Any, lab: Labeler | None = None
     if et in LINK_FIELDS:
         return _plan_link(conn, plan, et, action, row, before)
 
+    if et == "comment" and action == "delete":
+        if row is None:
+            plan.blocked = "這則留言已不存在"
+        elif row["deleted_at"] is None:
+            plan.blocked = "這則留言目前沒有被刪除"
+        elif conn.execute("SELECT 1 FROM tasks WHERE id = ? AND deleted_at IS NULL", (row["task_id"],)).fetchone() is None:
+            plan.blocked = "留言所屬的任務已刪除，請先還原任務"
+        else:
+            plan.kind = "undelete_comment"
+        return plan
+
     if action in ("update", "reorder"):
         if row is None:
             plan.blocked = "這筆資料已不存在，無法還原"
@@ -1117,6 +1136,14 @@ def revert_action(
                     "部分欄位在這次修改之後又被改過",
                     {"conflicts": plan.conflicts, "fields": plan.fields},
                 )
+            if entry["entity_type"] == "task" and not allowed("tasks.lock"):
+                # 描述鎖定：切換鎖、或改回已鎖定任務的描述，需 tasks.lock（同 PATCH /api/tasks 的規則）
+                row = _load_row(conn, "task", entry["entity_id"])
+                fields_ = {f["field"] for f in plan.fields}
+                if "descriptionLocked" in fields_ or (
+                    "description" in fields_ and row is not None and _row_get(row, "description_locked")
+                ):
+                    raise RevertError(403, "FORBIDDEN", "沒有權限執行此操作")
             if entry["entity_type"] == "user" and not allowed("roles.assign_root"):
                 row = _load_row(conn, "user", entry["entity_id"])
                 before, _ = load_fields(entry["before_json"])
@@ -1190,6 +1217,9 @@ def _set_fields(conn: sqlite3.Connection, entry: Any, plan: RevertPlan, actor_id
                 else:
                     custom[k] = v
             sets["custom"] = json.dumps(custom, ensure_ascii=False)
+        if "description_locked" in sets:
+            sets["locked_by"] = actor_id if sets["description_locked"] else None
+            sets["locked_at"] = t if sets["description_locked"] else None
         if "status_id" in sets:
             was_done, now_done = _is_done(conn, row["status_id"]), _is_done(conn, sets["status_id"])
             if now_done and not was_done:
@@ -1252,6 +1282,12 @@ def _execute(conn: sqlite3.Connection, entry: Any, plan: RevertPlan, actor: Any,
         )
         record_change(conn, et, eid, "create", actor_id, t)  # type: ignore[arg-type]
         new_after = snap
+    elif plan.kind == "undelete_comment":
+        conn.execute(
+            "UPDATE task_comments SET deleted_at = NULL, deleted_by = NULL, updated_at = ? WHERE id = ?", (t, eid)
+        )
+        record_change(conn, "task_comment", eid, "update", actor_id, t)
+        new_after = dict(before or {})
     elif plan.kind == "delete_link":
         row = _load_row(conn, et, eid)
         new_before = link_snapshot(et, row)

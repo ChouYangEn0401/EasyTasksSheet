@@ -51,6 +51,10 @@ __all__ = [
     "checklist_toggled",
     "checklist_item_deleted",
     "checklist_cleared",
+    "comment_created",
+    "comment_edited",
+    "comment_deleted",
+    "comment_resolved",
 ]
 
 
@@ -76,7 +80,11 @@ def _change_sentence(lab: Labeler, et: str, subject: str, field: str, b: Any, a:
 
 def _compact(snap: dict[str, Any]) -> dict[str, Any]:
     """建立 / 刪除時保存的內容：去掉空值與順序"""
-    return {k: v for k, v in snap.items() if k != "sortOrder" and not is_empty(v)}
+    return {
+        k: v
+        for k, v in snap.items()
+        if k != "sortOrder" and not is_empty(v) and not (k == "descriptionLocked" and not v)
+    }
 
 
 # ── 任務 ─────────────────────────────────────────────────
@@ -123,7 +131,9 @@ def task_updated(conn: sqlite3.Connection, actor: Any, before_row: Any, after_ro
     a.pop("sortOrder", None)
     lab = Labeler(conn)
     fields = list(b)
-    if fields == ["title"]:
+    if fields == ["descriptionLocked"]:
+        summary = f"鎖定了{quote(title)}的描述" if a["descriptionLocked"] else f"解除了{quote(title)}的描述鎖定"
+    elif fields == ["title"]:
         summary = f"把任務標題從{quote(b['title'])}改為{quote(a['title'])}"
     elif len(fields) == 1:
         summary = _change_sentence(lab, "task", quote(title), fields[0], b[fields[0]], a[fields[0]])
@@ -707,6 +717,113 @@ def checklist_cleared(conn: sqlite3.Connection, actor: Any, task_id: int, texts:
         task_id=task_id,
         revertable=False,
         note=_CHECKLIST_NOTE,
+        entity_label=title,
+        ts=ts,
+    )
+
+
+# ── 任務討論區（不存留言全文，只存前 200 字摘要）──────────────────
+
+_EXCERPT = 200
+_COMMENT_NOTE = "留言由作者自行編輯或刪除；稽核只保存前 200 字摘要"
+
+
+def _excerpt(body: Any) -> str:
+    text = "" if body is None else str(body)
+    return text if len(text) <= _EXCERPT else text[: _EXCERPT - 1] + "…"
+
+
+def _author_name(conn: sqlite3.Connection, user_id: Any) -> str | None:
+    if user_id is None:
+        return None
+    r = conn.execute("SELECT display_name FROM users WHERE id = ?", (user_id,)).fetchone()
+    return r["display_name"] if r is not None else None
+
+
+def comment_created(conn: sqlite3.Connection, actor: Any, row: Any, ts: int) -> int | None:
+    title = _task_title(conn, row["task_id"])
+    verb = "回覆了留言" if row["parent_id"] is not None else "發表了留言"
+    return record_audit(
+        conn,
+        actor=actor,
+        entity_type="comment",
+        entity_id=row["id"],
+        entity_uid=row["uid"],
+        action="create",
+        summary=f"在{quote(title)}{verb}",
+        after={"excerpt": _excerpt(row["body"])},
+        task_id=row["task_id"],
+        revertable=False,
+        note=_COMMENT_NOTE,
+        entity_label=title,
+        ts=ts,
+    )
+
+
+def comment_edited(conn: sqlite3.Connection, actor: Any, before_row: Any, after_row: Any, ts: int) -> int | None:
+    title = _task_title(conn, after_row["task_id"])
+    return record_audit(
+        conn,
+        actor=actor,
+        entity_type="comment",
+        entity_id=after_row["id"],
+        entity_uid=after_row["uid"],
+        action="update",
+        summary=f"編輯了在{quote(title)}的留言",
+        before={"excerpt": _excerpt(before_row["body"])},
+        after={"excerpt": _excerpt(after_row["body"])},
+        task_id=after_row["task_id"],
+        revertable=False,
+        note=_COMMENT_NOTE,
+        entity_label=title,
+        ts=ts,
+    )
+
+
+def comment_deleted(conn: sqlite3.Connection, actor: Any, row: Any, ts: int) -> int | None:
+    """刪除他人的留言（管理）可還原；刪除自己的留言不可還原（作者可重新發表）"""
+    title = _task_title(conn, row["task_id"])
+    actor_id = actor["id"] if actor is not None else None
+    own = row["author_id"] == actor_id
+    author = _author_name(conn, row["author_id"])
+    summary = f"刪除了在{quote(title)}的留言" if own else f"刪除了{author or '成員'}在{quote(title)}的留言"
+    before: dict[str, Any] = {"excerpt": _excerpt(row["body"])}
+    if not own and author:
+        before["authorName"] = author
+    return record_audit(
+        conn,
+        actor=actor,
+        entity_type="comment",
+        entity_id=row["id"],
+        entity_uid=row["uid"],
+        action="delete",
+        summary=summary,
+        before=before,
+        task_id=row["task_id"],
+        revertable=not own,
+        note=None if not own else "刪除自己的留言不提供還原，可重新發表",
+        entity_label=title,
+        ts=ts,
+    )
+
+
+def comment_resolved(conn: sqlite3.Connection, actor: Any, row: Any, resolved: bool, ts: int) -> int | None:
+    title = _task_title(conn, row["task_id"])
+    summary = (
+        f"把{quote(title)}的一則討論標記為已解決" if resolved else f"重新開啟了{quote(title)}的一則討論"
+    )
+    return record_audit(
+        conn,
+        actor=actor,
+        entity_type="comment",
+        entity_id=row["id"],
+        entity_uid=row["uid"],
+        action="update",
+        summary=summary,
+        after={"excerpt": _excerpt(row["body"])},
+        task_id=row["task_id"],
+        revertable=False,
+        note="可在討論區重新標記",
         entity_label=title,
         ts=ts,
     )

@@ -12,6 +12,7 @@ export const AUDIT_ENTITY_TYPES = [
   'relation',
   'dependency',
   'checklist',
+  'comment',
 ] as const;
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
 
@@ -93,6 +94,7 @@ export type RevertKind =
   | 'recreate_row'
   | 'delete_link'
   | 'recreate_link'
+  | 'undelete_comment'
   | 'none';
 
 export type RevertPreview = {

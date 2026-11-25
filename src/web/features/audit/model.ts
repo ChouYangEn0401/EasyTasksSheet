@@ -156,6 +156,7 @@ export const ENTITY_LABELS: Record<AuditEntityType, string> = {
   relation: '相關任務',
   dependency: '依賴',
   checklist: '待辦清單',
+  comment: '留言',
 };
 
 export const ACTION_LABELS: Record<AuditAction, string> = {
@@ -232,6 +233,8 @@ export function revertKindText(kind: RevertKind, entityLabel: string, entity: Au
       return `會移除這個${noun}連結（之後仍可在稽核紀錄還原）。`;
     case 'recreate_link':
       return `會重新建立這個${noun}連結。`;
+    case 'undelete_comment':
+      return '會讓這則被刪除的留言重新出現在討論區。';
     case 'set_fields':
       return '以下欄位會改回這次修改之前的內容：';
     default:

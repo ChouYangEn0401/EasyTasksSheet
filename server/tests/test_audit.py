@@ -671,3 +671,66 @@ def test_task_restore_endpoint_recorded(env):
     assert member.request("POST", f"/api/tasks/{task['id']}/restore").status_code == 200
     r = last(t)
     assert (r["action"], r["summary"], r["revertable"]) == ("restore", "還原了已刪除的任務『被刪又復原』", 1)
+
+
+# ── 整合：任務討論區與描述鎖定 ─────────────────────────────
+
+
+def test_comment_audit_and_moderated_delete_revert(env):
+    t, member, other, manager = env["t"], env["member"], env["other"], env["manager"]
+    task = new_task(member, title="討論任務")
+    tid = task["id"]
+    body = "很長的留言" * 100
+    c = member.request("POST", f"/api/tasks/{tid}/comments", {"body": body}).json()
+    r = last(t)
+    assert (r["entity_type"], r["action"], r["task_id"], r["revertable"]) == ("comment", "create", tid, 0)
+    assert r["summary"] == "在『討論任務』發表了留言"
+    assert len(fields(r)[1]["excerpt"]) == 200
+    reply = other.request("POST", f"/api/tasks/{tid}/comments", {"body": "回覆", "parentId": c["id"]}).json()
+    assert last(t)["summary"] == "在『討論任務』回覆了留言"
+    member.request("PATCH", f"/api/tasks/{tid}/comments/{c['id']}", {"body": "改過的留言"})
+    assert last(t)["summary"] == "編輯了在『討論任務』的留言"
+    member.request("POST", f"/api/tasks/{tid}/comments/{c['id']}/resolve")
+    assert last(t)["summary"] == "把『討論任務』的一則討論標記為已解決"
+    # 刪除自己的留言：不可還原
+    other.request("DELETE", f"/api/tasks/{tid}/comments/{reply['id']}")
+    own = last(t)
+    assert own["summary"] == "刪除了在『討論任務』的留言" and own["revertable"] == 0
+    # 管理者刪除他人的留言：可還原
+    manager.request("DELETE", f"/api/tasks/{tid}/comments/{c['id']}")
+    mod = last(t)
+    assert mod["summary"] == "刪除了小明在『討論任務』的留言" and mod["revertable"] == 1
+    assert manager.get(f"/api/admin/audit/{mod['id']}").json()["revertPreview"]["kind"] == "undelete_comment"
+    assert manager.request("POST", f"/api/admin/audit/{mod['id']}/revert", {}).status_code == 200
+    row = t.db.one("SELECT deleted_at FROM task_comments WHERE id = ?", (c["id"],))
+    assert row["deleted_at"] is None
+    ch = t.db.one("SELECT entity_type, action FROM changes ORDER BY id DESC LIMIT 1")
+    assert tuple(ch) == ("task_comment", "update")
+
+
+def test_description_lock_audit_and_revert_requires_lock(env):
+    t, member, manager, root = env["t"], env["member"], env["manager"], env["root"]
+    task = new_task(member, title="派發任務", description="原始描述")
+    tid = task["id"]
+    assert "descriptionLocked" not in (fields(last(t))[1] or {})
+    manager.request("PATCH", f"/api/tasks/{tid}", {"descriptionLocked": True})
+    locked = last(t)
+    assert locked["summary"] == "鎖定了『派發任務』的描述" and locked["revertable"] == 1
+    assert fields(locked) == ({"descriptionLocked": False}, {"descriptionLocked": True})
+    # 還原鎖定 = 解鎖（manager 預設有 tasks.lock）
+    assert manager.request("POST", f"/api/admin/audit/{locked['id']}/revert", {}).status_code == 200
+    row = t.db.one("SELECT description_locked, locked_by, locked_at FROM tasks WHERE id = ?", (tid,))
+    assert tuple(row) == (0, None, None)
+    assert last(t)["summary"] == "還原：鎖定了『派發任務』的描述"
+    manager.request("PATCH", f"/api/tasks/{tid}", {"descriptionLocked": False})  # 無變動不記錄
+    manager.request("PATCH", f"/api/tasks/{tid}", {"descriptionLocked": True})
+    assert last(t)["summary"] == "鎖定了『派發任務』的描述"
+    unlock = manager.request("PATCH", f"/api/tasks/{tid}", {"descriptionLocked": False})
+    assert unlock.status_code == 200 and last(t)["summary"] == "解除了『派發任務』的描述鎖定"
+    aid = last(t)["id"]
+    # 沒有 tasks.lock 的人（即使有 audit.revert）不能還原鎖定
+    root.request("PUT", "/api/admin/permissions", {"changes": [{"role": "manager", "capability": "tasks.lock", "allowed": False}]})
+    res = manager.request("POST", f"/api/admin/audit/{aid}/revert", {})
+    assert res.status_code == 403
+    assert root.request("POST", f"/api/admin/audit/{aid}/revert", {}).status_code == 200
+    assert t.db.one("SELECT description_locked FROM tasks WHERE id = ?", (tid,))[0] == 1

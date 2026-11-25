@@ -18,6 +18,7 @@ from typing import Annotated, Any, Iterable
 from fastapi import APIRouter, Request
 from pydantic import StringConstraints
 
+from .. import audit_events
 from ..changes import record_change
 from ..context import get_ctx
 from ..errors import bad_request, conflict, not_found, too_many_requests
@@ -296,6 +297,7 @@ async def create_comment(request: Request, id: str):
         cid = int(cur.lastrowid)  # type: ignore[arg-type]
         record_change(conn, "task_comment", cid, "create", uid, t)
         row = conn.execute("SELECT * FROM task_comments WHERE id = ?", (cid,)).fetchone()
+        audit_events.comment_created(conn, ctx.user, row, t)
     return comment_to_dict(row)
 
 
@@ -321,6 +323,9 @@ async def update_comment(request: Request, id: str, cid: str):
                 (data.body, json.dumps(mentions), t, t, comment_id),
             )
             record_change(conn, "task_comment", comment_id, "update", uid, t)
+            before = row
+            row = conn.execute("SELECT * FROM task_comments WHERE id = ?", (comment_id,)).fetchone()
+            audit_events.comment_edited(conn, ctx.user, before, row, t)
         row = conn.execute("SELECT * FROM task_comments WHERE id = ?", (comment_id,)).fetchone()
     return comment_to_dict(row)
 
@@ -343,6 +348,7 @@ async def delete_comment(request: Request, id: str, cid: str):
                 (t, uid, t, comment_id),
             )
             record_change(conn, "task_comment", comment_id, "delete", uid, t)
+            audit_events.comment_deleted(conn, ctx.user, row, t)
         row = conn.execute("SELECT * FROM task_comments WHERE id = ?", (comment_id,)).fetchone()
     return comment_to_dict(row)
 
@@ -366,6 +372,7 @@ def _set_resolved(request: Request, id: str, root_id: str, resolved: bool) -> di
                 (t if resolved else None, uid if resolved else None, t, rid),
             )
             record_change(conn, "task_comment", rid, "update", uid, t)
+            audit_events.comment_resolved(conn, ctx.user, row, resolved, t)
         row = conn.execute("SELECT * FROM task_comments WHERE id = ?", (rid,)).fetchone()
     return comment_to_dict(row)
 
