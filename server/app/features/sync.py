@@ -1,4 +1,4 @@
-"""/api/changes 與 /api/events（SSE）：行為與事件格式同 src/server/features/sync/routes.ts。
+"""/api/changes 與 /api/events（SSE）。
 
 - GET /api/changes?since=<id>：SSE 斷線補漏、輪詢後備
   （回應 { changes, latestId, hasMore, reset }；since 未給時只回 latestId）

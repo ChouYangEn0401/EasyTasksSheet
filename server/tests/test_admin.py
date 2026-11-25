@@ -1,4 +1,4 @@
-"""成員管理（移植 src/server/features/admin/admin.test.ts）"""
+"""成員管理（/api/admin）"""
 
 import re
 

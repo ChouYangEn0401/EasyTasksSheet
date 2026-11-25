@@ -1,4 +1,4 @@
-"""對應 src/server/features/overview/overview.test.ts"""
+"""總覽（/api/overview 與 _overview_compute 純函式）"""
 
 from datetime import datetime
 

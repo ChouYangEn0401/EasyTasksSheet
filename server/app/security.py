@@ -1,4 +1,4 @@
-"""密碼雜湊、session、登入失敗限制、CSRF 檢查（行為同 src/server/lib/*）。"""
+"""密碼雜湊、session、登入失敗限制、CSRF 檢查。"""
 
 from __future__ import annotations
 

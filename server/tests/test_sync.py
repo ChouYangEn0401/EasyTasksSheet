@@ -1,4 +1,4 @@
-"""/api/changes 與 /api/events（SSE）——對應 src/server/features/sync/sync.test.ts。
+"""/api/changes 與 /api/events（SSE）。
 
 SSE 需要真正的串流與斷線，故以 uvicorn（背景執行緒、隨機埠）實際提供同一個 app，
 再用 httpx 串流讀取；寫入類請求仍走 TestClient（同一個 DB）。

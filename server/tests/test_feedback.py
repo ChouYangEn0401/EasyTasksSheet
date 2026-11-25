@@ -1,4 +1,4 @@
-"""對應 src/server/features/feedback/feedback.test.ts"""
+"""問題回饋（/api/feedback）"""
 
 from server.app.features.feedback import derive_feedback_status
 

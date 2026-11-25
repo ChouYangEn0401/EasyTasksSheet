@@ -1,4 +1,4 @@
-"""變更廣播中心（每個 Database 一個；行為同 src/server/features/sync/hub.ts）。
+"""變更廣播中心（每個 Database 一個）。
 
 record_change() 屬凍結的 core lib，不能在寫入當下直接通知；因此 hub 在「有訂閱者時」
 以短間隔查 changes 表的新流水（id > last_id，走主鍵索引，成本極低），再推給所有 SSE 連線。

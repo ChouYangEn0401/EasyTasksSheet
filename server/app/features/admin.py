@@ -1,4 +1,4 @@
-"""/api/admin：成員管理（行為同 src/server/features/admin/）。
+"""/api/admin：成員管理。
 
 全部端點需 members.manage（manager 以上，其餘 403）；操作 root 帳號或指派 root 需 roles.assign_root
 （僅 root）。權限定義見 server/app/permissions.py。所有寫入皆 record_change(entity = user)。

@@ -1,4 +1,4 @@
-"""對應 src/server/features/personal/personal.test.ts（sortOrderForMove 為前端純函式，不在後端）"""
+"""個人清單（/api/personal；sortOrderForMove 為前端純函式，不在後端）"""
 
 from .helpers import FakeClock, client, create_test_app, create_test_user, login_as
 
