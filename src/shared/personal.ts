@@ -1,12 +1,30 @@
 import { z } from 'zod';
-import { timestamps } from './common.ts';
+import { dateString, timestamps } from './common.ts';
 import type { Task } from './tasks.ts';
+
+/** 自由待辦的小狀態：待處理 / 進行中 / 延後 / 取消 / 完成（done 與 isDone 一致，由後端維護） */
+export const personalStatus = z.enum(['todo', 'doing', 'deferred', 'cancelled', 'done']);
+export type PersonalStatus = z.infer<typeof personalStatus>;
+
+export const PERSONAL_STATUS_LABEL: Record<PersonalStatus, string> = {
+  todo: '待處理',
+  doing: '進行中',
+  deferred: '延後',
+  cancelled: '取消',
+  done: '完成',
+};
+export const PERSONAL_STATUSES = Object.keys(PERSONAL_STATUS_LABEL) as PersonalStatus[];
 
 export const personalItem = z.object({
   id: z.number().int(),
   userId: z.number().int(),
   title: z.string(),
+  /** 備註：列上常駐顯示的短說明 */
   note: z.string(),
+  /** 細節：inspector 裡的長文 */
+  detail: z.string(),
+  status: personalStatus,
+  dueDate: dateString.nullable(),
   isDone: z.boolean(),
   /** 有值 = 標記的任務；null = 自由待辦 */
   taskId: z.number().int().nullable(),
@@ -30,6 +48,9 @@ export const personalUserQuery = z.object({
 export const personalCreateInput = z.object({
   title: z.string().trim().min(1, '請輸入待辦內容').max(500),
   note: z.string().max(5_000).optional(),
+  detail: z.string().max(50_000).optional(),
+  status: personalStatus.optional(),
+  dueDate: dateString.nullable().optional(),
 });
 export type PersonalCreateInput = z.infer<typeof personalCreateInput>;
 
@@ -37,7 +58,12 @@ export type PersonalCreateInput = z.infer<typeof personalCreateInput>;
 export const personalUpdateInput = z.object({
   title: z.string().trim().min(1, '請輸入待辦內容').max(500).optional(),
   note: z.string().max(5_000).optional(),
+  detail: z.string().max(50_000).optional(),
   isDone: z.boolean().optional(),
+  /** 設為 done 時 isDone 同步為 true；從 done 改回其他狀態則為 false */
+  status: personalStatus.optional(),
+  /** null = 清除到期日 */
+  dueDate: dateString.nullable().optional(),
   sortOrder: z.number().finite().optional(),
 });
 export type PersonalUpdateInput = z.infer<typeof personalUpdateInput>;

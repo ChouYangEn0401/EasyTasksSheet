@@ -12,7 +12,7 @@ import {
   Spinner,
   type SelectOption,
 } from '../../ui/index.ts';
-import { sectionText } from './model.ts';
+import { readTodoParam, sectionText } from './model.ts';
 import { AssignedSection, PinnedSection } from './TaskSections.tsx';
 import { TodoSection } from './TodoSection.tsx';
 import './personal.css';
@@ -55,6 +55,7 @@ export function PersonalPage() {
   const switchTo = (id: number) =>
     setSp((prev) => {
       const next = new URLSearchParams(prev);
+      next.delete('todo');
       if (id === me.id) next.delete(USER_PARAM);
       else next.set(USER_PARAM, String(id));
       return next;
@@ -96,7 +97,7 @@ export function PersonalPage() {
   const t = sectionText(name);
 
   return (
-    <div className="pl-page">
+    <div className="pl-page" data-inspector={readTodoParam(sp) != null || undefined}>
       <div className="pl-head">
         {!isSelf && (
           <Alert tone="info" className="pl-readonly" action={backLink}>

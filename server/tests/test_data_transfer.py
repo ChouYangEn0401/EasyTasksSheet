@@ -77,7 +77,15 @@ def populate(env: Env) -> dict:
     gone = ok(api.request("POST", "/api/tasks", {"title": "已刪除的任務"}), 201)
     ok(api.request("DELETE", f"/api/tasks/{gone['id']}"))
     ok(api.request("POST", "/api/feedback", {"kind": "problem", "title": "離心機異常", "assigneeId": member_id}), 201)
-    ok(api.request("POST", "/api/personal", {"title": "買咖啡"}), 201)
+    ok(
+        api.request(
+            "POST",
+            "/api/personal",
+            {"title": "買咖啡", "status": "deferred", "dueDate": "2026-12-24", "detail": "下週再說\n預算 200"},
+        ),
+        201,
+    )
+    ok(api.request("POST", "/api/personal", {"title": "已完成的事", "status": "done"}), 201)
     ok(api.request("PUT", f"/api/personal/pins/{task['id']}"), 201)
     ok(api.request("POST", "/api/eng/issues", {"title": "登入很慢", "project": "web"}), 201)
     ok(api.request("POST", "/api/eng/worktree-records", {"machine": "pc-1", "path": "C:/w/feat"}), 201)
@@ -323,6 +331,23 @@ def test_roundtrip_into_fresh_install_matches_defaults_by_name(tmp_path):
     custom = json.loads(t["custom"])
     person_id = b.db.scalar("SELECT id FROM property_defs WHERE name = '窗口'")
     assert custom[str(person_id)] == b.member["id"]
+
+
+def test_import_legacy_personal_items_without_status_fields(tmp_path):
+    """舊匯出檔的自由待辦沒有 status / dueDate / detail：由 isDone 推得 status，其餘取預設"""
+    a = Env(tmp_path, name="a")
+    populate(a)
+    doc = export(a)
+    for p in doc["personalItems"]:
+        for k in ("status", "dueDate", "detail"):
+            del p[k]
+        p["isDone"] = p["title"] == "已完成的事"
+    b = Env(tmp_path, seed=False, name="b")
+    apply(b, preview(b, doc)["token"], missingUsers="create")
+    rows = {r["title"]: r for r in b.db.all("SELECT * FROM personal_items WHERE task_id IS NULL")}
+    assert (rows["買咖啡"]["status"], rows["買咖啡"]["is_done"], rows["買咖啡"]["detail"]) == ("todo", 0, "")
+    assert rows["買咖啡"]["due_date"] is None
+    assert (rows["已完成的事"]["status"], rows["已完成的事"]["is_done"]) == ("done", 1)
 
 
 # ── 衝突 ──

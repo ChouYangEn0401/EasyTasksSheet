@@ -1,3 +1,4 @@
+import type { PersonalItem, PersonalStatus } from '../../../shared/personal.ts';
 import type { Status } from '../../../shared/projects.ts';
 import type { Task } from '../../../shared/tasks.ts';
 import { todayString } from '../../lib/format.ts';
@@ -72,3 +73,63 @@ export const announce = {
   drop: (n: number) => `已放到位置 ${n}`,
   cancel: () => '已取消',
 };
+
+/* ── 自由待辦的小狀態 ─────────────────────── */
+
+/** 狀態 chip 的色調（只用 Badge 的語意色）：延後 = 黃、進行中 = 藍、完成 = 綠、其餘灰 */
+export const STATUS_TONE: Record<PersonalStatus, 'neutral' | 'accent' | 'success' | 'warning'> = {
+  todo: 'neutral',
+  doing: 'accent',
+  deferred: 'warning',
+  cancelled: 'neutral',
+  done: 'success',
+};
+
+export type StatusFilter = 'all' | 'doing' | 'deferred' | 'cancelled' | 'done';
+export const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: 'all', label: '全部' },
+  { value: 'doing', label: '進行中' },
+  { value: 'deferred', label: '延後' },
+  { value: 'cancelled', label: '取消' },
+  { value: 'done', label: '已完成' },
+];
+
+/** 延後 / 取消：沉到清單後面的「暫緩」群組 */
+export const isParked = (i: PersonalItem) => i.status === 'deferred' || i.status === 'cancelled';
+
+/**
+ * 「全部」檢視的分組（保持 sortOrder 順序）：
+ * active = 待處理 + 進行中（可拖曳排序）、parked = 延後 + 取消（沉到後面）、done = 完成（預設收合）
+ */
+export function groupTodos(items: readonly PersonalItem[]) {
+  return {
+    active: items.filter((i) => i.status === 'todo' || i.status === 'doing'),
+    parked: items.filter(isParked),
+    done: items.filter((i) => i.status === 'done'),
+  };
+}
+
+/** 單一狀態篩選（all 回傳全部） */
+export function filterTodos(items: readonly PersonalItem[], filter: StatusFilter): PersonalItem[] {
+  return filter === 'all' ? [...items] : items.filter((i) => i.status === filter);
+}
+
+/** 各篩選鈕上的數量 */
+export function filterCounts(items: readonly PersonalItem[]): Record<StatusFilter, number> {
+  const count = (st: PersonalStatus) => items.filter((i) => i.status === st).length;
+  return {
+    all: items.length,
+    doing: count('doing'),
+    deferred: count('deferred'),
+    cancelled: count('cancelled'),
+    done: count('done'),
+  };
+}
+
+/** `?todo=<id>`：目前開啟 inspector 的待辦 id */
+export function readTodoParam(sp: URLSearchParams): number | null {
+  const raw = sp.get('todo');
+  if (!raw || !/^\d+$/.test(raw)) return null;
+  const n = Number(raw);
+  return n > 0 ? n : null;
+}

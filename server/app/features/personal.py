@@ -2,8 +2,10 @@
 
 - GET /           自由待辦（依 sortOrder）
 - POST /          新增自由待辦（排在最上方）
-- PATCH /:id      改標題 / 備註 / 完成 / 排序
-- DELETE /done    清除已完成
+- PATCH /:id      改標題 / 備註 / 細節 / 狀態 / 到期日 / 完成 / 排序
+                  狀態：todo 待處理、doing 進行中、deferred 延後、cancelled 取消、done 完成；
+                  done <-> isDone 一致（勾選 = done、取消勾選 = 回 todo）
+- DELETE /done    清除已完成（只清 done；延後 / 取消的項目保留）
 - DELETE /:id     刪除
 - GET /pins       標記的任務（依標記時間新→舊，排除已刪除任務）
 - PUT|DELETE /pins/:taskId  標記 / 取消標記（冪等）
@@ -13,7 +15,7 @@ from __future__ import annotations
 
 import math
 import sqlite3
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -23,7 +25,7 @@ from ..changes import record_change
 from ..context import Ctx, get_ctx
 from ..db import row_to_dict, rows_to_dicts
 from ..errors import bad_request, forbidden, not_found, validation_error
-from ..schemas import Title
+from ..schemas import DateString, Title
 from ..validate import parse_id, present, read_json
 
 router = APIRouter()
@@ -32,6 +34,9 @@ NOT_FOUND = "此待辦不存在或已被刪除"
 FORBIDDEN = "只有本人可以修改自己的清單"
 
 Note = Annotated[str, StringConstraints(max_length=5_000)]
+Detail = Annotated[str, StringConstraints(max_length=50_000)]
+#: todo 待處理 / doing 進行中 / deferred 延後 / cancelled 取消 / done 完成；done <-> is_done = 1 由本檔維護
+PersonalStatus = Literal["todo", "doing", "deferred", "cancelled", "done"]
 
 
 class PersonalCreateInput(BaseModel):
@@ -40,6 +45,9 @@ class PersonalCreateInput(BaseModel):
     model_config = {"extra": "ignore"}
     title: Title
     note: Note = None  # type: ignore[assignment]
+    status: PersonalStatus = None  # type: ignore[assignment]
+    dueDate: DateString | None = None
+    detail: Detail = None  # type: ignore[assignment]
 
 
 class PersonalUpdateInput(BaseModel):
@@ -49,10 +57,21 @@ class PersonalUpdateInput(BaseModel):
     title: Title = None  # type: ignore[assignment]
     note: Note = None  # type: ignore[assignment]
     isDone: bool = None  # type: ignore[assignment]
+    status: PersonalStatus = None  # type: ignore[assignment]
+    dueDate: DateString | None = None  # 明確送 null = 清除到期日
+    detail: Detail = None  # type: ignore[assignment]
     sortOrder: Annotated[float, Field(allow_inf_nan=False)] = None  # type: ignore[assignment]
 
 
-_COLUMNS = {"title": "title", "note": "note", "isDone": "is_done", "sortOrder": "sort_order"}
+_COLUMNS = {
+    "title": "title",
+    "note": "note",
+    "isDone": "is_done",
+    "status": "status",
+    "dueDate": "due_date",
+    "detail": "detail",
+    "sortOrder": "sort_order",
+}
 
 
 def _user_query(request: Request) -> int | None:
@@ -123,10 +142,22 @@ async def create_todo(request: Request):
             "SELECT min(sort_order) FROM personal_items WHERE user_id = ? AND task_id IS NULL", (uid,)
         ).fetchone()[0]
         t = ctx.now()
+        status = data.status or "todo"
         cur = conn.execute(
-            "INSERT INTO personal_items (user_id, title, note, sort_order, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (uid, data.title, data.note if data.note is not None else "", 0 if top is None else top - 1, t, t),
+            "INSERT INTO personal_items (user_id, title, note, status, is_done, due_date, detail, sort_order, "
+            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                uid,
+                data.title,
+                data.note if data.note is not None else "",
+                status,
+                int(status == "done"),
+                data.dueDate,
+                data.detail if data.detail is not None else "",
+                0 if top is None else top - 1,
+                t,
+                t,
+            ),
         )
         pid = int(cur.lastrowid)  # type: ignore[arg-type]
         record_change(conn, "personal", pid, "create", uid, t)
@@ -225,8 +256,16 @@ async def update_todo(request: Request, id: str):
         raise bad_request("沒有要修改的欄位")
     uid = ctx.user["id"]
     with ctx.db.tx() as conn:
-        _find_own_todo(conn, pid, uid)
+        current = _find_own_todo(conn, pid, uid)
         t = ctx.now()
+        # status 與 is_done 保持一致：同時送來時 status 為準；只送 isDone 時，勾選 = done、取消勾選 = 回 todo
+        if "status" in fields:
+            fields["isDone"] = fields["status"] == "done"
+        elif "isDone" in fields:
+            if fields["isDone"]:
+                fields["status"] = "done"
+            elif current["status"] == "done":
+                fields["status"] = "todo"
         sets = {_COLUMNS[k]: (int(v) if k == "isDone" else v) for k, v in fields.items()}
         sets["updated_at"] = t
         conn.execute(

@@ -66,6 +66,8 @@ class F:
     nullable: bool = False
     #: str：最大長度或允許值；ref：參照的類別 key
     extra: Any = None
+    #: 匯入時缺少此欄位的預設值（Ellipsis = 必填）；供後來新增的欄位相容舊匯出檔
+    default: Any = ...
 
 
 @dataclass(frozen=True)
@@ -200,6 +202,9 @@ SPECS: tuple[Spec, ...] = (
             F("title", "title", "str", extra=500),
             F("note", "note", "str", extra=100_000),
             F("isDone", "is_done", "bool"),
+            F("status", "status", "str", extra=("todo", "doing", "deferred", "cancelled", "done"), default=None),
+            F("dueDate", "due_date", "date", True),
+            F("detail", "detail", "str", extra=100_000, default=""),
             F("taskUid", "task_id", "ref", True, "tasks"),
             F("sortOrder", "sort_order", "float"),
             _CREATED,
@@ -357,7 +362,10 @@ def _item_model(spec: Spec) -> type[BaseModel]:
         defs["uid"] = (Uid, ...)
     for f in spec.fields:
         t = _py_type(f)
-        defs[f.name] = (Optional[t], None) if f.nullable else (t, ...)
+        if f.default is not ...:
+            defs[f.name] = (Optional[t] if f.nullable else t, f.default)
+        else:
+            defs[f.name] = (Optional[t], None) if f.nullable else (t, ...)
     return create_model(f"Import_{spec.key}", __config__=_STRICT, **defs)
 
 
@@ -412,6 +420,11 @@ def parse_document(raw: bytes | str | dict[str, Any]) -> dict[str, Any]:
         raise TransferError("匯出檔內容驗證失敗", pydantic_issues(e)[:50]) from None
     except RecursionError:
         raise TransferError("匯出檔結構過深") from None
+    for p in doc["personalItems"]:
+        # 舊匯出檔沒有 status：由 isDone 推得；同時保持 status 與 isDone 一致
+        if p["status"] is None:
+            p["status"] = "done" if p["isDone"] else "todo"
+        p["isDone"] = p["status"] == "done"
     _check_integrity(doc)
     return doc
 

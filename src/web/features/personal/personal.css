@@ -309,9 +309,6 @@
     outline: 2px solid var(--color-focus-ring);
     outline-offset: -2px;
   }
-  .pl-todo-row.is-done .pl-todo-line {
-    padding-left: 0;
-  }
   .pl-todo-title {
     flex: 1;
     min-width: 0;
@@ -327,15 +324,25 @@
     padding: 2px 4px;
     margin: 0 -4px;
     border-radius: var(--radius-sm);
-    cursor: text;
+    cursor: pointer;
   }
   .pl-todo-title--btn:focus-visible {
     outline: 2px solid var(--color-focus-ring);
     outline-offset: -2px;
   }
-  .pl-todo-row.is-done .pl-todo-title {
+  .pl-todo-row.is-done .pl-todo-title,
+  .pl-todo-row.is-cancelled .pl-todo-title {
     color: var(--color-text-tertiary);
     text-decoration: line-through;
+  }
+  .pl-todo-row.is-deferred .pl-todo-title {
+    color: var(--color-text-secondary);
+  }
+  .pl-todo-row.is-selected {
+    background: var(--color-accent-soft);
+  }
+  .pl-todo-row {
+    cursor: pointer;
   }
   .pl-todo-edit {
     flex: 1;
@@ -370,16 +377,205 @@
     overflow: hidden;
     white-space: pre-wrap;
   }
-  .pl-todo-row.is-done .pl-todo-note {
-    padding-left: 24px;
-  }
-  .pl-todo-note-input {
-    margin: 0 0 var(--space-2) 48px;
-    width: calc(100% - 48px);
-  }
   .pl-todo-row .pl-field-error {
     margin: 0 0 var(--space-2);
     padding-left: 48px;
+  }
+
+  /* 狀態 chip / 到期日 */
+  .pl-status-btn {
+    display: inline-flex;
+    flex: none;
+    border-radius: var(--radius-full);
+    cursor: pointer;
+  }
+  .pl-status-btn:hover .ui-badge {
+    filter: brightness(0.96);
+  }
+  .pl-status-btn:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
+  }
+  .pl-status-badge {
+    flex: none;
+    white-space: nowrap;
+  }
+  .pl-status-badge--todo {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--color-border);
+  }
+  .pl-todo-due {
+    flex: none;
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-secondary);
+  }
+  .pl-todo-due.is-overdue {
+    color: var(--color-status-overdue-text);
+  }
+  .pl-card--todos {
+    overflow: visible;
+  }
+
+  /* 狀態篩選 */
+  .pl-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .pl-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    height: 26px;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+  }
+  .pl-filter:hover {
+    background: var(--color-surface-hover);
+    color: var(--color-text);
+  }
+  .pl-filter[aria-pressed='true'] {
+    background: var(--color-accent-soft);
+    color: var(--color-accent-text);
+    font-weight: var(--font-medium);
+  }
+  .pl-filter:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
+  }
+  .pl-filter-count {
+    font-variant-numeric: tabular-nums;
+    opacity: 0.8;
+  }
+  .pl-filter-empty {
+    margin: 0;
+    padding: var(--space-4);
+    font-size: var(--text-sm);
+    color: var(--color-text-tertiary);
+    text-align: center;
+  }
+
+  /* 延後與取消群組 */
+  .pl-parked {
+    border-top: 1px solid var(--color-border-subtle);
+  }
+  .pl-parked-head {
+    height: 28px;
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space-4);
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+  }
+
+  /* ── 待辦詳情 inspector（外框沿用 shell.css 的 .task-drawer） ── */
+  .pl-page[data-inspector='true'] .pl-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* 開著 inspector 時只剩單欄：把自由待辦排到最前面，被點的那一列不會被推到畫面外 */
+  .pl-page[data-inspector='true'] .pl-card--todos {
+    order: -1;
+  }
+  .pl-todo-row.is-static .pl-todo-line {
+    padding-left: 24px;
+  }
+  .pl-insp-status-value {
+    flex: 1;
+    display: inline-flex;
+    justify-content: flex-start;
+  }
+  .pl-insp {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+  .pl-insp-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .pl-insp-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-1);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--color-text-secondary);
+  }
+  .pl-save-state {
+    font-size: var(--text-xs);
+    font-weight: var(--font-regular);
+    color: var(--color-text-tertiary);
+  }
+  .pl-save-error {
+    color: var(--color-danger-text);
+  }
+  .pl-linkbtn {
+    padding: 0;
+    color: var(--color-accent-text);
+    font: inherit;
+    cursor: pointer;
+  }
+  .pl-linkbtn:hover {
+    text-decoration: underline;
+  }
+  .pl-insp-fields {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .pl-insp-field {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    align-items: center;
+    min-height: 32px;
+    font-size: var(--text-sm);
+  }
+  .pl-insp-field > .pl-insp-label {
+    margin: 0;
+  }
+  .pl-insp-field .ui-popover-anchor {
+    justify-self: start;
+    width: 180px;
+  }
+  .pl-insp-date {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .pl-insp-text {
+    min-height: 56px;
+    resize: none;
+    overflow: hidden;
+  }
+  .pl-insp-readonly {
+    margin: 0;
+    font-size: var(--text-sm);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .pl-insp-empty {
+    color: var(--color-text-tertiary);
+  }
+  .pl-insp-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+  .pl-insp-times {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-4);
+  }
+  .pl-insp-delete {
+    color: var(--color-danger-text);
   }
 
   /* 已完成群組 */
@@ -413,6 +609,11 @@
   }
 
   /* ── 響應式 ─────────────────────── */
+  @media (min-width: 1280px) {
+    .pl-page[data-inspector='true'] {
+      padding-right: var(--drawer-width);
+    }
+  }
   @media (max-width: 1279px) {
     .pl-grid {
       grid-template-columns: minmax(0, 1fr) 320px;

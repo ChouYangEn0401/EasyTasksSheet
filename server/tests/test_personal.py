@@ -30,7 +30,21 @@ def test_todos_crud():
     """新增排在最上方；勾選 / 改標題 / 備註 / 排序；重新讀取保留；寫入皆記錄變更"""
     _t, clock, alice, _bob, a, _b, change_rows = setup()
     first = a.request("POST", "/api/personal", {"title": " 訂購試劑 "}).json()
-    assert set(first) == {"id", "userId", "title", "note", "isDone", "taskId", "sortOrder", "createdAt", "updatedAt"}
+    assert set(first) == {
+        "id",
+        "userId",
+        "title",
+        "note",
+        "detail",
+        "status",
+        "dueDate",
+        "isDone",
+        "taskId",
+        "sortOrder",
+        "createdAt",
+        "updatedAt",
+    }
+    assert first["status"] == "todo" and first["dueDate"] is None and first["detail"] == ""
     assert first["userId"] == alice["id"] and first["title"] == "訂購試劑"
     assert first["note"] == "" and first["isDone"] is False and first["taskId"] is None
     clock.advance(1000)
@@ -149,3 +163,64 @@ def test_pins():
     pin_changes = [r[2] for r in change_rows()[base:] if r[0] == "personal"]
     # a 標記 t1、t2，b 標記 t1，a 取消 t2（重複的 PUT / DELETE 不記錄）
     assert pin_changes == ["create", "create", "create", "delete"]
+
+
+def test_status_detail_due_date_and_done_consistency():
+    """status 五種值；done <-> isDone 一致；dueDate 可清除；細節可長文；清除已完成只清 done"""
+    _t, clock, _alice, _bob, a, _b, change_rows = setup()
+    item = a.request(
+        "POST", "/api/personal", {"title": "整理資料", "status": "doing", "dueDate": "2026-12-01", "detail": "第一行\n第二行"}
+    ).json()
+    assert item["status"] == "doing" and item["isDone"] is False
+    assert item["dueDate"] == "2026-12-01" and item["detail"] == "第一行\n第二行"
+    url = f"/api/personal/{item['id']}"
+
+    # 設為 done -> isDone 為 true；改回其他狀態 -> isDone 為 false
+    clock.advance(1000)
+    p = a.request("PATCH", url, {"status": "done"}).json()
+    assert p["status"] == "done" and p["isDone"] is True and p["updatedAt"] == clock.now()
+    p = a.request("PATCH", url, {"status": "deferred"}).json()
+    assert p["status"] == "deferred" and p["isDone"] is False
+    p = a.request("PATCH", url, {"status": "cancelled"}).json()
+    assert p["status"] == "cancelled" and p["isDone"] is False
+
+    # 勾選 = done；取消勾選回 todo；未完成狀態下取消勾選不改狀態
+    p = a.request("PATCH", url, {"isDone": True}).json()
+    assert p["status"] == "done" and p["isDone"] is True
+    p = a.request("PATCH", url, {"isDone": False}).json()
+    assert p["status"] == "todo" and p["isDone"] is False
+    a.request("PATCH", url, {"status": "deferred"})
+    p = a.request("PATCH", url, {"isDone": False}).json()
+    assert p["status"] == "deferred"
+    # 同時送來時以 status 為準
+    p = a.request("PATCH", url, {"status": "doing", "isDone": True}).json()
+    assert p["status"] == "doing" and p["isDone"] is False
+
+    # 到期日與細節；null 清除到期日
+    p = a.request("PATCH", url, {"dueDate": "2027-01-02", "detail": "細節" * 100}).json()
+    assert p["dueDate"] == "2027-01-02" and p["detail"] == "細節" * 100
+    assert a.request("PATCH", url, {"dueDate": None}).json()["dueDate"] is None
+
+    # 驗證
+    assert a.request("PATCH", url, {"status": "paused"}).status_code == 400
+    assert a.request("PATCH", url, {"dueDate": "明天"}).status_code == 400
+    assert a.request("POST", "/api/personal", {"title": "x", "status": "nope"}).status_code == 400
+    assert a.request("POST", "/api/personal", {"title": "x", "status": "done"}).json()["isDone"] is True
+
+    # 清除已完成：只清 done，延後 / 取消保留
+    d = a.request("POST", "/api/personal", {"title": "延後的", "status": "deferred"}).json()
+    c = a.request("POST", "/api/personal", {"title": "取消的", "status": "cancelled"}).json()
+    assert a.request("DELETE", "/api/personal/done").json() == {"ok": True, "deleted": 1}
+    remaining = {i["id"]: i["status"] for i in a.get("/api/personal").json()}
+    assert remaining[d["id"]] == "deferred" and remaining[c["id"]] == "cancelled" and item["id"] in remaining
+    assert all(r[0] == "personal" for r in change_rows())
+
+
+def test_status_only_owner_can_write():
+    """他人不能改狀態 / 細節（403）；可唯讀看到欄位"""
+    _t, _clock, alice, _bob, a, b, _cr = setup()
+    item = a.request("POST", "/api/personal", {"title": "私人", "detail": "秘密細節"}).json()
+    assert b.request("PATCH", f"/api/personal/{item['id']}", {"status": "done"}).status_code == 403
+    assert b.request("PATCH", f"/api/personal/{item['id']}", {"detail": "改"}).status_code == 403
+    seen = b.get(f"/api/personal?user={alice['id']}").json()[0]
+    assert seen["detail"] == "秘密細節" and seen["status"] == "todo"

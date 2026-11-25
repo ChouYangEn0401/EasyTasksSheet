@@ -65,6 +65,17 @@ export type TodoPatch = PersonalUpdateInput & { id: number };
 
 const bySort = (a: PersonalItem, b: PersonalItem) => a.sortOrder - b.sortOrder || a.id - b.id;
 
+/** 樂觀套用 PATCH：與後端一致，status 與 isDone 保持同步 */
+export function applyPatch(item: PersonalItem, patch: PersonalUpdateInput): PersonalItem {
+  const next = { ...item, ...patch } as PersonalItem;
+  if (patch.status !== undefined) next.isDone = patch.status === 'done';
+  else if (patch.isDone !== undefined) {
+    if (patch.isDone) next.status = 'done';
+    else if (item.status === 'done') next.status = 'todo';
+  }
+  return next;
+}
+
 /** PATCH：樂觀更新，失敗還原（錯誤由呼叫端顯示） */
 export function useUpdateTodo() {
   const qc = useQueryClient();
@@ -77,7 +88,7 @@ export function useUpdateTodo() {
       await qc.cancelQueries({ queryKey: key });
       const prev = qc.getQueryData<PersonalItem[]>(key);
       qc.setQueryData<PersonalItem[]>(key, (list) =>
-        list?.map((i) => (i.id === id ? { ...i, ...patch } : i)).sort(bySort),
+        list?.map((i) => (i.id === id ? applyPatch(i, patch) : i)).sort(bySort),
       );
       return { prev };
     },
@@ -121,7 +132,7 @@ export function useClearDoneTodos() {
     meta: { errorToast: false },
     mutationFn: () => api.delete<{ ok: true; deleted: number }>('/personal/done'),
     onSuccess: () => {
-      qc.setQueryData<PersonalItem[]>(key, (list) => list?.filter((i) => !i.isDone));
+      qc.setQueryData<PersonalItem[]>(key, (list) => list?.filter((i) => i.status !== 'done'));
       return qc.invalidateQueries({ queryKey: key });
     },
   });
@@ -170,6 +181,9 @@ export function useTogglePin() {
             userId: me,
             title: '',
             note: '',
+            detail: '',
+            status: 'todo',
+            dueDate: null,
             isDone: false,
             taskId,
             sortOrder: 0,

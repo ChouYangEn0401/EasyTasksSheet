@@ -19,6 +19,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { useSearchParams } from 'react-router';
 import { sortOrderForMove, type PersonalItem } from '../../../shared/personal.ts';
 import { isEditableTarget, shortcutsSuspended, suspendGlobalShortcuts } from '../../lib/shortcuts.ts';
 import {
@@ -30,7 +31,6 @@ import {
   Icon,
   Input,
   Spinner,
-  Textarea,
   UpdatedAt,
 } from '../../ui/index.ts';
 import {
@@ -41,9 +41,20 @@ import {
   useUpdateTodo,
   type TodoPatch,
 } from './api.ts';
-import { GripIcon, PencilIcon } from './icons.tsx';
-import { announce } from './model.ts';
+import { GripIcon } from './icons.tsx';
+import {
+  announce,
+  dueLabel,
+  filterCounts,
+  filterTodos,
+  groupTodos,
+  readTodoParam,
+  STATUS_FILTERS,
+  type StatusFilter,
+} from './model.ts';
 import { SectionCard, SkeletonRows } from './TaskSections.tsx';
+import { TodoInspector, type InspectorSave } from './TodoInspector.tsx';
+import { StatusChip } from './TodoStatus.tsx';
 
 const SAVE_FAILED = '儲存失敗，請再試一次';
 const ROW_SELECTOR = '[data-todo-id]';
@@ -107,9 +118,11 @@ function AddTodo({ inputRef }: { inputRef: RefObject<HTMLInputElement | null> })
 
 type RowActions = {
   readOnly: boolean;
+  selectedId: number | null;
   onSave: (patch: TodoPatch, onError: () => void) => void;
   onDelete: (item: PersonalItem) => void;
   onMoveBy: (item: PersonalItem, delta: -1 | 1) => void;
+  onOpen: (item: PersonalItem) => void;
 };
 
 function TodoRowContent({
@@ -117,44 +130,22 @@ function TodoRowContent({
   readOnly,
   onSave,
   onDelete,
+  onOpen,
   handle,
-}: Omit<RowActions, 'onMoveBy'> & { item: PersonalItem; handle?: ReactNode }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(item.title);
-  const [noteOpen, setNoteOpen] = useState(false);
-  const [noteDraft, setNoteDraft] = useState(item.note);
+}: Pick<RowActions, 'readOnly' | 'onSave' | 'onDelete' | 'onOpen'> & {
+  item: PersonalItem;
+  handle?: ReactNode;
+}) {
   const [failed, setFailed] = useState(false);
-  const done = useRef(false);
-  const titleBtn = useRef<HTMLButtonElement>(null);
 
   const save = (patch: Omit<TodoPatch, 'id'>) => {
     setFailed(false);
     onSave({ id: item.id, ...patch }, () => setFailed(true));
   };
 
-  const startEdit = () => {
-    if (readOnly) return;
-    done.current = false;
-    setDraft(item.title);
-    setEditing(true);
-  };
-  const finishEdit = (commit: boolean) => {
-    if (done.current) return;
-    done.current = true;
-    setEditing(false);
-    const title = draft.trim();
-    if (commit && title && title !== item.title) save({ title });
-    requestAnimationFrame(() => titleBtn.current?.focus());
-  };
-
-  const openNote = () => {
-    setNoteDraft(item.note);
-    setNoteOpen(true);
-  };
-  const closeNote = () => {
-    setNoteOpen(false);
-    if (noteDraft !== item.note) save({ note: noteDraft });
-  };
+  const due = item.dueDate
+    ? dueLabel(item.dueDate, item.status === 'done' || item.status === 'cancelled')
+    : null;
 
   return (
     <>
@@ -166,53 +157,30 @@ function TodoRowContent({
           aria-label={`${item.isDone ? '標為未完成' : '標為完成'}：${item.title}`}
           onChange={(e) => save({ isDone: e.target.checked })}
         />
-        {editing ? (
-          <Input
-            size="sm"
-            autoFocus
-            value={draft}
-            aria-label="待辦標題"
-            wrapperClassName="pl-todo-edit"
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => finishEdit(true)}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                finishEdit(true);
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                finishEdit(false);
-              }
-            }}
-          />
-        ) : readOnly ? (
-          <span className="pl-todo-title">{item.title}</span>
-        ) : (
-          <button
-            ref={titleBtn}
-            type="button"
-            className="pl-todo-title pl-todo-title--btn"
-            aria-label={`編輯待辦：${item.title}`}
-            onClick={startEdit}
-          >
-            {item.title}
-          </button>
+        <button
+          type="button"
+          className="pl-todo-title pl-todo-title--btn"
+          aria-label={`開啟待辦詳情：${item.title}`}
+          onClick={() => onOpen(item)}
+        >
+          {item.title}
+        </button>
+        <StatusChip
+          status={item.status}
+          title={item.title}
+          readOnly={readOnly}
+          onChange={(status) => save({ status })}
+        />
+        {due && (
+          <span className={`pl-todo-due${due.overdue ? ' is-overdue' : ''}`} title="到期日">
+            {due.text}
+          </span>
         )}
         <span className="pl-todo-updated">
           <UpdatedAt at={item.updatedAt} />
         </span>
         {!readOnly && (
           <span className="pl-todo-actions">
-            <Button
-              variant="ghost"
-              size="sm"
-              iconOnly
-              icon={<PencilIcon />}
-              aria-label={`備註：${item.title}`}
-              aria-expanded={noteOpen}
-              onClick={() => (noteOpen ? closeNote() : openNote())}
-            />
             <Button
               variant="ghost"
               size="sm"
@@ -224,26 +192,7 @@ function TodoRowContent({
           </span>
         )}
       </div>
-      {noteOpen && !readOnly ? (
-        <Textarea
-          className="pl-todo-note-input"
-          rows={2}
-          autoFocus
-          value={noteDraft}
-          aria-label={`備註：${item.title}`}
-          onChange={(e) => setNoteDraft(e.target.value)}
-          onBlur={closeNote}
-          onKeyDown={(e) => {
-            e.stopPropagation();
-            if (e.key === 'Escape') {
-              setNoteDraft(item.note);
-              setNoteOpen(false);
-            }
-          }}
-        />
-      ) : (
-        item.note && <p className="pl-todo-note">{item.note}</p>
-      )}
+      {item.note && <p className="pl-todo-note">{item.note}</p>}
       {failed && (
         <p className="pl-field-error" role="alert">
           {SAVE_FAILED}
@@ -253,12 +202,20 @@ function TodoRowContent({
   );
 }
 
+/** 點列上按鈕 / 輸入框以外的空白處也開啟詳情 */
+function openFromRowClick(e: React.MouseEvent<HTMLElement>, open: () => void) {
+  if ((e.target as HTMLElement).closest('button, input, a, label, [role="menu"], [role="listbox"]')) return;
+  open();
+}
+
 function SortableTodoRow({
   item,
   readOnly,
+  selectedId,
   onSave,
   onDelete,
   onMoveBy,
+  onOpen,
 }: RowActions & { item: PersonalItem }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id, disabled: readOnly });
@@ -293,28 +250,45 @@ function SortableTodoRow({
     <li
       ref={setNodeRef}
       data-todo-id={item.id}
-      className={`pl-todo-row${isDragging ? ' is-placeholder' : ''}`}
+      className={`pl-todo-row is-${item.status}${isDragging ? ' is-placeholder' : ''}${selectedId === item.id ? ' is-selected' : ''}`}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       onKeyDown={onKeyDown}
+      onClick={(e) => openFromRowClick(e, () => onOpen(item))}
     >
-      <TodoRowContent item={item} readOnly={readOnly} onSave={onSave} onDelete={onDelete} handle={handle} />
+      <TodoRowContent
+        item={item}
+        readOnly={readOnly}
+        onSave={onSave}
+        onDelete={onDelete}
+        onOpen={onOpen}
+        handle={handle}
+      />
     </li>
   );
 }
 
-function DoneTodoRow({ item, readOnly, onSave, onDelete }: RowActions & { item: PersonalItem }) {
+/** 不可排序的列：延後 / 取消、已完成、篩選結果 */
+function StaticTodoRow({
+  item,
+  readOnly,
+  selectedId,
+  onSave,
+  onDelete,
+  onOpen,
+}: RowActions & { item: PersonalItem }) {
   return (
     <li
       data-todo-id={item.id}
-      className="pl-todo-row is-done"
+      className={`pl-todo-row is-static is-${item.status}${selectedId === item.id ? ' is-selected' : ''}`}
       onKeyDown={(e) => {
         if (!readOnly && e.key === 'Delete' && !isEditableTarget(e.target)) {
           e.preventDefault();
           onDelete(item);
         }
       }}
+      onClick={(e) => openFromRowClick(e, () => onOpen(item))}
     >
-      <TodoRowContent item={item} readOnly={readOnly} onSave={onSave} onDelete={onDelete} />
+      <TodoRowContent item={item} readOnly={readOnly} onSave={onSave} onDelete={onDelete} onOpen={onOpen} />
     </li>
   );
 }
@@ -350,9 +324,12 @@ export function TodoSection({
   const update = useUpdateTodo();
   const del = useDeleteTodo();
   const clear = useClearDoneTodos();
+  const [sp, setSp] = useSearchParams();
   const addRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
   const [showDone, setShowDone] = useState(false);
+  const [filter, setFilter] = useState<StatusFilter>('all');
   const [confirmClear, setConfirmClear] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -360,9 +337,45 @@ export function TodoSection({
   const resumeShortcuts = useRef<(() => void) | null>(null);
 
   const items = q.data;
-  const open = items?.filter((i) => !i.isDone) ?? [];
-  const done = items?.filter((i) => i.isDone) ?? [];
+  const groups = groupTodos(items ?? []);
+  const open = groups.active;
+  const done = groups.done;
+  const counts = filterCounts(items ?? []);
   const active = activeId != null ? open.find((i) => i.id === activeId) : undefined;
+  const todoId = readTodoParam(sp);
+  const inspected = todoId != null ? items?.find((i) => i.id === todoId) : undefined;
+
+  /* ── inspector（?todo=<id>） ── */
+  const dropTodoParam = () =>
+    setSp(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('todo');
+        return next;
+      },
+      { replace: true },
+    );
+  const openTodo = (item: PersonalItem) => {
+    const el = document.activeElement;
+    if (el instanceof HTMLElement && el !== document.body) returnFocus.current = el;
+    setSp(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('todo', String(item.id));
+        return next;
+      },
+      { replace: todoId != null },
+    );
+  };
+  const closeTodo = () => {
+    dropTodoParam();
+    const back = returnFocus.current;
+    returnFocus.current = null;
+    requestAnimationFrame(() => {
+      if (back?.isConnected) back.focus();
+      else addRef.current?.focus();
+    });
+  };
 
   // C：聚焦新增列（focus 在輸入框時、唯讀檢視、有對話框時不觸發）
   useEffect(() => {
@@ -392,6 +405,11 @@ export function TodoSection({
     update.mutate(patch, { onError });
   };
 
+  const inspectorSave: InspectorSave = (patch, cb) => {
+    if (inspected == null) return;
+    update.mutate({ id: inspected.id, ...patch }, { onSuccess: cb?.onSuccess, onError: cb?.onError });
+  };
+
   const moveTo = (item: PersonalItem, to: number) => {
     const from = open.findIndex((i) => i.id === item.id);
     if (from < 0 || to < 0 || to >= open.length || from === to) return;
@@ -418,6 +436,10 @@ export function TodoSection({
     const nextRow = rows[idx + 1] ?? rows[idx - 1];
     const nextId = nextRow?.dataset.todoId;
     setActionError(null);
+    if (todoId === item.id) {
+      returnFocus.current = null;
+      dropTodoParam();
+    }
     del.mutate(item.id, { onError: () => setActionError('刪除失敗，請再試一次') });
     requestAnimationFrame(() => {
       const el = nextId
@@ -462,14 +484,64 @@ export function TodoSection({
     if (item) moveTo(item, to);
   };
 
-  const rowProps = { readOnly, onSave, onDelete, onMoveBy };
+  const rowProps = { readOnly, selectedId: todoId, onSave, onDelete, onMoveBy, onOpen: openTodo };
+  const filterLabel = STATUS_FILTERS.find((f) => f.value === filter)?.label ?? '';
+
+  const doneBlock = (forceOpen: boolean) =>
+    done.length > 0 && (
+      <div className="pl-done">
+        <div className="pl-done-head">
+          {forceOpen ? (
+            <span className="pl-done-toggle">已完成 {done.length}</span>
+          ) : (
+            <button
+              type="button"
+              className="pl-done-toggle"
+              aria-expanded={showDone}
+              onClick={() => setShowDone((v) => !v)}
+            >
+              <Icon name={showDone ? 'chevronDown' : 'chevronRight'} />
+              已完成 {done.length}
+            </button>
+          )}
+          {!readOnly && (
+            <Button variant="ghost" size="sm" onClick={() => setConfirmClear(true)}>
+              清除已完成
+            </Button>
+          )}
+        </div>
+        {(showDone || forceOpen) && (
+          <ul className="pl-todo-list" aria-label="已完成">
+            {done.map((item) => (
+              <StaticTodoRow key={item.id} item={item} {...rowProps} />
+            ))}
+          </ul>
+        )}
+      </div>
+    );
 
   let body: ReactNode;
   if (!items && q.isError) body = <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
   else if (!items) body = <SkeletonRows />;
   else if (items.length === 0)
     body = <EmptyState icon="listCheck" title={text.empty} description={text.emptyDesc} />;
-  else
+  else if (filter === 'done') body = <div ref={listRef}>{doneBlock(true)}</div>;
+  else if (filter !== 'all') {
+    const list = filterTodos(items, filter);
+    body = (
+      <div ref={listRef} onKeyDown={(e) => onListArrowKeys(e, false)}>
+        {list.length === 0 ? (
+          <p className="pl-filter-empty">沒有「{filterLabel}」的待辦</p>
+        ) : (
+          <ul className="pl-todo-list" aria-label={`${filterLabel}的待辦`}>
+            {list.map((item) => (
+              <StaticTodoRow key={item.id} item={item} {...rowProps} />
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  } else
     body = (
       <div ref={listRef} onKeyDown={(e) => onListArrowKeys(e, activeId != null)}>
         <DndContext
@@ -500,6 +572,7 @@ export function TodoSection({
                   readOnly
                   onSave={() => undefined}
                   onDelete={() => undefined}
+                  onOpen={() => undefined}
                   handle={
                     <span className="pl-todo-handle">
                       <GripIcon />
@@ -510,33 +583,17 @@ export function TodoSection({
             ) : null}
           </DragOverlay>
         </DndContext>
-        {done.length > 0 && (
-          <div className="pl-done">
-            <div className="pl-done-head">
-              <button
-                type="button"
-                className="pl-done-toggle"
-                aria-expanded={showDone}
-                onClick={() => setShowDone((v) => !v)}
-              >
-                <Icon name={showDone ? 'chevronDown' : 'chevronRight'} />
-                已完成 {done.length}
-              </button>
-              {!readOnly && (
-                <Button variant="ghost" size="sm" onClick={() => setConfirmClear(true)}>
-                  清除已完成
-                </Button>
-              )}
-            </div>
-            {showDone && (
-              <ul className="pl-todo-list" aria-label="已完成">
-                {done.map((item) => (
-                  <DoneTodoRow key={item.id} item={item} {...rowProps} />
-                ))}
-              </ul>
-            )}
+        {groups.parked.length > 0 && (
+          <div className="pl-parked">
+            <div className="pl-parked-head">延後與取消 {groups.parked.length}</div>
+            <ul className="pl-todo-list" aria-label="延後與取消">
+              {groups.parked.map((item) => (
+                <StaticTodoRow key={item.id} item={item} {...rowProps} />
+              ))}
+            </ul>
           </div>
         )}
+        {doneBlock(false)}
       </div>
     );
 
@@ -547,6 +604,23 @@ export function TodoSection({
       count={items ? open.length : null}
       className="pl-card--todos"
     >
+      {items && items.length > 0 && (
+        <div className="pl-filters" role="group" aria-label="依狀態篩選">
+          {STATUS_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              className="pl-filter"
+              aria-label={`篩選${f.label}，${counts[f.value]} 筆`}
+              aria-pressed={filter === f.value}
+              onClick={() => setFilter(f.value)}
+            >
+              {f.label}
+              <span className="pl-filter-count">{counts[f.value]}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {!readOnly && <AddTodo inputRef={addRef} />}
       {body}
       {actionError && (
@@ -557,6 +631,18 @@ export function TodoSection({
       <div className="sr-only" aria-live="assertive">
         {live}
       </div>
+      {todoId != null && (
+        <TodoInspector
+          key={todoId}
+          item={inspected}
+          loading={!items && !q.isError}
+          readOnly={readOnly}
+          deleting={del.isPending}
+          onClose={closeTodo}
+          onSave={inspectorSave}
+          onDelete={onDelete}
+        />
+      )}
       <Dialog
         open={confirmClear}
         onClose={() => setConfirmClear(false)}
@@ -583,7 +669,9 @@ export function TodoSection({
             </Button>
           </>
         }
-      />
+      >
+        <p className="m-0">只會刪除狀態為「完成」的待辦；延後與取消的項目會保留。</p>
+      </Dialog>
     </SectionCard>
   );
 }
