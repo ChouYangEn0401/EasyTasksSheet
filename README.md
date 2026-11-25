@@ -31,6 +31,7 @@ python main.py                             # 啟動，開啟 http://localhost:30
 - **工程追蹤**：手動記錄問題與 worktree 狀態；可選擇讓各人電腦自動回報 worktree（見「工程追蹤的使用方式」）。
 - **成員管理**：管理者以上新增成員（臨時密碼、首次登入強制改密碼）、停用 / 啟用、重設密碼、調整角色、解除登入鎖定。
 - **角色與權限**：三層 `root`（超級管理員）> `manager`（管理者）> `user`（成員）；成員管理、狀態 / 專案設定、GitHub 連動、JSON 匯出與合併匯入需 manager 以上，完整 .db 備份下載、匯入「取代全部」與指派 root 僅限 root。完整對照表見 [docs/permissions.md](docs/permissions.md)。
+- **個人設定**：每位使用者可在「使用者選單 → 個人設定」自行修改顯示名稱、帳號（需輸入目前密碼）與密碼（成功後其他裝置登出）；規格見 `docs/design/settings.md`。
 - **安全**：Argon2 密碼雜湊、session 絕對期限與閒置逾時、登入失敗鎖定、CSRF（Origin 檢查 + SameSite cookie）。
 
 技術：後端 Python 3.11+（FastAPI、uvicorn、標準庫 `sqlite3`，WAL 模式）；前端 React + Vite（TypeScript）。

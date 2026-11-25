@@ -26,6 +26,7 @@ from ..security import (
     session_info,
     verify_password,
 )
+from ..pwcheck import verify_current_password
 from ..validate import read_json
 from .admin import USERNAME_TAKEN_MESSAGE, check_username, clear_login_failures
 from .users import DEFAULT_ADMIN_PASSWORD, to_public_user
@@ -142,8 +143,7 @@ async def change_password(request: Request) -> dict[str, Any]:
     ctx = get_ctx(request)
     data = await read_json(request, ChangePasswordInput)
     user = ctx.user
-    if not await run_in_threadpool(verify_password, user["password_hash"], data.currentPassword):
-        raise bad_request("目前密碼不正確")
+    await verify_current_password(ctx, request, user, data.currentPassword)
     new_username = _new_username(ctx, user, data.username)
     if data.newPassword == data.currentPassword:
         raise _field_error("新密碼不可與目前密碼相同", "newPassword")

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router';
 import { QuickAdd } from '../features/tasks/QuickAdd.tsx';
 import { logout, useCurrentUser } from '../lib/auth.ts';
 import { ROLE_BADGE_TONES, ROLE_LABELS } from '../lib/permissions.ts';
@@ -17,6 +18,7 @@ export function Header({
 }) {
   const user = useCurrentUser();
   const [pwOpen, setPwOpen] = useState(false);
+  const navigate = useNavigate();
   return (
     <header className="header">
       <Button
@@ -64,6 +66,12 @@ export function Header({
               ),
             },
             { key: 'sep', separator: true },
+            {
+              key: 'settings',
+              label: '個人設定',
+              icon: <Icon name="user" />,
+              onSelect: () => void navigate('/settings'),
+            },
             {
               key: 'password',
               label: '變更密碼',

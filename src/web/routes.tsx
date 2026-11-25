@@ -8,6 +8,7 @@ import { GanttPage } from './features/gantt/GanttPage.tsx';
 import { KanbanPage } from './features/kanban/KanbanPage.tsx';
 import { OverviewPage } from './features/overview/OverviewPage.tsx';
 import { PersonalPage } from './features/personal/PersonalPage.tsx';
+import { SettingsPage } from './features/settings/SettingsPage.tsx';
 import { ListPage } from './features/tasks/ListPage.tsx';
 import { PageLayout, type RouteHandle } from './shell/AppShell.tsx';
 import { NotFoundPage } from './shell/NotFoundPage.tsx';
@@ -32,6 +33,7 @@ export const routes: RouteObject[] = [
           { index: true, element: <OverviewPage />, handle: h('總覽') },
           { path: 'feedback', element: <FeedbackPage />, handle: h('問題回饋') },
           { path: 'me', element: <PersonalPage />, handle: h('個人清單') },
+          { path: 'settings', element: <SettingsPage />, handle: h('個人設定') },
           { path: 'eng', element: <EngPage />, handle: h('工程追蹤') },
           { path: 'admin/users', element: <AdminUsersPage />, handle: h('成員管理') },
           { path: 'admin/data', element: <DataPage />, handle: h('資料管理') },
