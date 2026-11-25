@@ -1,7 +1,7 @@
 # PROGRESS
 
 專案：實驗室專案管理工具（TasksSheets）
-最後更新：2026-11-25
+最後更新：2026-11-25（第二輪修正已合併）
 
 ## 目前階段
 全部完成並合併至 main，等待使用者驗收。後端已依使用者要求改為 **Python（FastAPI + uvicorn + SQLite）**，前端維持 React + Vite。
@@ -48,3 +48,13 @@
 - 是否在 server 端強制改密碼前封鎖其他 API。
 - 「本週完成」是否新增 completed_at 欄位。
 - 預設管理員帳密設定方式（目前 .env 或啟動時隨機密碼印在主控台）。
+
+## 第二輪修正（2026-11-25，使用者指示）
+- 已修：IP 限制可偽造（新增 TRUSTED_PROXY，預設忽略 X-Forwarded-For；用 Caddy 時設 true）。
+- 已修：「本週完成」改為精確算法（tasks.completed_at，migration 0003）。
+- 已修：中文排序（後端不再近似排序，前端用 Intl.Collator('zh-Hant')）。
+- 已加：選配 GitHub 連動（migration 0004）：貼 GitHub issue 網址自動解析、同步狀態/標題、專案連動 repo、匯入、從工具建立 issue；未設 GITHUB_TOKEN 時完全不顯示。
+- 驗收：vitest 147、pytest 147、E2E 25/25。
+- 說明：單一 worker 指 uvicorn 只能開一個行程（SSE 廣播狀態在記憶體），實驗室規模不受影響，維持現狀。
+- 未實測：真實 GitHub API（token 權限、速率限制、分頁）、Docker/Caddy/systemd。
+- 問題清單第 4、5、6 項已解決；其餘維持現狀（使用者指示）。
