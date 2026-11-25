@@ -72,3 +72,23 @@
 - 驗收：vitest 160、pytest 190、E2E 28/28；前端已重建（dist/web）。
 - 已知小問題：長條起點在畫面左側外時條內標題被切；768 寬分組標頭同時有逾期 Badge 時成員名稱會被截斷；匯入預覽 token 存在記憶體，重啟即失效；E2E 匯入的自動備份寫到 backups/（已 gitignore）。
 - 提醒：啟動新版時會自動套用 migration 0005（為既有資料補 uid）；建議先 `python -m server.cli backup` 備份。
+
+## 第五輪（2026-11-25，使用者連續指示）— 全部合併，等待驗收
+已合併（皆 ff-only，無 merge commit；worktree 與分支已清理，`git worktree list` 只剩主 worktree）：
+- 權限三層 root>manager>user（docs/permissions.md）；root 可在「權限設定」頁自訂管理者/成員權限，受保護項目只限 root。
+- 自由待辦小狀態（延後/取消…）+ 詳情側欄；總覽「近三週」（緩和語氣，docs/product-principles.md）。
+- 清單/看板可新增與管理狀態、專案下拉可直接建立與管理專案；個人設定頁（顯示名稱/帳號/密碼）。
+- 多人在線（頂欄雲朵頭像、hover 卡片、任務層級提示）與併發驗證（docs/multi-user.md）。
+- 工程追蹤：UI 修正、附件（圖片/檔案/影片含 Range）、連結預覽（SSRF 防護）、可自訂狀態、一鍵掃描本機專案、多台電腦回報「不見不等於刪除」（空回報攔截、回收區）。
+- 資料：完整 .db 備份、JSON 匯出匯入（預覽→策略→逐筆覆寫）、多台電腦 sync-push 增量上傳（時間差大自動採新、相近進待確認衝突；管理者以上）。
+- 修正：requirements.txt 改純 ASCII（cp950 下 pip 會失敗）、E2E 對負載敏感斷言重試一次。
+- 交接文件：docs/HANDOFF.md、docs/MOVE-TO-SERVER.md（搬到 server 的逐步教學，已實測演練）。
+驗收（main）：vitest 227、pytest 479、E2E 53/53、build 成功；以使用者真實 DB 的複本測試 migration（9→13），資料筆數不變、integrity ok。
+
+## 仍存在的問題（更新）
+- Docker/Caddy/systemd/scp 未實測；GitHub 連動只用假資料測過。
+- 後端仍不強制「改密碼前封鎖其他 API」（使用者決定維持）。
+- 附件檔案本體不隨 JSON 匯出/sync-push 同步（需用完整備份帶走）。
+- 單一 worker 限制；E2E 計時敏感斷言偶發（已設重試一次）。
+- 使用者本機正在運行的 server 需重啟才會載入最新程式與 migration（啟動前建議先 `python -m server.cli backup`），並 Ctrl+F5。
+- 網頁掃描只掃伺服器所在電腦，且需設定 WORKTREE_SCAN_ROOTS；掃描對不可信資料夾有殘餘風險（clean filter），已寫入文件。
