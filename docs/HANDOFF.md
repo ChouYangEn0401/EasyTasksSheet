@@ -94,11 +94,11 @@ docs/                    規格與說明；docs/design/ 為各頁面介面規格
 | 任務待辦清單  | `task_checklist.py`（0014）                | `tasks/`（詳情抽屜、徽章）    |
 | 依賴與延遲鏈  | `dependencies.py` + `dependency_calc.py`（0015） | `delay-link/`           |
 | 討論區與描述鎖定 | `task_comments.py`（0016、0017）        | `tasks/`（討論區、鎖定橫幅）  |
-| 稽核與還原    | `audit_log.py` + `audit.py` + `audit_events.py`（0018） | `audit/`      |
+| 稽核與還原    | `audit_log.py` + `audit.py` + `audit_revert.py` + `audit_events.py`（0018） | `audit/`      |
 | 匯報報告      | `personal_report.py`（`personal_items.done_at`，0020） | `personal/`    |
 | 復原 / 重做   | （純前端，記憶體堆疊）                     | `undo/`                       |
 
-`audit.py`、`audit_events.py`、`dependency_calc.py`、`personal_report.py` 位於 `server/app/`（非 `features/`）。
+`audit.py`、`audit_revert.py`、`audit_events.py`、`dependency_calc.py`、`personal_report.py`、`timeutil.py`、`data_transfer_specs.py` 位於 `server/app/`（非 `features/`）。
 
 資料庫以純 SQL migration 管理（沒有 ORM），參數化查詢。每次寫入同一個 transaction 記一筆 `changes` 流水，SSE hub 每 250 ms 查新流水推給所有連線。
 
@@ -152,6 +152,7 @@ npm run dev                                 # 後端 :3000（自動重載）+ Vi
 ## 6. 資料與備份概念
 
 - **資料庫**：單一 SQLite 檔（預設 `data/app.db`），WAL 模式；旁邊的 `-wal`、`-shm` 是暫存檔，運行中**不可刪除，也不可單獨複製 `app.db`**。必須放本機磁碟，不可放 NFS / SMB。
+- **changes 流水修剪**：`changes`（即時同步補漏用）啟動時與每日修剪一次，保留天數由 `CHANGES_RETENTION_DAYS` 控制（預設 30，須 > 0）；修剪後過舊的 `since` 重連會收到 `reset` 並全部重抓。
 - **附件**：檔案存在 `ATTACHMENTS_DIR`（預設 `data/attachments`），檔名是 32 位隨機 id，與資料庫 `attachments` 表一一對應。
 - **migration**：`server/migrations/*.sql` 依編號在啟動與任何 CLI 指令時自動套用，已套用者記在 `_migrations`；升級程式後不需手動動資料庫。
 - **備份**：`python -m server.cli backup`（運行中可執行）以 `VACUUM INTO` 產生一致快照 `backups/app-<時間>.db` 與附件資料夾 `app-<時間>.db.attachments`，並依 `BACKUP_KEEP`（預設 14）清除舊備份。每日備份用 `deploy/tasks-sheets-backup.timer`。
@@ -241,16 +242,15 @@ npx prettier --check .
 15. 部分頁面失敗仍用頁內提示列而非 toast；編輯衝突「採用」鈕未做。
 16. 看板 PinButton 一直顯示；768–1023px 回饋頁拖曳時「取消排程」放置列未做（鍵盤可取消）。
 17. 甘特圖：長條起點在畫面左側外時，條內標題被切；768 寬時分組標頭同時有逾期 Badge，成員名稱會被截斷。
-18. 後端 5 處（`admin.py`、`sync.py`、`_overview_compute.py`、`security.py`、`sync_hub.py`）與測試 5 個檔案的 docstring 仍寫「行為同 / 對應 src/server/…」（歷史對照，`src/server` 已移除，2026-11-25 已核對仍存在）。
 
 **任務依賴（feat/delay-link，[design/delay-link.md](design/delay-link.md)）**
 
-19. 多台電腦同步（sync-push）不同步任務依賴、任務關聯與討論區留言（JSON 匯出 / 匯入有包含，依賴成環者略過並列出原因）；待辦清單會同步，描述鎖定旗標不會被同步改寫。要搬關聯 / 依賴 / 留言請用整包搬或 JSON（見 [sync.md](sync.md)、[MOVE-TO-SERVER.md](MOVE-TO-SERVER.md)）。
-20. 甘特圖尚未畫依賴箭頭；只支援 finish-to-start；延後以日曆天推算（不排除週末與假日）。
+18. 多台電腦同步（sync-push）不同步任務依賴、任務關聯與討論區留言（JSON 匯出 / 匯入有包含，依賴成環者略過並列出原因）；待辦清單會同步，描述鎖定旗標不會被同步改寫。要搬關聯 / 依賴 / 留言請用整包搬或 JSON（見 [sync.md](sync.md)、[MOVE-TO-SERVER.md](MOVE-TO-SERVER.md)）。
+19. 甘特圖尚未畫依賴箭頭；只支援 finish-to-start；延後以日曆天推算（不排除週末與假日）。
 
 **升級提醒**
 
-21. **migration 0019 會把既有 root 帳號的 `in_overview` 設為 0**：升級後 root 不再出現在總覽成員卡與近三週統計。這是設計行為（超級管理員預設不列入總覽），可在「成員管理」重新開啟；任務本身不受影響。
+20. **migration 0019 會把既有 root 帳號的 `in_overview` 設為 0**：升級後 root 不再出現在總覽成員卡與近三週統計。這是設計行為（超級管理員預設不列入總覽），可在「成員管理」重新開啟；任務本身不受影響。
 
 ## 12. 待使用者決策
 

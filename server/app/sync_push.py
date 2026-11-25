@@ -25,7 +25,6 @@ import sqlite3
 import threading
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal, Optional
 
@@ -37,6 +36,7 @@ from .backup import DEFAULT_KEEP
 from .changes import record_change
 from .db import Database
 from .errors import pydantic_issues
+from .timeutil import date_in_zone
 
 TOKEN_PREFIX = "tss_"
 #: 單一請求最多筆數（CLI 預設每批 500）
@@ -522,8 +522,13 @@ def totals_of(categories: list[dict[str, Any]]) -> dict[str, int]:
     return {k: sum(int(cat.get(k, 0)) for cat in categories) for k in TOTAL_KEYS}
 
 
-def _local_day(ms: int) -> str:
-    return datetime.fromtimestamp(ms / 1000).strftime("%Y-%m-%d")
+def _local_day(ms: int, time_zone: str | None = None) -> str:
+    """日界線以 config.TZ 為準（與總覽 / 匯報一致），不依 OS 時區"""
+    if time_zone is None:
+        from .config import config
+
+        time_zone = config.TZ
+    return date_in_zone(ms, time_zone)
 
 
 def _backup_keep() -> int:

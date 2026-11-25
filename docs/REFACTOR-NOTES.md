@@ -44,8 +44,8 @@
 
 ## 3. 疑似真缺陷（未在此分支修改）
 
-1. **`changes` 流水從未修剪**：`config.CHANGES_RETENTION_DAYS`（預設 30）與 `changes.prune_changes()` 都存在，文件也寫「changes 保留 30 天」，但全專案沒有任何地方呼叫 `prune_changes`（`audit` 有 `prune_on_startup` / `maybe_prune`，`changes` 沒有對應機制）。重現：`grep -rn prune_changes server/app` 只有定義；長期運作後 `changes` 表無上限成長（`/api/changes` 補漏與 SSE 查詢走主鍵索引，短期不影響效能，但 DB 與匯出備份會持續變大）。
-2. **sync-push「每日首次同步前備份」用伺服器 OS 時區判斷日界線**：`sync_push._local_day()` 用 `datetime.fromtimestamp(ms / 1000)`（OS 本地時間），其餘日界線一律用 `config.TZ`。重現：在 OS 時區為 UTC 的 Linux 主機上，台北時間 07:59 與 08:01 的兩次同步會被視為不同日而各備份一次；台北 00:30 與前一天 23:30 則被視為同一天。
+1. **（已修正，fix/post-refactor）`changes` 流水從未修剪**：`config.CHANGES_RETENTION_DAYS`（預設 30）與 `changes.prune_changes()` 都存在，文件也寫「changes 保留 30 天」，但全專案沒有任何地方呼叫 `prune_changes`（`audit` 有 `prune_on_startup` / `maybe_prune`，`changes` 沒有對應機制）。重現：`grep -rn prune_changes server/app` 只有定義；長期運作後 `changes` 表無上限成長（`/api/changes` 補漏與 SSE 查詢走主鍵索引，短期不影響效能，但 DB 與匯出備份會持續變大）。
+2. **（已修正，fix/post-refactor）sync-push「每日首次同步前備份」用伺服器 OS 時區判斷日界線**：`sync_push._local_day()` 用 `datetime.fromtimestamp(ms / 1000)`（OS 本地時間），其餘日界線一律用 `config.TZ`。重現：在 OS 時區為 UTC 的 Linux 主機上，台北時間 07:59 與 08:01 的兩次同步會被視為不同日而各備份一次；台北 00:30 與前一天 23:30 則被視為同一天。
 
 ## 4. 建議的後續重構優先順序
 

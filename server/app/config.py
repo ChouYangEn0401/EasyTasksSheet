@@ -42,6 +42,7 @@ class Config:
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "password"
 
+    #: 變更流水（changes）保留天數（啟動時與每日修剪；設定檔須 > 0，與其他保留天數一致）。即時同步補漏用，過舊的 since 會回 reset
     CHANGES_RETENTION_DAYS: float = 30
     #: 稽核紀錄保留天數（啟動時與每日修剪；docs/design/audit-log.md）
     AUDIT_RETENTION_DAYS: float = 365
