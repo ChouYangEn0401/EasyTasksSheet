@@ -5,6 +5,8 @@
 - 逾期：到期日早於今天且 category ≠ done
 - 未完成預估：category ≠ done 的 estimate_hours 合計
 - 本週完成：category done 且 completed_at 落在本週（週一 00:00 至下週一 00:00，以 tz 計）
+- 不列入總覽統計的帳號（users.in_overview = 0）：不出現在成員卡片與「目前無任務」統計、近三週不計入成員與團隊合計；
+  任務本身不受影響（指派給他們的任務不列入任何成員卡，也不計入「未指派」）
 - 成員排序：只依數值條件與使用者 id 穩定排序；名稱定序交給前端（Intl.Collator，Python 端無 ICU）
 """
 
@@ -137,6 +139,8 @@ def compute_activity(
     cutoff = now - int(retention_days * 86_400_000)
     status_by_id = {s["id"]: s for s in statuses}
     task_by_id = {t["id"]: t for t in tasks}
+    # 不列入總覽統計的帳號（in_overview = 0）：其完成 / 處理不計入成員，也不計入團隊合計
+    excluded = {u["id"] for u in users if not u.get("inOverview", True)}
 
     def week_index(ms: int | None) -> int | None:
         if ms is None:
@@ -162,12 +166,14 @@ def compute_activity(
         wi = week_index(t.get("completedAt"))
         if wi is None:
             continue
+        if t["assigneeId"] in excluded:
+            continue
         mark("team", wi, t["id"], "completedAt", t["completedAt"])
         if t["assigneeId"] is not None:
             mark(t["assigneeId"], wi, t["id"], "completedAt", t["completedAt"])
 
     for c in changes:
-        if c["entityId"] not in task_by_id or c["actorId"] is None:
+        if c["entityId"] not in task_by_id or c["actorId"] is None or c["actorId"] in excluded:
             continue
         wi = week_index(c["createdAt"])
         if wi is None:
@@ -228,7 +234,7 @@ def compute_activity(
         "members": [
             {"userId": u["id"], "weeks": [stats(u["id"], i, True) for i in range(len(week_list))]}
             for u in sorted(users, key=lambda u: u["id"])
-            if u["isActive"]
+            if u["isActive"] and u["id"] not in excluded
         ],
     }
 
@@ -309,7 +315,7 @@ def compute_overview(
 
     members = []
     for u in users:
-        if not u["isActive"]:
+        if not u["isActive"] or not u.get("inOverview", True):
             continue
         s = summarize(by_assignee.get(u["id"], []))
         members.append(

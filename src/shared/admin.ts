@@ -9,6 +9,9 @@ export const USERNAME_REQUIRED_MESSAGE = '請輸入帳號';
 export const DISPLAY_NAME_REQUIRED_MESSAGE = '請輸入顯示名稱';
 export const USERNAME_TAKEN_MESSAGE = '此帳號已被使用';
 export const LAST_ROOT_MESSAGE = '至少需保留一位超級管理員';
+/** 「列入總覽統計」開關的說明（成員管理頁 Tooltip / 欄位說明） */
+export const IN_OVERVIEW_HINT =
+  '關閉後，這個帳號不會出現在總覽的成員卡片與統計，適合只負責管理的帳號。任務仍可指派給他。';
 /** manager 無法操作 root 帳號（後端 403，前端預先停用並說明） */
 export const ROOT_ONLY_MESSAGE = '只有超級管理員可以管理此帳號';
 
@@ -26,6 +29,8 @@ export const adminUserCreateInput = z.object({
   username: adminUsername,
   displayName,
   role: userRole.default('user'),
+  /** 省略時：root 不列入、其餘列入 */
+  inOverview: z.boolean().optional(),
 });
 export type AdminUserCreateInput = z.input<typeof adminUserCreateInput>;
 
@@ -35,6 +40,7 @@ export const adminUserUpdateInput = z
     displayName: displayName.optional(),
     role: userRole.optional(),
     isActive: z.boolean().optional(),
+    inOverview: z.boolean().optional(),
   })
   .strict();
 export type AdminUserUpdateInput = z.infer<typeof adminUserUpdateInput>;

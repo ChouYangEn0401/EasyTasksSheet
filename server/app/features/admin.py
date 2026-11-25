@@ -58,6 +58,7 @@ class AdminUserCreateInput(BaseModel):
     username: AdminUsername
     displayName: DisplayName
     role: Role = "user"
+    inOverview: bool | None = None  # 未指定：root 預設 false，其餘 true
 
 
 class AdminUserUpdateInput(BaseModel):
@@ -67,6 +68,7 @@ class AdminUserUpdateInput(BaseModel):
     displayName: DisplayName = None  # type: ignore[assignment]
     role: Role = None  # type: ignore[assignment]
     isActive: bool = None  # type: ignore[assignment]
+    inOverview: bool = None  # type: ignore[assignment]
 
 
 # ── service ──
@@ -168,6 +170,7 @@ async def create_admin_user(request: Request, ctx: Ctx = _members):
                 username=data.username,
                 display_name=data.displayName,
                 role=data.role,
+                in_overview=data.inOverview,
                 password=temp,
                 must_change_password=True,
                 actor_id=ctx.user["id"],
@@ -183,7 +186,7 @@ async def create_admin_user(request: Request, ctx: Ctx = _members):
     return JSONResponse({"user": to_admin_user(ctx, row), "tempPassword": temp}, status_code=201)
 
 
-_UPDATE_COLUMNS = {"displayName": "display_name", "role": "role", "isActive": "is_active"}
+_UPDATE_COLUMNS = {"displayName": "display_name", "role": "role", "isActive": "is_active", "inOverview": "in_overview"}
 
 
 @router.patch("/users/{id}")
@@ -191,14 +194,23 @@ async def update_admin_user(request: Request, id: str, ctx: Ctx = _members):
     target = _load_target(ctx, id)
     data = await read_json(request, AdminUserUpdateInput)
     assert_can_touch(ctx, target["role"], present(data).get("role"))
-    current = {"displayName": target["display_name"], "role": target["role"], "isActive": bool(target["is_active"])}
-    patch = {k: v for k, v in present(data).items() if v != current[k]}
+    current = {
+        "displayName": target["display_name"],
+        "role": target["role"],
+        "isActive": bool(target["is_active"]),
+        "inOverview": bool(target["in_overview"]),
+    }
+    given = present(data)
+    # 改為 root 時（未明確指定）一併不列入總覽統計；改為非 root 不自動變更
+    if given.get("role") == "root" and "inOverview" not in given:
+        given["inOverview"] = False
+    patch = {k: v for k, v in given.items() if v != current[k]}
     if not patch:
         return to_admin_user(ctx, target)
     t = ctx.now()
     with ctx.db.tx() as conn:
         assert_keeps_root(conn, target, patch)
-        sets: dict[str, Any] = {_UPDATE_COLUMNS[k]: (int(v) if k == "isActive" else v) for k, v in patch.items()}
+        sets: dict[str, Any] = {_UPDATE_COLUMNS[k]: (int(v) if k in ("isActive", "inOverview") else v) for k, v in patch.items()}
         sets["updated_at"] = t
         conn.execute(
             f"UPDATE users SET {', '.join(f'{c} = ?' for c in sets)} WHERE id = ?", (*sets.values(), target["id"])

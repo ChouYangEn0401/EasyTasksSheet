@@ -63,6 +63,7 @@ root 在「權限設定」頁勾選 / 取消 manager 與 user 的各項權限，
 ### 限制與注意
 
 - 自訂後不再保證「高層擁有低層的全部權限」：例如可以讓 user 有 `statuses.manage` 而 manager 沒有。邊界由 root 決定。
+- 「列入總覽統計」（`inOverview`）屬成員欄位：需 `members.manage`，操作 root 帳號仍需 `roles.assign_root`；匯出 / 匯入含此欄位。
 - 授予 user `members.manage` 等於允許成員新增成員並在 user ↔ manager 間調整角色（含把自己升為 manager）。
 - 一般協作權限（`tasks.edit`、`feedback.edit`、`personal.edit`、`eng.edit`、`projects.create`、`properties.edit`、`profile.edit`）只限制**寫入**（POST / PUT / PATCH / DELETE），讀取不受影響；由全域 middleware 依路徑檢查（`permissions.WRITE_GUARDS`）。前端目前未依這些權限隱藏編輯控制項，收回後操作時會顯示「沒有權限執行此操作」。
 - 權限設定不在 JSON 匯出 / 匯入範圍內（完整 .db 備份會包含）。

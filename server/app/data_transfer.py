@@ -386,6 +386,8 @@ UserItem = create_model(
     # admin / member 為 0006_roles 之前的舊匯出檔；匯入建立的成員一律為 user，不沿用此值
     role=(Literal["root", "manager", "user", "admin", "member"], "user"),
     isActive=(bool, True),
+    # 是否列入總覽統計；舊匯出檔沒有此欄位（匯入建立的成員為 user，預設列入）
+    inOverview=(Optional[bool], None),
     createdAt=(Optional[_Int], None),
     updatedAt=(Optional[_Int], None),
 )
@@ -575,7 +577,7 @@ def export_document(db: Database, now: int) -> dict[str, Any]:
     with db.tx() as conn:
         idx = _index(conn)
         users = conn.execute(
-            "SELECT username, display_name, role, is_active, created_at, updated_at FROM users ORDER BY id"
+            "SELECT username, display_name, role, is_active, in_overview, created_at, updated_at FROM users ORDER BY id"
         ).fetchall()
         doc: dict[str, Any] = {
             "format": FORMAT,
@@ -587,6 +589,7 @@ def export_document(db: Database, now: int) -> dict[str, Any]:
                     "displayName": u["display_name"],
                     "role": u["role"],
                     "isActive": bool(u["is_active"]),
+                    "inOverview": bool(u["in_overview"]),
                     "createdAt": u["created_at"],
                     "updatedAt": u["updated_at"],
                 }

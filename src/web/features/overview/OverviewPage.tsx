@@ -51,6 +51,18 @@ function OverviewBody({ data }: { data: OverviewResponse }) {
       {activity && <TeamWeeks data={activity} />}
       {totalTasks === 0 ? (
         <EmptyState title="還沒有任務" description="按 N 快速新增任務" />
+      ) : members.length === 0 ? (
+        <>
+          <EmptyState
+            title="還沒有列入統計的成員"
+            description="可在成員管理開啟「列入總覽統計」"
+          />
+          {unassigned.openCount > 0 && (
+            <div className="ov-grid">
+              <UnassignedCard data={unassigned} />
+            </div>
+          )}
+        </>
       ) : (
         <>
           <section className="ov-section" id={IDLE_SECTION_ID} aria-labelledby="ov-idle-title" tabIndex={-1}>

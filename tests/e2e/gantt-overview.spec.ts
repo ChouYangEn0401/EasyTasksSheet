@@ -41,7 +41,8 @@ test('總覽：目前無任務的成員排前並標示；Gantt：刻度、今日
   const errors = collectErrors(page);
 
   const users = await api<{ id: number; username: string }[]>(page, 'GET', '/api/users');
-  const admin = users.find((u) => u.username === E2E_USERS.admin.username)!;
+  // 總覽預設不列入 root（admin），改以列入統計的 manager 帳號當負責人
+  const admin = users.find((u) => u.username === E2E_USERS.manager.username)!;
   const member = users.find((u) => u.username === E2E_USERS.member.username)!;
 
   const scheduled = await api<Task>(page, 'POST', '/api/tasks', {
@@ -184,7 +185,8 @@ test('總覽：近三週（迷你直條、Tooltip、展開詳情、有估時才�
   const errors = collectErrors(page);
 
   const users = await api<{ id: number; username: string }[]>(page, 'GET', '/api/users');
-  const admin = users.find((u) => u.username === E2E_USERS.admin.username)!;
+  // 總覽預設不列入 root（admin），改以列入統計的 manager 帳號當負責人
+  const admin = users.find((u) => u.username === E2E_USERS.manager.username)!;
   const DONE_EST = `近三週有估時 ${suffix}`;
   const DONE_NO_EST = `近三週沒估時 ${suffix}`;
   const done1 = await api<Task>(page, 'POST', '/api/tasks', {

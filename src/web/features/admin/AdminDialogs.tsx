@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { adminUsername, isLastActiveRoot, LAST_ROOT_MESSAGE, type AdminUser } from '../../../shared/admin.ts';
+import {
+  adminUsername,
+  IN_OVERVIEW_HINT,
+  isLastActiveRoot,
+  LAST_ROOT_MESSAGE,
+  type AdminUser,
+} from '../../../shared/admin.ts';
 import type { UserRole } from '../../../shared/users.ts';
 import { ApiError } from '../../lib/api.ts';
 import { useCan } from '../../lib/permissions.ts';
-import { Alert, Button, Dialog, Field, Input, Select, type SelectOption } from '../../ui/index.ts';
+import { Alert, Button, Checkbox, Dialog, Field, Input, Select, type SelectOption } from '../../ui/index.ts';
 import { useCreateAdminUser, useResetPassword, useUpdateAdminUser } from './api.ts';
 import { failText, ROLE_LABELS, roleChoices, type Notify } from './model.ts';
 
@@ -93,6 +99,20 @@ const DoneButton = ({ onClick }: { onClick: () => void }) => (
   </Button>
 );
 
+/** 「列入總覽統計」開關（新增 / 編輯共用） */
+function InOverviewField({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <Field label="總覽" hint={IN_OVERVIEW_HINT}>
+      <Checkbox
+        label="列入總覽統計"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        data-testid="in-overview-toggle"
+      />
+    </Field>
+  );
+}
+
 // ── 新增成員 ────────────────────────────────────────────────
 
 export function CreateUserDialog({ onClose }: { onClose: () => void }) {
@@ -101,6 +121,9 @@ export function CreateUserDialog({ onClose }: { onClose: () => void }) {
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [role, setRole] = useState<UserRole>('user');
+  // 預設依角色：root 不列入，其餘列入；使用者手動改過後不再隨角色變動
+  const [inOverviewPick, setInOverviewPick] = useState<boolean>();
+  const inOverview = inOverviewPick ?? role !== 'root';
   const [usernameError, setUsernameError] = useState<string>();
   const [formError, setFormError] = useState<string>();
   const [result, setResult] = useState<{ name: string; password: string } | null>(null);
@@ -118,7 +141,7 @@ export function CreateUserDialog({ onClose }: { onClose: () => void }) {
     setUsernameError(undefined);
     setFormError(undefined);
     create.mutate(
-      { username: parsed.data, displayName: displayName.trim(), role },
+      { username: parsed.data, displayName: displayName.trim(), role, inOverview },
       {
         onSuccess: (res) => setResult({ name: res.user.displayName, password: res.tempPassword }),
         onError: (err) => {
@@ -193,6 +216,7 @@ export function CreateUserDialog({ onClose }: { onClose: () => void }) {
         <Field label="角色" hint={canAssignRoot ? undefined : ROLE_HINT_MANAGER}>
           <Select<UserRole> value={role} onChange={setRole} options={roleOptions(canAssignRoot, false)} />
         </Field>
+        <InOverviewField checked={inOverview} onChange={setInOverviewPick} />
         <Alert tone="info">建立後會產生一組臨時密碼，成員首次登入時須自行變更。</Alert>
       </form>
     </Dialog>
@@ -218,14 +242,16 @@ export function EditUserDialog({
   const update = useUpdateAdminUser();
   const [displayName, setDisplayName] = useState(user.displayName);
   const [role, setRole] = useState<UserRole>(user.role);
+  const [inOverview, setInOverview] = useState(user.inOverview);
   const [confirming, setConfirming] = useState(false);
   const [formError, setFormError] = useState<string>();
   const canAssignRoot = useCan('roles.assign_root');
   const lockRoot = isLastActiveRoot(user, all);
 
-  const patch: { displayName?: string; role?: UserRole } = {};
+  const patch: { displayName?: string; role?: UserRole; inOverview?: boolean } = {};
   if (displayName.trim() !== user.displayName) patch.displayName = displayName.trim();
   if (role !== user.role) patch.role = role;
+  if (inOverview !== user.inOverview) patch.inOverview = inOverview;
   const dirty = Object.keys(patch).length > 0;
   const nameError = displayName.trim() ? undefined : '請輸入顯示名稱';
   // 自己降為 user 即失去成員管理權限
@@ -288,11 +314,15 @@ export function EditUserDialog({
             value={role}
             onChange={(v) => {
               setRole(v);
+              // 改為 root 時一併不列入總覽統計（可再手動開啟）；改為非 root 不自動變更
+              if (v === 'root' && user.role !== 'root') setInOverview(false);
+              else if (v === user.role) setInOverview(user.inOverview);
               setConfirming(false);
             }}
             options={roleOptions(canAssignRoot, lockRoot)}
           />
         </Field>
+        <InOverviewField checked={inOverview} onChange={setInOverview} />
         {confirming && <Alert tone="warning">你將失去管理權限，並立即離開此頁面。</Alert>}
       </form>
     </Dialog>

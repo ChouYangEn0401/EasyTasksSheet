@@ -7,6 +7,7 @@ import type {
 } from '../../../shared/admin.ts';
 import { api } from '../../lib/api.ts';
 import { LIST_POLL_MS, queryKeys } from '../../lib/queryClient.ts';
+import { overviewKey } from '../overview/useOverview.ts';
 
 export const adminKeys = { users: ['admin', 'users'] as const };
 
@@ -33,6 +34,7 @@ function useApplyUser() {
     );
     void qc.invalidateQueries({ queryKey: queryKeys.users });
     void qc.invalidateQueries({ queryKey: queryKeys.me });
+    void qc.invalidateQueries({ queryKey: overviewKey });
   };
 }
 

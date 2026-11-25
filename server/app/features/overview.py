@@ -23,7 +23,7 @@ async def get_overview(request: Request):
         ]
         users = [
             {"id": r[0], "username": r[1], "displayName": r[2], "isActive": bool(r[3])}
-            for r in conn.execute("SELECT id, username, display_name, is_active FROM users")
+            for r in conn.execute("SELECT id, username, display_name, is_active FROM users WHERE in_overview = 1")
         ]
         tasks = [
             {
@@ -62,7 +62,10 @@ async def get_activity(request: Request):
         statuses = [
             {"id": r[0], "category": r[1]} for r in conn.execute("SELECT id, category FROM statuses")
         ]
-        users = [{"id": r[0], "isActive": bool(r[1])} for r in conn.execute("SELECT id, is_active FROM users")]
+        users = [
+            {"id": r[0], "isActive": bool(r[1]), "inOverview": bool(r[2])}
+            for r in conn.execute("SELECT id, is_active, in_overview FROM users")
+        ]
         tasks = [
             {
                 "id": r[0],

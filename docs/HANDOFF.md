@@ -131,6 +131,7 @@ npm run dev                                 # 後端 :3000（自動重載）+ Vi
 - **預設管理員**：資料庫沒有任何帳號時建立 `admin` / `password`（角色 root）。首次登入強制「同時重設帳號與密碼」：新帳號不可再是 `admin`，密碼至少 8 字元且不可是 `password`。
 - **其他帳號**：管理者以上在「成員管理」新增（臨時密碼、首次登入須改密碼）；或 `python -m server.cli user-add <帳號> [--role root|manager|user] [--password …]`，預設 `user`。
 - **三層角色**：`root`（超級管理員）> `manager`（管理者）> `user`（成員）。root 恆有全部權限且不可被覆寫；至少保留一位啟用中的 root。
+- **總覽統計開關**：`users.in_overview`（migration 0019；root 預設 0、其餘 1），成員管理可切換；關閉者不出現在總覽成員卡與近三週統計，任務不受影響（見 design/gantt-overview.md §B）。
 - **權限設定頁**：root 可在 `/admin/permissions` 勾選 / 取消 manager 與 user 的每項權限（capability），儲存後即時生效（只存與預設不同的格子，`role_permissions` 表）。
 - **受保護權限**（只限 root，無法授予）：`data.backup_db`（完整 .db 下載）、`data.import_replace`（匯入取代全部）、`roles.assign_root`、`permissions.configure`。
 - **後端強制、前端只顯示**：所有判斷在後端 `require(capability)` 與寫入守門 middleware；前端以 `useCan()` 顯示 / 隱藏，不以角色字串判斷。CLI 屬伺服器本機操作，不受權限限制。

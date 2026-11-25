@@ -183,7 +183,7 @@ def test_export_contents_without_secrets(tmp_path):
     assert doc["format"] == "tasks-sheets-export" and doc["schemaVersion"] == dt.SCHEMA_VERSION
     assert doc["exportedAt"] == env.clock.now()
     assert {u["username"] for u in doc["users"]} == {"admin-a", "alice"}
-    assert set(doc["users"][0]) == {"username", "displayName", "role", "isActive", "createdAt", "updatedAt"}
+    assert set(doc["users"][0]) == {"username", "displayName", "role", "isActive", "inOverview", "createdAt", "updatedAt"}
     task = next(x for x in doc["tasks"] if x["title"] == "寫報告")
     project_uid = env.db.scalar("SELECT uid FROM projects WHERE id = ?", (p["project"]["id"],))
     assert task["projectUid"] == project_uid

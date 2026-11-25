@@ -23,6 +23,7 @@ const u = (over: Partial<AdminUser> = {}): AdminUser => {
     displayName: `成員${seq}`,
     role: 'user',
     isActive: true,
+    inOverview: true,
     mustChangePassword: false,
     lockedUntil: null,
     createdAt: NOW,

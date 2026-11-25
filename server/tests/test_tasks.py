@@ -29,6 +29,7 @@ def test_users_statuses_projects():
         "displayName",
         "role",
         "isActive",
+        "inOverview",
         "mustChangePassword",
         "createdAt",
         "updatedAt",

@@ -232,6 +232,13 @@ function AdminUsersView({ meId, query }: { meId: number; query: ReturnType<typeo
                   <div className="adm-states">
                     <StateBadge user={u} state={state} now={now} />
                     {u.mustChangePassword && <Badge>待改密碼</Badge>}
+                    {!u.inOverview && (
+                      <Tooltip content="不列入總覽統計。任務仍可指派給他。">
+                        <span tabIndex={0} className="adm-focusable">
+                          <Badge>不列入總覽</Badge>
+                        </span>
+                      </Tooltip>
+                    )}
                   </div>
                 </td>
                 <td className="adm-col-updated">

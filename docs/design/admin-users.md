@@ -26,7 +26,7 @@
 |---|---|
 | 成員 | Avatar `md` + 顯示名稱 `--text-sm` 500；第二行 `@username` `--text-xs` text-tertiary。自己那列在名稱後加 `neutral` Badge「你」 |
 | 角色 | Badge：超級管理員（root）`accent`、管理者（manager）`purple`、成員（user）`neutral` |
-| 狀態 | 主狀態 Badge（帶色點）：啟用 `success`／已鎖定 `warning`／已停用 `neutral`。`must_change_password` 時另加 `neutral` Badge「待改密碼」 |
+| 狀態 | 主狀態 Badge（帶色點）：啟用 `success`／已鎖定 `warning`／已停用 `neutral`。`must_change_password` 時另加 `neutral` Badge「待改密碼」；`in_overview = 0` 時另加 `neutral` Badge「不列入總覽」（Tooltip：不列入總覽統計，任務仍可指派給他） |
 | 更新 | `<UpdatedAt at={updated_at}>` |
 | 動作 | `⋯` ghost `iconOnly`，`aria-label="王小明 的操作"`，開啟 Menu |
 
@@ -56,6 +56,7 @@
 | 帳號 | Input，`autocomplete="off"` | 必填；說明「登入用，建立後無法修改」；格式錯誤依 `src/shared/admin.ts` 的驗證訊息；重複時「此帳號已被使用」 |
 | 顯示名稱 | Input | 必填；說明「顯示在任務與頭像上」 |
 | 角色 | Select（超級管理員／管理者／成員） | 預設「成員」；manager 操作時「超級管理員」停用，說明「只有超級管理員可以指派超級管理員」 |
+| 總覽 | Checkbox「列入總覽統計」 | 預設依角色：超級管理員關閉、其餘開啟（手動改過後不再隨角色變）；說明「關閉後，這個帳號不會出現在總覽的成員卡片與統計，適合只負責管理的帳號。任務仍可指派給他。」 |
 
 - 表單下方 info-soft 提示列：「建立後會產生一組臨時密碼，成員首次登入時須自行變更。」
 - 動作列：「取消」secondary、「建立」primary（必填未齊停用，送出中 loading）。欄位錯誤顯示在欄位下方；其他 API 錯誤顯示於表單上方 danger-soft 提示列。
@@ -64,7 +65,7 @@
 
 ### 3.2 編輯成員（Dialog `sm`，標題「編輯成員」）
 
-- 欄位：帳號（readonly 樣式）、顯示名稱（Input）、角色（Select）。「儲存」primary 僅在內容有變更時可按。
+- 欄位：帳號（readonly 樣式）、顯示名稱（Input）、角色（Select）、「列入總覽統計」（Checkbox，文案同 §3.1）。角色改為超級管理員時自動取消勾選（可再手動開啟）；改為非超級管理員不自動變更。API：`PATCH /api/admin/users/:id` 的 `inOverview`；操作 root 帳號仍需 `roles.assign_root`。「儲存」primary 僅在內容有變更時可按。
 - 把自己降為成員時，儲存前多一次確認：「你將失去管理權限，並立即離開此頁面。」
 
 ### 3.3 臨時密碼結果面板（新增成員、重設密碼共用）

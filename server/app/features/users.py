@@ -22,6 +22,7 @@ def to_public_user(u: sqlite3.Row) -> dict[str, Any]:
         "displayName": u["display_name"],
         "role": u["role"],
         "isActive": bool(u["is_active"]),
+        "inOverview": bool(u["in_overview"]),
         "mustChangePassword": bool(u["must_change_password"]),
         "createdAt": u["created_at"],
         "updatedAt": u["updated_at"],
@@ -44,15 +45,28 @@ def create_user(
     must_change_password: bool = True,
     actor_id: int | None = None,
     now: int | None = None,
+    in_overview: bool | None = None,
 ) -> sqlite3.Row:
-    """建立帳號（雜湊密碼、記錄變更）；帳號重複時由 DB unique 約束拋 sqlite3.IntegrityError"""
+    """建立帳號（雜湊密碼、記錄變更）；帳號重複時由 DB unique 約束拋 sqlite3.IntegrityError。
+    in_overview 未指定時依角色：root 預設不列入總覽統計，其餘列入"""
     password_hash = hash_password(password)
     t = now_ms() if now is None else now
+    if in_overview is None:
+        in_overview = role != "root"
     with db.tx() as conn:
         cur = conn.execute(
-            "INSERT INTO users (username, display_name, password_hash, role, must_change_password, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (username, display_name or username, password_hash, role, 1 if must_change_password else 0, t, t),
+            "INSERT INTO users (username, display_name, password_hash, role, must_change_password, created_at, "
+            "updated_at, in_overview) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                username,
+                display_name or username,
+                password_hash,
+                role,
+                1 if must_change_password else 0,
+                t,
+                t,
+                1 if in_overview else 0,
+            ),
         )
         uid = int(cur.lastrowid)  # type: ignore[arg-type]
         record_change(conn, "user", uid, "create", actor_id, t)

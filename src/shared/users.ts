@@ -23,6 +23,8 @@ export const publicUser = z.object({
   displayName: z.string(),
   role: userRole,
   isActive: z.boolean(),
+  /** 是否列入總覽統計（成員卡片與近三週統計）；root 預設 false。docs/design/admin-users.md */
+  inOverview: z.boolean(),
   mustChangePassword: z.boolean(),
   ...timestamps,
 });
