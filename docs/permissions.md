@@ -20,7 +20,8 @@
 | `tasks.edit`            | 任務新增 / 編輯 / 軟刪除（全員可互改）                       |  ✓   |    ✓    |  ✓   |
 | `feedback.edit`         | 問題回饋                                                     |  ✓   |    ✓    |  ✓   |
 | `personal.edit`         | 個人清單                                                     |  ✓   |    ✓    |  ✓   |
-| `eng.edit`              | 工程追蹤的問題與 worktree 紀錄（含 GitHub 同步 / 匯入 / 建立 issue） |  ✓   |    ✓    |  ✓   |
+| `eng.edit`              | 工程追蹤的問題與 worktree 紀錄（含 GitHub 同步 / 匯入 / 建立 issue、移到回收區 / 還原、確認或忽略可疑回報） |  ✓   |    ✓    |  ✓   |
+| `eng.status.manage`     | 工程追蹤的問題 / 工作樹狀態：新增、改名、改色、排序、封存、刪除未使用的自訂狀態（「讓人自己建立」，預設全員） |  ✓   |    ✓    |  ✓   |
 | `projects.create`       | 建立專案                                                     |  ✓   |    ✓    |  ✓   |
 | `properties.edit`       | 自訂欄位（property）                                         |  ✓   |    ✓    |  ✓   |
 | `profile.edit`          | 自己的個人資料與密碼                                         |  ✓   |    ✓    |  ✓   |
@@ -28,6 +29,8 @@
 | `statuses.manage`       | 狀態新增 / 改名 / 改色 / 排序 / 刪除                         |      |    ✓    |  ✓   |
 | `projects.manage`       | 專案改名 / 改色 / 排序 / 封存                                |      |    ✓    |  ✓   |
 | `github.manage`         | GitHub 連動（專案 ↔ repo 設定）                              |      |    ✓    |  ✓   |
+| `eng.scan`              | 掃描本機專案：在伺服器上掃描 `WORKTREE_SCAN_ROOTS` 內的資料夾並登記 worktree（大動作，先限管理者） |      |    ✓    |  ✓   |
+| `eng.trash.purge`       | 永久清空工作樹回收區（唯一會真正刪除 worktree 紀錄的操作）    |      |    ✓    |  ✓   |
 | `data.export_json`      | JSON 匯出                                                    |      |    ✓    |  ✓   |
 | `data.import_merge`     | 匯入（合併模式的預覽與套用）                                 |      |    ✓    |  ✓   |
 | `sync.manage`           | 多台電腦同步：建立 / 停用 / 重新產生金鑰 / 刪除同步來源（docs/sync.md） |      |    ✓    |  ✓   |
@@ -86,7 +89,11 @@ root 在「權限設定」頁勾選 / 取消 manager 與 user 的各項權限，
 | 寫入 `/api/tasks*`                                             | `tasks.edit`                                              |
 | 寫入 `/api/feedback*`                                          | `feedback.edit`                                           |
 | 寫入 `/api/personal*`                                          | `personal.edit`                                           |
-| 寫入 `/api/eng/issues*`、`/api/eng/worktree-records*`          | `eng.edit`                                                |
+| 寫入 `/api/eng/issues*`、`/api/eng/worktree-records*`、`/api/eng/worktrees/pending/*` | `eng.edit`                         |
+| `POST / PATCH / DELETE /api/eng/statuses`                      | `eng.status.manage`；內建狀態不可刪除（可封存）、使用中的自訂狀態 → 409（只能封存）、每類至少保留一個未封存狀態 |
+| `POST /api/eng/worktrees/scan`、`/scan/apply`                  | `eng.scan`；未設定 `WORKTREE_SCAN_ROOTS` → 409 `SCAN_DISABLED`；範圍外 → 400 |
+| `POST /api/eng/worktree-records/trash/purge`                   | `eng.trash.purge`（另受 `eng.edit` 寫入守門）；body `{ "confirm": true }` |
+| `POST /api/eng/worktrees/report`                               | 免登入，只以 `WORKTREE_REPORT_TOKEN` 驗證                  |
 | 寫入 `/api/properties*`                                        | `properties.edit`                                         |
 | `POST /api/auth/password`                                      | `profile.edit`（被要求改密碼時不檢查）                    |
 | 其餘 API（含所有讀取）                                         | 全員（登入即可）                                          |

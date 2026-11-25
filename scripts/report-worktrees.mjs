@@ -8,11 +8,16 @@
 // 環境變數：
 //   WORKTREE_REPORT_TOKEN  回報 token（與 server 的設定相同；回報端點免登入，只以此 token 驗證）
 //   GIT_TIMEOUT_MS         git 指令逾時（預設 10000）
+//   TASKS_SHEETS_HOME      電腦識別設定檔所在資料夾（預設 ~/.tasks-sheets）
+// 電腦識別：第一次執行時在 ~/.tasks-sheets/machine.json 產生隨機 machineId（之後固定）與可編輯的 machineName。
+// 伺服器以 machineId 區分電腦，改名或兩台同名都不會混淆。
+// 安全：空清單或筆數驟減的回報會被伺服器攔下（保留舊資料），需有人在頁面上確認才採用；伺服器不會因回報而刪除任何紀錄。
 // 只依賴 Node 內建模組，可單獨複製到其他電腦使用。
 import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { hostname } from 'node:os';
-import { basename, posix, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir, hostname } from 'node:os';
+import { basename, join, posix, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
 const { values } = parseArgs({
@@ -181,7 +186,41 @@ try {
   fail(`讀取 worktree 失敗：${err.message}`);
 }
 
-const body = { machine: values.machine ?? hostname(), repo: repoName, worktrees };
+/** ~/.tasks-sheets/machine.json：{ machineId, machineName }；不存在時建立（machineId 隨機、之後固定） */
+function loadMachine() {
+  const dir = process.env.TASKS_SHEETS_HOME || join(homedir(), '.tasks-sheets');
+  const file = join(dir, 'machine.json');
+  let data;
+  try {
+    data = JSON.parse(readFileSync(file, 'utf8')) ?? {};
+  } catch {
+    data = {};
+  }
+  const validId = typeof data.machineId === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(data.machineId);
+  const name =
+    typeof data.machineName === 'string' && data.machineName.trim()
+      ? data.machineName.trim()
+      : (values.machine ?? hostname());
+  if (!validId) {
+    data = { machineId: randomUUID(), machineName: name };
+    try {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+      console.log(`[report-worktrees] 已建立電腦識別設定 ${file}（可編輯 machineName 改顯示名稱）`);
+    } catch (err) {
+      fail(`無法建立電腦識別設定 ${file}：${err.message}`);
+    }
+  }
+  return { machineId: data.machineId, machineName: name };
+}
+
+const machine = loadMachine();
+const body = {
+  machine: (values.machine ?? machine.machineName).slice(0, 100),
+  machineId: machine.machineId,
+  repo: repoName,
+  worktrees,
+};
 
 if (values['dry-run']) {
   console.log(JSON.stringify(body, null, 2));
@@ -214,6 +253,12 @@ if (!res.ok) {
   fail(`回報失敗（HTTP ${res.status}）：${message}`);
 }
 const data = JSON.parse(text);
+if (data.held) {
+  console.warn(
+    `[report-worktrees] 注意：${data.message ?? '這次回報被伺服器攔下，舊資料已保留'}（這次 ${data.count} 筆，先前 ${data.previous} 筆）`,
+  );
+  process.exit(0);
+}
 console.log(
   `[report-worktrees] 已回報 ${data.count} 個 worktree（電腦 ${data.machine}，repo ${data.repo || '—'}）`,
 );

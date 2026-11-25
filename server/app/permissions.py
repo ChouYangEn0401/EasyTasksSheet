@@ -42,7 +42,8 @@ CAPABILITIES: dict[str, Role] = {
     "tasks.edit": "user",  # 任務 CRUD（全員可互改，含軟刪除）
     "feedback.edit": "user",  # 回饋
     "personal.edit": "user",  # 個人清單
-    "eng.edit": "user",  # 問題與 worktree 紀錄（含 GitHub 同步 / 匯入 / 建立 issue）
+    "eng.edit": "user",  # 問題與 worktree 紀錄（含 GitHub 同步 / 匯入 / 建立 issue、回收區還原、確認可疑回報）
+    "eng.status.manage": "user",  # 工程追蹤的問題 / 工作樹狀態：新增、改名、改色、排序、封存、刪除未使用的自訂狀態
     "projects.create": "user",  # 建立專案
     "properties.edit": "user",  # 自訂欄位（property）
     "profile.edit": "user",  # 自己的個人資料與密碼
@@ -51,6 +52,8 @@ CAPABILITIES: dict[str, Role] = {
     "statuses.manage": "manager",  # 狀態新增 / 改名 / 改色 / 排序 / 刪除
     "projects.manage": "manager",  # 專案改名 / 改色 / 排序 / 封存
     "github.manage": "manager",  # GitHub 連動（專案 ↔ repo 設定）
+    "eng.scan": "manager",  # 掃描伺服器本機的專案資料夾並登記 worktree（限 WORKTREE_SCAN_ROOTS）
+    "eng.trash.purge": "manager",  # 永久清空 worktree 紀錄的回收區
     "data.export_json": "manager",  # JSON 匯出
     "data.import_merge": "manager",  # 匯入（合併模式：預覽與套用）
     "sync.manage": "manager",  # 多台電腦同步：建立 / 停用同步來源與金鑰（docs/sync.md）
@@ -88,7 +91,10 @@ CAPABILITY_INFO: dict[str, tuple[str, str, str]] = {
     "personal.edit": ("個人清單", "使用自己的個人清單", "work"),
     "statuses.manage": ("管理狀態", "狀態新增、改名、改色、排序與刪除", "statuses"),
     "eng.edit": ("工程追蹤紀錄", "問題與 worktree 紀錄，含 GitHub 同步與建立 issue", "eng"),
+    "eng.status.manage": ("管理工程狀態", "問題與工作樹狀態的新增、改名、改色、排序與封存", "eng"),
     "github.manage": ("GitHub 連動設定", "設定專案與 GitHub repo 的對應", "eng"),
+    "eng.scan": ("掃描本機專案", "掃描伺服器上允許的資料夾並登記 worktree", "eng"),
+    "eng.trash.purge": ("清空工作樹回收區", "永久刪除回收區中的 worktree 紀錄", "eng"),
     "members.manage": ("管理成員", "新增、停用、重設密碼與調整角色（限成員 ↔ 管理者）", "members"),
     "roles.assign_root": ("指派超級管理員", "指派或撤銷超級管理員，並管理其帳號", "members"),
     "profile.edit": ("個人資料", "修改自己的個人資料與密碼", "members"),
@@ -202,7 +208,7 @@ WRITE_GUARDS: tuple[tuple[frozenset[str], re.Pattern[str], str], ...] = (
     (_WRITE_METHODS, re.compile(r"^/api/tasks(/|$)"), "tasks.edit"),
     (_WRITE_METHODS, re.compile(r"^/api/feedback(/|$)"), "feedback.edit"),
     (_WRITE_METHODS, re.compile(r"^/api/personal(/|$)"), "personal.edit"),
-    (_WRITE_METHODS, re.compile(r"^/api/eng/(issues|worktree-records)(/|$)"), "eng.edit"),
+    (_WRITE_METHODS, re.compile(r"^/api/eng/(issues|worktree-records|worktrees/pending)(/|$)"), "eng.edit"),
     (_WRITE_METHODS, re.compile(r"^/api/properties(/|$)"), "properties.edit"),
     (frozenset({"POST"}), re.compile(r"^/api/projects/?$"), "projects.create"),
     (_WRITE_METHODS, re.compile(r"^/api/auth/password$"), "profile.edit"),

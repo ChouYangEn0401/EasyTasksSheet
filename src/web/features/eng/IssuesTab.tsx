@@ -10,8 +10,6 @@ import {
   type FormEvent,
 } from 'react';
 import {
-  ISSUE_STATUS_LABELS,
-  ISSUE_STATUSES,
   type Attachment,
   type AttachmentLimits,
   type GithubLink,
@@ -27,7 +25,6 @@ import { notifySuccess, toast } from '../../lib/toast.ts';
 import {
   Alert,
   Avatar,
-  Badge,
   Button,
   Checkbox,
   Dialog,
@@ -42,8 +39,9 @@ import {
   Tooltip,
   UpdatedAt,
   type MenuItem,
-  type SelectOption,
 } from '../../ui/index.ts';
+import { ManageStatusesButton, StatusSelect } from './EngStatus.tsx';
+import { useStatusList } from './statusHooks.ts';
 import { engKeys, useDeleteIssue, usePublishIssue, useSaveIssue, useSyncIssues } from './api.ts';
 import {
   ACCEPT,
@@ -65,7 +63,14 @@ import {
 } from './uploads.ts';
 import { GithubDialog } from './GithubDialog.tsx';
 import { NONE, useUserOptions } from './userOptions.ts';
-import { ISSUE_TONE, linkedRepo, needsGithubSync, openIssueCount, visibleIssues } from './model.ts';
+import {
+  firstInCategory,
+  isClosedIssue,
+  linkedRepo,
+  needsGithubSync,
+  openIssueCount,
+  visibleIssues,
+} from './model.ts';
 
 /** GitHub 連動狀態（未設定 token 時 enabled = false，畫面不出現任何 GitHub 按鈕） */
 type GithubCtx = { enabled: boolean; links: GithubLink[]; syncOne: (issue: ManualIssue) => void };
@@ -96,11 +101,6 @@ function useSyncAfterSave() {
   };
 }
 
-const STATUS_OPTIONS: SelectOption<IssueStatus>[] = ISSUE_STATUSES.map((s) => ({
-  value: s,
-  label: ISSUE_STATUS_LABELS[s],
-}));
-
 type Draft = {
   id?: number;
   title: string;
@@ -111,10 +111,11 @@ type Draft = {
   description: string;
 };
 
+/** 新增時 status 留空 → 由後端套用預設狀態 */
 const emptyDraft = (): Draft => ({
   title: '',
   project: '',
-  status: 'open',
+  status: '',
   assigneeId: null,
   url: '',
   description: '',
@@ -123,7 +124,7 @@ const emptyDraft = (): Draft => ({
 const toInput = (d: Draft) => ({
   title: d.title.trim(),
   project: d.project.trim(),
-  status: d.status,
+  ...(d.status ? { status: d.status } : {}),
   assigneeId: d.assigneeId,
   url: d.url.trim() || null,
   description: d.description.trim(),
@@ -372,11 +373,11 @@ function IssueDialog({
           />
         </Field>
         <Field label="狀態">
-          <Select
-            options={STATUS_OPTIONS}
+          <StatusSelect
+            kind="issue"
             value={form.status}
             onChange={(status) => set({ status })}
-            aria-label="狀態"
+            label="狀態"
           />
         </Field>
         <Field label="負責人">
@@ -504,18 +505,27 @@ function IssueRow({
   const save = useSaveIssue();
   const publish = usePublishIssue();
   const github = useContext(GithubContext);
+  const statuses = useStatusList('issue');
   const assignee = issue.assigneeId != null ? byId.get(issue.assigneeId) : undefined;
-  const setStatus = (status: IssueStatus) => {
-    if (status !== issue.status) save.mutate({ id: issue.id, status });
+  const setStatus = (status: IssueStatus | undefined) => {
+    if (status && status !== issue.status) save.mutate({ id: issue.id, status });
   };
-  const closed = issue.status === 'closed';
+  const closed = isClosedIssue(statuses, issue.status);
   const publishRepo =
     github.enabled && issue.githubNumber == null ? linkedRepo(github.links, issue.project) : undefined;
   const items: MenuItem[] = [
     { key: 'edit', label: '編輯', onSelect: onEdit },
     closed
-      ? { key: 'reopen', label: '重新開啟', onSelect: () => setStatus('open') }
-      : { key: 'close', label: '結案', onSelect: () => setStatus('closed') },
+      ? {
+          key: 'reopen',
+          label: '重新開啟',
+          onSelect: () => setStatus(firstInCategory(statuses, 'open', 'open')),
+        }
+      : {
+          key: 'close',
+          label: '結案',
+          onSelect: () => setStatus(firstInCategory(statuses, 'closed', 'closed')),
+        },
     ...(publishRepo
       ? [
           {
@@ -594,16 +604,12 @@ function IssueRow({
         <td className="eng-text-secondary">{issue.project || '—'}</td>
         <td>
           <span className="eng-status-select">
-            <Select
-              options={STATUS_OPTIONS}
+            <StatusSelect
+              kind="issue"
+              badge
               value={issue.status}
               onChange={setStatus}
-              aria-label={`「${issue.title}」的狀態`}
-              renderValue={(o) => (
-                <Badge tone={ISSUE_TONE[issue.status]} dot>
-                  {o?.label ?? ''}
-                </Badge>
-              )}
+              label={`「${issue.title}」的狀態`}
             />
           </span>
         </td>
@@ -658,9 +664,10 @@ export function IssuesTab({
   const [editing, setEditing] = useState<ManualIssue | null>(null);
   const [deleting, setDeleting] = useState<ManualIssue | null>(null);
   const [githubOpen, setGithubOpen] = useState(false);
+  const statuses = useStatusList('issue');
   const all = query.data?.issues;
-  const issues = all ? visibleIssues(all, showClosed) : undefined;
-  const closedCount = all ? all.length - openIssueCount(all) : 0;
+  const issues = all ? visibleIssues(all, showClosed, statuses) : undefined;
+  const closedCount = all ? all.length - openIssueCount(all, statuses) : 0;
 
   const qc = useQueryClient();
   const [store] = useState(
@@ -731,22 +738,25 @@ export function IssuesTab({
                 checked={showClosed}
                 onChange={(e) => setShowClosed(e.target.checked)}
               />
-              {githubEnabled && (
-                <span className="eng-toolbar-end">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    icon="refresh"
-                    loading={sync.isPending || autoSync.isPending}
-                    onClick={runSync}
-                  >
-                    同步 GitHub
-                  </Button>
-                  <Button variant="ghost" size="sm" icon="branch" onClick={() => setGithubOpen(true)}>
-                    GitHub 連動 / 匯入
-                  </Button>
-                </span>
-              )}
+              <span className="eng-toolbar-end">
+                <ManageStatusesButton kind="issue" />
+                {githubEnabled && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon="refresh"
+                      loading={sync.isPending || autoSync.isPending}
+                      onClick={runSync}
+                    >
+                      同步 GitHub
+                    </Button>
+                    <Button variant="ghost" size="sm" icon="branch" onClick={() => setGithubOpen(true)}>
+                      GitHub 連動 / 匯入
+                    </Button>
+                  </>
+                )}
+              </span>
             </div>
 
             {!all && query.error ? (

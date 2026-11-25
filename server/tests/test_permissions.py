@@ -33,6 +33,13 @@ PROBES = {
     "statuses.manage": lambda: ("POST", "/api/statuses", {"name": _uniq("狀態")}),
     "projects.manage": lambda: ("PATCH", "/api/projects/1", {"name": _uniq("改名")}),
     "github.manage": lambda: ("PUT", "/api/eng/github-links", {"links": []}),
+    "eng.status.manage": lambda: (
+        "POST",
+        "/api/eng/statuses",
+        {"kind": "issue", "label": _uniq("狀態"), "color": "gray", "category": "open"},
+    ),
+    "eng.scan": lambda: ("POST", "/api/eng/worktrees/scan", {"path": "nope"}),
+    "eng.trash.purge": lambda: ("POST", "/api/eng/worktree-records/trash/purge", {"confirm": True}),
     "data.export_json": lambda: ("GET", "/api/admin/data/export", None),
     "data.import_merge": lambda: ("POST", "/api/admin/data/import/preview", {"format": "nope"}),
     "data.backup_db": lambda: ("GET", "/api/admin/data/backup", None),
@@ -87,6 +94,8 @@ def test_matrix_shape():
         "statuses.manage",
         "projects.manage",
         "github.manage",
+        "eng.scan",
+        "eng.trash.purge",
         "data.export_json",
         "data.import_merge",
         "sync.manage",
@@ -110,7 +119,7 @@ def test_frontend_capabilities_in_sync():
     from pathlib import Path
 
     ts = (Path(__file__).resolve().parents[2] / "src" / "shared" / "permissions.ts").read_text(encoding="utf-8")
-    pairs = dict(re.findall(r"'([a-z_]+\.[a-z_]+)': '(root|manager|user)'", ts))
+    pairs = dict(re.findall(r"'([a-z_]+(?:\.[a-z_]+)+)': '(root|manager|user)'", ts))
     assert pairs == CAPABILITIES
 
 

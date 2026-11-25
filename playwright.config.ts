@@ -39,6 +39,11 @@ export default defineConfig({
       // 在線感知：縮短在線 / 閒置門檻，讓「關閉後轉離線」可在測試內驗證（預設 45 / 300 秒）
       PRESENCE_ONLINE_SECONDS: '10',
       PRESENCE_IDLE_SECONDS: '25',
+      // 工程追蹤 v2：回報 token（測試以此模擬各電腦回報）、允許掃描的資料夾（E2E 於其中建立暫存 git repo）、
+      // 本機電腦識別設定的位置（不讀寫使用者家目錄）
+      WORKTREE_REPORT_TOKEN: 'e2e-report-token',
+      WORKTREE_SCAN_ROOTS: 'data/e2e-scan',
+      TASKS_SHEETS_HOME: 'data/e2e-home',
     },
   },
 });

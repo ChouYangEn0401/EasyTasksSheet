@@ -41,6 +41,12 @@ def main() -> int:
     # E2E 專用的附件目錄一併清空（名稱必須含 e2e，避免誤刪正式資料）
     if re.search("e2e", config.ATTACHMENTS_DIR):
         shutil.rmtree(config.ATTACHMENTS_DIR, ignore_errors=True)
+    # 掃描本機專案的允許資料夾與電腦識別設定：E2E 專用者（名稱含 e2e）清空後重建
+    for d in [*(config.WORKTREE_SCAN_ROOTS or "").split(","), os.environ.get("TASKS_SHEETS_HOME", "")]:
+        d = d.strip()
+        if d and re.search("e2e", d):
+            shutil.rmtree(d, ignore_errors=True)
+            os.makedirs(d, exist_ok=True)
 
     db = create_db(path)
     run_migrations(db)

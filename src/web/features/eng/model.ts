@@ -1,12 +1,13 @@
 import type {
+  EngStatus,
+  EngStatusCategory,
+  EngStatusKind,
   GithubLink,
-  IssueStatus,
   MachineGroup,
   ManualIssue,
-  WorktreeRecordStatus,
   WorktreeReport,
 } from '../../../shared/engManual.ts';
-import type { BadgeTone } from '../../ui/index.ts';
+import type { TagColor } from '../../../shared/projects.ts';
 
 export type EngTab = 'issues' | 'worktrees';
 
@@ -21,25 +22,69 @@ export function writeEngTab(sp: URLSearchParams, tab: EngTab): URLSearchParams {
   return next;
 }
 
-export const ISSUE_TONE: Record<IssueStatus, BadgeTone> = {
-  open: 'warning',
-  doing: 'accent',
-  closed: 'success',
+// ── 可自訂狀態（eng_statuses） ──
+
+/** 狀態清單尚未載入時的後備（內建值；與 migration 0011 一致） */
+const FALLBACK: Record<string, { label: string; color: TagColor; category: EngStatusCategory }> = {
+  'issue:open': { label: '未處理', color: 'yellow', category: 'open' },
+  'issue:doing': { label: '處理中', color: 'blue', category: 'open' },
+  'issue:closed': { label: '已結案', color: 'green', category: 'closed' },
+  'worktree:active': { label: '使用中', color: 'green', category: 'active' },
+  'worktree:idle': { label: '閒置', color: 'gray', category: 'idle' },
+  'worktree:merged': { label: '已合併待清理', color: 'purple', category: 'attention' },
+  'worktree:lost': { label: '已遺失', color: 'red', category: 'done' },
+  'worktree:cleaned': { label: '已清理', color: 'gray', category: 'done' },
 };
 
-export const RECORD_TONE: Record<WorktreeRecordStatus, BadgeTone> = {
-  active: 'success',
-  idle: 'neutral',
-  merged: 'accent',
-  lost: 'danger',
-  cleaned: 'neutral',
+/** 某一類（問題 / 工作樹）的狀態，依排序 */
+export function statusesOf(all: EngStatus[] | undefined, kind: EngStatusKind): EngStatus[] {
+  return (all ?? []).filter((s) => s.kind === kind).sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+}
+
+export type StatusView = {
+  key: string;
+  label: string;
+  color: TagColor;
+  category: EngStatusCategory | null;
+  archived: boolean;
 };
 
-/** 問題清單：預設隱藏已結案 */
-export const visibleIssues = (issues: ManualIssue[], showClosed: boolean) =>
-  showClosed ? issues : issues.filter((i) => i.status !== 'closed');
+/** 顯示用：找不到定義時（例如匯入的自訂值）以 key 為名稱、灰色 */
+export function statusView(list: EngStatus[], kind: EngStatusKind, key: string): StatusView {
+  const s = list.find((x) => x.key === key);
+  if (s) return { key, label: s.label, color: s.color, category: s.category, archived: s.isArchived };
+  const f = FALLBACK[`${kind}:${key}`];
+  return f
+    ? { key, ...f, archived: false }
+    : { key, label: key, color: 'gray', category: null, archived: false };
+}
 
-export const openIssueCount = (issues: ManualIssue[]) => issues.filter((i) => i.status !== 'closed').length;
+/** 下拉選單：未封存者；目前值若已封存 / 不明仍列出（舊資料可顯示） */
+export function selectableStatuses(list: EngStatus[], current?: string): EngStatus[] {
+  return list.filter((s) => !s.isArchived || s.key === current);
+}
+
+/** 某類別第一個可用的狀態 key（prefer 優先，例如結案用 closed） */
+export function firstInCategory(
+  list: EngStatus[],
+  category: EngStatusCategory,
+  prefer?: string,
+): string | undefined {
+  const open = list.filter((s) => !s.isArchived && s.category === category);
+  return (open.find((s) => s.key === prefer) ?? open[0])?.key;
+}
+
+export const isClosedIssue = (list: EngStatus[], key: string) =>
+  statusView(list, 'issue', key).category === 'closed';
+export const isDoneRecord = (list: EngStatus[], key: string) =>
+  statusView(list, 'worktree', key).category === 'done';
+
+/** 問題清單：預設隱藏已結案類（category = closed） */
+export const visibleIssues = (issues: ManualIssue[], showClosed: boolean, list: EngStatus[] = []) =>
+  showClosed ? issues : issues.filter((i) => !isClosedIssue(list, i.status));
+
+export const openIssueCount = (issues: ManualIssue[], list: EngStatus[] = []) =>
+  issues.filter((i) => !isClosedIssue(list, i.status)).length;
 
 // ── GitHub 連動 ──
 
@@ -83,12 +128,17 @@ export function reportFor(group: MachineGroup, path: string): WorktreeReport | u
   return group.reports.find((r) => pathKey(r.path) === k);
 }
 
-/** 需要留意的提示數：可能遺失 + 未登記 */
+/** 未登記且仍在回報中的項目（搬動候選另外顯示在原紀錄上） */
+export const unregisteredReports = (g: MachineGroup) =>
+  g.reports.filter((r) => !r.registered && r.missingSince == null && r.movedFrom == null);
+
+/** 需要留意的提示數：紀錄提示（可能遺失 / 回報中找不到 / 可能搬動）+ 未登記 + 待確認的可疑回報 */
 export function hintCount(machines: MachineGroup[]): number {
   let n = 0;
   for (const g of machines) {
-    n += g.records.filter((r) => r.hint === 'missing').length;
-    n += g.reports.filter((r) => !r.registered).length;
+    n += g.records.filter((r) => r.hint != null).length;
+    n += unregisteredReports(g).length;
+    n += g.repos.filter((r) => r.pending != null).length;
   }
   return n;
 }
@@ -96,7 +146,9 @@ export function hintCount(machines: MachineGroup[]): number {
 export const recordCount = (machines: MachineGroup[]) => machines.reduce((n, g) => n + g.records.length, 0);
 
 /** 回報快照的簡短描述，例如「未提交變更 · ↑2 ↓0 · 已併入 main」 */
-export function reportSummary(r: WorktreeReport): string {
+export function reportSummary(
+  r: Pick<WorktreeReport, 'isPrunable' | 'isDirty' | 'ahead' | 'behind' | 'isMerged'>,
+): string {
   const parts: string[] = [];
   if (r.isPrunable) parts.push('目錄已不存在');
   if (r.isDirty) parts.push('未提交變更');
@@ -107,3 +159,21 @@ export function reportSummary(r: WorktreeReport): string {
 
 /** localStorage：記住上次填寫的電腦名稱（新增表單預設值） */
 export const MACHINE_STORAGE_KEY = 'eng.machine';
+/** localStorage：最近掃描過的專案資料夾（最多 5 個，最新在前） */
+export const SCAN_PATHS_KEY = 'eng.scanPaths';
+
+export function rememberPath(list: string[], path: string, max = 5): string[] {
+  const p = path.trim();
+  if (!p) return list;
+  return [p, ...list.filter((x) => x !== p)].slice(0, max);
+}
+
+/** 「3 天前」「5 小時前」「剛剛」 */
+export function ago(at: number, now: number = Date.now()): string {
+  const m = Math.max(0, Math.floor((now - at) / 60_000));
+  if (m < 1) return '剛剛';
+  if (m < 60) return `${m} 分鐘前`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} 小時前`;
+  return `${Math.floor(h / 24)} 天前`;
+}

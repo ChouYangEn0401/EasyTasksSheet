@@ -1,14 +1,59 @@
-// 工程追蹤簡化版（手動輸入優先；Python 後端 server/app/features/eng.py）。
+// 工程追蹤（手動輸入優先；Python 後端 server/app/features/eng.py、eng_status.py）。
+
+import type { TagColor } from './projects.ts';
+
+// ── 可自訂狀態（GET /api/eng/statuses） ─────────────────────
+
+export type EngStatusKind = 'issue' | 'worktree';
+export const ISSUE_CATEGORIES = ['open', 'closed'] as const;
+export const WORKTREE_CATEGORIES = ['active', 'idle', 'attention', 'done'] as const;
+export type IssueCategory = (typeof ISSUE_CATEGORIES)[number];
+export type WorktreeCategory = (typeof WORKTREE_CATEGORIES)[number];
+export type EngStatusCategory = IssueCategory | WorktreeCategory;
+export const ENG_CATEGORY_LABELS: Record<EngStatusCategory, string> = {
+  open: '未結案',
+  closed: '已結案',
+  active: '使用中',
+  idle: '閒置',
+  attention: '需處理',
+  done: '已結束',
+};
+
+export type EngStatus = {
+  id: number;
+  kind: EngStatusKind;
+  /** 穩定識別（資料中存的值）；內建沿用既有字串，自訂為 c_xxxxxxxx */
+  key: string;
+  label: string;
+  color: TagColor;
+  category: EngStatusCategory;
+  sortOrder: number;
+  isBuiltin: boolean;
+  isArchived: boolean;
+  updatedAt: number;
+  updatedBy: number | null;
+  /** 使用中的筆數（工作樹含回收區） */
+  usage?: number;
+};
+
+export type EngStatusesResponse = {
+  statuses: EngStatus[];
+  categories: Record<EngStatusKind, EngStatusCategory[]>;
+};
+
+export type EngStatusInput = {
+  kind?: EngStatusKind;
+  label?: string;
+  color?: TagColor;
+  category?: EngStatusCategory;
+  sortOrder?: number;
+  isArchived?: boolean;
+};
 
 // ── 問題 ─────────────────────────────────────────────────────
 
-export const ISSUE_STATUSES = ['open', 'doing', 'closed'] as const;
-export type IssueStatus = (typeof ISSUE_STATUSES)[number];
-export const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
-  open: '未處理',
-  doing: '處理中',
-  closed: '已結案',
-};
+/** eng_statuses（kind = issue）的 key */
+export type IssueStatus = string;
 
 export type ManualIssue = {
   id: number;
@@ -117,26 +162,29 @@ export type ManualIssueInput = {
 
 // ── Worktree 紀錄 ────────────────────────────────────────────
 
-export const WORKTREE_RECORD_STATUSES = ['active', 'idle', 'merged', 'lost', 'cleaned'] as const;
-export type WorktreeRecordStatus = (typeof WORKTREE_RECORD_STATUSES)[number];
-export const WORKTREE_RECORD_STATUS_LABELS: Record<WorktreeRecordStatus, string> = {
-  active: '使用中',
-  idle: '閒置',
-  merged: '已合併待清理',
-  lost: '已遺失',
-  cleaned: '已清理',
-};
+/** eng_statuses（kind = worktree）的 key */
+export type WorktreeRecordStatus = string;
+
+export type WorktreeSource = 'manual' | 'report' | 'scan';
 
 export type WorktreeRecord = {
   id: number;
-  /** 電腦名稱（被追蹤的專案位於各人自己的電腦） */
+  /** 電腦名稱（顯示用；被追蹤的專案位於各人自己的電腦） */
   machine: string;
+  /** 電腦識別碼（由回報或掃描帶入；手動新增為 null，以名稱比對） */
+  machineId: string | null;
   path: string;
   branch: string;
   ownerId: number | null;
   purpose: string;
   status: WorktreeRecordStatus;
   note: string;
+  source: WorktreeSource;
+  repo: string;
+  headSha: string | null;
+  /** 移到回收區的時間（未刪除為 null） */
+  deletedAt: number | null;
+  deletedBy: number | null;
   createdBy: number | null;
   updatedBy: number | null;
   createdAt: number;
@@ -146,18 +194,23 @@ export type WorktreeRecord = {
 /** POST /api/eng/worktree-records（machine、path 必填）；PATCH 只送改動欄位 */
 export type WorktreeRecordInput = {
   machine?: string;
+  machineId?: string | null;
   path?: string;
   branch?: string;
   ownerId?: number | null;
   purpose?: string;
   status?: WorktreeRecordStatus;
   note?: string;
+  repo?: string;
+  headSha?: string | null;
+  source?: 'manual' | 'report';
 };
 
-/** 各電腦以 scripts/report-worktrees.mjs 回報的快照（僅供參考） */
+/** 各電腦以 scripts/report-worktrees.mjs 回報的快照（僅供參考；不見的項目只標 missingSince，不刪除） */
 export type WorktreeReport = {
   id: number;
   machine: string;
+  machineId: string | null;
   repo: string;
   path: string;
   branch: string | null;
@@ -168,22 +221,108 @@ export type WorktreeReport = {
   lastCommitAt: number | null;
   isPrunable: boolean;
   isMerged: boolean;
+  /** 最後一次在回報中看到的時間 */
   reportedAt: number;
+  /** 最新回報中找不到的起始時間（仍看得到為 null） */
+  missingSince: number | null;
 };
 
+/** 被攔下待確認的可疑回報：empty = 空清單、drop = 筆數驟減 */
+export type PendingReport = {
+  reason: 'empty' | 'drop';
+  count: number;
+  previous: number;
+  at: number;
+};
+
+export type MachineRepo = {
+  sourceId: number;
+  repo: string;
+  reportedAt: number;
+  appliedAt: number | null;
+  pending: PendingReport | null;
+};
+
+/**
+ * 紀錄的提示：
+ * - missing：該電腦有回報，但回報中從未出現此路徑
+ * - vanished：上次回報有看到、最新回報找不到（lastSeenAt）
+ * - moved：路徑不同但分支與 HEAD 相同的未登記項目（moveTo）→ 可能是搬動 / 改名
+ */
+export type RecordHint = 'missing' | 'vanished' | 'moved';
+
 export type MachineGroup = {
+  /** 分組鍵：id:<machineId> 或 name:<名稱>（舊資料） */
+  key: string;
   machine: string;
+  machineId: string | null;
   /** 最近一次回報時間（從未回報為 null） */
   reportedAt: number | null;
-  /** hint = missing：該電腦有回報，但回報中沒有此路徑（可能遺失） */
-  records: (WorktreeRecord & { hint: 'missing' | null })[];
-  /** registered = false：回報有、但沒有對應紀錄（未登記） */
-  reports: (WorktreeReport & { registered: boolean })[];
+  /** 超過 staleDays 天沒有回報 */
+  stale: boolean;
+  repos: MachineRepo[];
+  records: (WorktreeRecord & {
+    hint: RecordHint | null;
+    lastSeenAt: number | null;
+    moveTo: { path: string; reportId: number } | null;
+  })[];
+  /** registered = false：回報有、但沒有對應紀錄（未登記）；movedFrom：疑似由哪筆紀錄搬來 */
+  reports: (WorktreeReport & { registered: boolean; movedFrom: number | null })[];
 };
 
 /** GET /api/eng/worktrees */
 export type WorktreesOverview = {
   /** 伺服器是否設定了 WORKTREE_REPORT_TOKEN */
   reportEnabled: boolean;
+  staleDays: number;
+  /** 回收區筆數 */
+  trashCount: number;
+  /** 掃描本機專案：enabled = 伺服器設定了 WORKTREE_SCAN_ROOTS；roots / machine 只回給有 eng.scan 的人 */
+  scan: { enabled: boolean; roots?: string[]; machine?: string };
   machines: MachineGroup[];
+};
+
+/** GET /api/eng/worktree-records/trash */
+export type WorktreeTrash = {
+  retentionDays: number;
+  records: (WorktreeRecord & { expired: boolean })[];
+};
+
+export type ScanAction = 'new' | 'existing' | 'moved';
+
+export type ScanItem = {
+  path: string;
+  branch: string | null;
+  headSha: string | null;
+  isDirty: boolean;
+  ahead: number | null;
+  behind: number | null;
+  isMerged: boolean;
+  lastCommitAt: number | null;
+  isPrunable: boolean;
+  isDetached: boolean;
+  action: ScanAction;
+  recordId: number | null;
+  recordPath: string | null;
+};
+
+/** POST /api/eng/worktrees/scan（預覽，不寫入） */
+export type ScanPreview = {
+  repo: string;
+  repoPath: string;
+  base: string | null;
+  machine: string;
+  truncated: boolean;
+  counts: Record<ScanAction, number>;
+  items: ScanItem[];
+};
+
+/** POST /api/eng/worktrees/scan/apply */
+export type ScanApplyResult = {
+  ok: true;
+  machine: string;
+  repo: string;
+  created: number;
+  moved: number;
+  updated: number;
 };

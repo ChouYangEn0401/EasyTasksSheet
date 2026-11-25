@@ -371,7 +371,15 @@ sudo journalctl -u tasks-sheets -n 50                                  # 6. 確�
 
 ## 工程追蹤的使用方式
 
-- **手動輸入為主**：「工程追蹤」頁的問題與 worktree 紀錄由成員直接新增 / 編輯 / 結案，狀態一律手動維護。伺服器端不執行任何 git 指令。
+- **手動輸入為主**：「工程追蹤」頁的問題與 worktree 紀錄由成員直接新增 / 編輯 / 結案，狀態一律手動維護。伺服器端只有在啟用「掃描本機專案」時才會對允許的資料夾執行唯讀 git 指令。
+- **狀態可自訂**：問題與工作樹的狀態選單底部有「＋ 新增狀態…」「管理狀態…」（改名、改色、類別、排序、封存）。內建新增了 卡住 / 延後 / 不處理（問題）與 損毀 / 技術債 / 舊版保留 / 未知（工作樹）。權限 `eng.status.manage` 預設全員可用，root 可在「權限設定」調整。
+- **掃描本機專案**：在 `.env` 設定 `WORKTREE_SCAN_ROOTS`（允許掃描的資料夾，逗號分隔，例如 `C:\work,D:\repos`）並重啟後，管理者可在工作樹分頁按「掃描本機專案」→ 預覽（新增 / 已存在 / 可能搬動）→ 勾選登記。未設定時此功能停用。也可在自己的電腦用指令一次登記：
+
+  ```bash
+  python -m server.cli scan-worktrees <專案資料夾> [--machine 電腦名稱] [--repo 專案名稱] [--dry-run] [--yes]
+  ```
+
+- **不見不等於刪除**：每台電腦以識別碼（`~/.tasks-sheets/machine.json`，第一次回報時自動建立，可編輯其中的 `machineName`）區分，改名或同名不混淆。回報中不見的 worktree 只會標示「回報中找不到」，紀錄一律保留；空清單或筆數驟減的回報會先攔下（保留舊資料），要有人在頁面按「確認採用這次回報」才套用。路徑不同但分支與 HEAD 相同時提示「可能是搬動」並可一鍵更新路徑。刪除紀錄改為「移到回收區」，隨時可還原；只有管理者按「清空回收區」才會永久刪除。
 - **各人電腦自動回報（選用）**：在 `.env` 設定 `WORKTREE_REPORT_TOKEN`（夠長的隨機字串，例如 `python -c "import secrets; print(secrets.token_urlsafe(32))"`）並重啟服務；各人在自己的電腦（需 Node.js 與 git）執行：
 
   ```bash
@@ -380,7 +388,7 @@ sudo journalctl -u tasks-sheets -n 50                                  # 6. 確�
   # 先看會送出什麼：加 --dry-run
   ```
 
-  腳本會把本機 `git worktree list` 的快照（dirty / ahead / behind / 是否已併入 main）送到 `POST /api/eng/worktrees/report`，頁面上會與手動紀錄比對並提示「可能遺失 / 未登記」，僅供參考。腳本只依賴 Node 內建模組，可單獨複製到其他電腦；可用排程（cron / 工作排程器）定期執行。`GIT_TIMEOUT_MS` 環境變數可調整腳本內 git 指令逾時（預設 10000）。
+  腳本會把本機 `git worktree list` 的快照（dirty / ahead / behind / 是否已併入 main）連同電腦識別碼送到 `POST /api/eng/worktrees/report`，頁面上會與手動紀錄比對並提示「可能遺失 / 回報中找不到 / 可能搬動 / 未登記」，僅供參考（回報被攔下時腳本會印出提醒）。腳本只依賴 Node 內建模組，可單獨複製到其他電腦；可用排程（cron / 工作排程器）定期執行。`GIT_TIMEOUT_MS` 環境變數可調整腳本內 git 指令逾時（預設 10000）。
 - **GitHub 連動**：選配功能，見下方「選配：GitHub 連動」。
 
 ### 選配：GitHub 連動

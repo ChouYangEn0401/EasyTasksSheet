@@ -17,6 +17,8 @@
       匯入（與網頁「資料管理」同一份邏輯：server/app/data_transfer.py）；寫入前自動備份到 BACKUP_DIR。
   python -m server.cli sync-push --server <https://網址> --token <金鑰> [--db 本機資料庫] [--full] [--dry-run]
       把本機資料增量上傳到中央（server/sync_client.py、docs/sync.md）。
+  python -m server.cli scan-worktrees <專案資料夾> [--machine 電腦名稱] [--repo 專案名稱] [--db 資料庫] [--dry-run] [--yes]
+      掃描本機專案的所有 git worktree（唯讀 git），列出新發現 / 已登記 / 路徑改變，確認後登記（來源 scan）。
 """
 
 from __future__ import annotations
@@ -38,7 +40,9 @@ USAGE = (
     "  python -m server.cli export <檔.json> [--db 資料庫]\n"
     "  python -m server.cli import <檔.json> [--strategy keep_newer|keep_local|use_import] [--dry-run]\n"
     "      [--create-missing-users] [--replace --yes] [--db 資料庫] [--out 備份目錄]\n"
-    "  python -m server.cli sync-push --server <https://網址> --token <金鑰> [--db 本機資料庫] [--full] [--dry-run]"
+    "  python -m server.cli sync-push --server <https://網址> --token <金鑰> [--db 本機資料庫] [--full] [--dry-run]\n"
+    "  python -m server.cli scan-worktrees <專案資料夾> [--machine 電腦名稱] [--repo 專案名稱] [--db 資料庫] [--dry-run] [--yes]\n"
+    "      掃描專案的所有 git worktree（唯讀），列出新發現 / 已登記 / 路徑改變，確認後登記到 worktree 紀錄"
 )
 
 
@@ -310,7 +314,79 @@ def attachments_prune_cmd(argv: list[str]) -> int:
     return 0
 
 
+_ACTION_LABELS = {"new": "新發現（未登記）", "existing": "已登記", "moved": "路徑改變（可能搬動）"}
+
+
+def scan_worktrees_cmd(argv: list[str], input_fn=input) -> int:  # type: ignore[no-untyped-def]
+    """掃描本機專案的所有 worktree，確認後登記到 worktree 紀錄（來源 scan）。
+    在操作者自己的電腦上執行，不受 WORKTREE_SCAN_ROOTS 限制；git 一律唯讀（server/app/worktree_scan.py）"""
+    from .app import worktree_scan as ws
+    from .app.db import create_db, now_ms, run_migrations
+    from .app.features.eng import apply_scan, path_key, plan_scan
+
+    p = argparse.ArgumentParser(
+        prog="python -m server.cli scan-worktrees",
+        description="掃描專案資料夾的 git worktree，列出新發現 / 已登記 / 路徑改變，確認後登記",
+    )
+    p.add_argument("folder", help="專案資料夾（主工作目錄或任一 worktree）")
+    p.add_argument("--machine", help="電腦名稱（預設 ~/.tasks-sheets/machine.json 的名稱或主機名稱）")
+    p.add_argument("--repo", help="專案名稱（預設為主工作目錄的資料夾名稱）")
+    p.add_argument("--db", help="資料庫檔（預設 DATABASE_PATH）")
+    p.add_argument("--dry-run", action="store_true", help="只列出，不寫入")
+    p.add_argument("--yes", action="store_true", help="不詢問，直接登記新發現與路徑改變的項目")
+    args = p.parse_args(argv)
+
+    try:
+        target = ws.resolve_target(os.path.abspath(args.folder), None)
+        result = ws.scan_repo(target, ws.Git(config.GIT_TIMEOUT_MS), (args.repo or "").strip() or None)
+    except ws.ScanError as e:
+        print(f"[scan-worktrees] 錯誤：{e.message}", file=sys.stderr)
+        return 1
+    local = ws.local_machine(create=True)
+    machine = (args.machine or "").strip() or local["machineName"] or "本機"
+    same = not args.machine or machine.lower() == (local["machineName"] or "").strip().lower()
+    machine_id = local["machineId"] if same else None
+
+    db = create_db(args.db or config.DATABASE_PATH)
+    try:
+        run_migrations(db)
+        with db.tx() as conn:
+            items = plan_scan(conn, machine, machine_id, result)
+        print(f"[scan-worktrees] 專案 {result.repo}（{result.repoPath}），電腦 {machine}，共 {len(items)} 個 worktree")
+        if result.truncated:
+            print(f"[scan-worktrees] 注意：worktree 超過 {ws.MAX_WORKTREES} 個，只處理前 {ws.MAX_WORKTREES} 個")
+        for action in ("new", "moved", "existing"):
+            group = [i for i in items if i["action"] == action]
+            if not group:
+                continue
+            print(f"  {_ACTION_LABELS[action]}：{len(group)}")
+            for i in group:
+                flags = [f for f, on in (("未提交變更", i["isDirty"]), ("已併入主分支", i["isMerged"]), ("目錄不存在", i["isPrunable"])) if on]
+                extra = f"（原路徑 {i['recordPath']}）" if action == "moved" else ""
+                print(f"    - {i['branch'] or '（分離 HEAD）'}  {i['path']}{extra}{'  · ' + '、'.join(flags) if flags else ''}")
+        todo = [i for i in items if i["action"] in ("new", "moved")]
+        if args.dry_run:
+            print("[scan-worktrees] --dry-run：未寫入任何資料")
+            return 0
+        if not todo:
+            print("[scan-worktrees] 沒有需要登記的項目")
+            return 0
+        if not args.yes:
+            answer = input_fn(f"登記 {len(todo)} 筆（新增 / 更新路徑）？[y/N] ").strip().lower()
+            if answer not in ("y", "yes"):
+                print("[scan-worktrees] 已取消，未寫入任何資料")
+                return 1
+        with db.tx() as conn:
+            items = plan_scan(conn, machine, machine_id, result)
+            out = apply_scan(conn, items, {path_key(i["path"]) for i in todo}, machine, machine_id, result.repo, None, now_ms())
+    finally:
+        db.close()
+    print(f"[scan-worktrees] 已新增 {out['created']} 筆、更新路徑 {out['moved']} 筆")
+    return 0
+
+
 COMMANDS = {
+    "scan-worktrees": scan_worktrees_cmd,
     "attachments-prune": attachments_prune_cmd,
     "user-add": user_add,
     "backup": backup_cmd,

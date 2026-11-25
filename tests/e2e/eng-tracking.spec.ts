@@ -178,9 +178,11 @@ test('Worktree：手動新增紀錄、回報快照依電腦分組、未登記與
   await expect(spike.getByText('未登記')).toHaveCount(0);
   await expect(spike.getByText('使用中')).toBeVisible();
 
-  // 手動狀態改為「已遺失」→ 不再提示可能遺失
+  // 手動狀態改為「已遺失」→ 不再提示可能遺失；已遺失屬於「已結束」類，預設隱藏（勾選「顯示已清理」才出現）
   const gone = wtRow(section, WT.gone.branch);
   await pickOption(page, gone.getByRole('button', { name: `「${WT.gone.branch}」的狀態` }), '已遺失');
+  await expect(gone).toHaveCount(0);
+  await page.getByLabel(/顯示已清理/).check();
   await expect(gone.getByText('已遺失')).toBeVisible();
   await expect(gone.getByText('可能遺失')).toHaveCount(0);
 
@@ -192,10 +194,11 @@ test('Worktree：手動新增紀錄、回報快照依電腦分組、未登記與
   await dialog.getByRole('button', { name: '儲存' }).click();
   await expect(gone.getByText('硬碟重灌後消失')).toBeVisible();
 
+  // 刪除改為移到回收區（可還原）
   await gone.getByRole('button', { name: `「${WT.gone.branch}」的操作` }).click();
-  await page.getByRole('menuitem', { name: '刪除' }).click();
-  const confirm = page.getByRole('alertdialog', { name: '刪除此紀錄？' });
-  await confirm.getByRole('button', { name: '刪除' }).click();
+  await page.getByRole('menuitem', { name: '移到回收區' }).click();
+  const confirm = page.getByRole('alertdialog', { name: '移到回收區？' });
+  await confirm.getByRole('button', { name: '移到回收區' }).click();
   await expect(gone).toHaveCount(0);
 
   // 預期中的 409（路徑重複）會在 console 留下資源載入失敗訊息，不算錯誤

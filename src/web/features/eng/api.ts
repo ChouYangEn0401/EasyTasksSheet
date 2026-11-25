@@ -1,5 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  EngStatus,
+  EngStatusesResponse,
+  EngStatusInput,
+  EngStatusKind,
+  ScanApplyResult,
+  ScanPreview,
+  WorktreeTrash,
   GithubLink,
   GithubLinksResponse,
   ImportResult,
@@ -19,6 +26,8 @@ export const engKeys = {
   all: ['eng'] as const,
   issues: () => ['eng', 'issues'] as const,
   worktrees: () => ['eng', 'worktrees'] as const,
+  trash: () => ['eng', 'trash'] as const,
+  statuses: () => ['eng', 'statuses'] as const,
 };
 
 export function useIssues() {
@@ -127,11 +136,109 @@ export function useSaveRecord({ silent = false }: { silent?: boolean } = {}) {
   });
 }
 
+/** 移到回收區（軟刪除） */
 export function useDeleteRecord() {
   const qc = useQueryClient();
   return useMutation({
     meta: { errorToast: false },
     mutationFn: (id: number) => api.delete<{ ok: true }>(`/eng/worktree-records/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.all }),
+  });
+}
+
+// ── 回收區 ──
+
+export function useTrash(enabled: boolean) {
+  return useQuery({
+    queryKey: engKeys.trash(),
+    queryFn: ({ signal }) => api.get<WorktreeTrash>('/eng/worktree-records/trash', { signal }),
+    enabled,
+  });
+}
+
+export function useRestoreRecord() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { errorToast: false },
+    mutationFn: (id: number) => api.post<WorktreeRecord>(`/eng/worktree-records/${id}/restore`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.all }),
+  });
+}
+
+export function usePurgeTrash() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { errorToast: false },
+    mutationFn: () =>
+      api.post<{ ok: true; purged: number }>('/eng/worktree-records/trash/purge', { confirm: true }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.all }),
+  });
+}
+
+// ── 可疑回報（空清單 / 驟減）的確認 ──
+
+export function usePendingReport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sourceId, action }: { sourceId: number; action: 'accept' | 'discard' }) =>
+      api.post<{ ok: true }>(`/eng/worktrees/pending/${sourceId}/${action}`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.worktrees() }),
+  });
+}
+
+// ── 掃描本機專案 ──
+
+export function useScanPreview() {
+  return useMutation({
+    meta: { errorToast: false },
+    mutationFn: (input: { path: string; machine?: string }) =>
+      api.post<ScanPreview>('/eng/worktrees/scan', input),
+  });
+}
+
+export function useScanApply() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { errorToast: false },
+    mutationFn: (input: { path: string; machine?: string; paths: string[] }) =>
+      api.post<ScanApplyResult>('/eng/worktrees/scan/apply', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.worktrees() }),
+  });
+}
+
+// ── 可自訂狀態 ──
+
+export function useEngStatuses() {
+  return useQuery({
+    queryKey: engKeys.statuses(),
+    queryFn: ({ signal }) => api.get<EngStatusesResponse>('/eng/statuses', { signal }),
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateEngStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { errorToast: false },
+    mutationFn: (input: EngStatusInput & { kind: EngStatusKind; label: string }) =>
+      api.post<EngStatus>('/eng/statuses', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.statuses() }),
+  });
+}
+
+export function useUpdateEngStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...input }: EngStatusInput & { id: number }) =>
+      api.patch<EngStatus>(`/eng/statuses/${id}`, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.statuses() }),
+  });
+}
+
+export function useDeleteEngStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.delete<{ ok: true }>(`/eng/statuses/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.statuses() }),
   });
 }

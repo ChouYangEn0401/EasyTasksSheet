@@ -15,6 +15,7 @@ ALL_TABLES = [
     "attachments",
     "changes",
     "eng_github_links",
+    "eng_statuses",
     "feedback_items",
     "git_issues_cache",
     "link_previews",
@@ -35,6 +36,7 @@ ALL_TABLES = [
     "users",
     "worktree_plans",
     "worktree_records",
+    "worktree_report_sources",
     "worktree_reports",
     "worktree_snapshots",
 ]

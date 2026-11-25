@@ -1100,3 +1100,142 @@
     }
   }
 }
+
+/* ── eng-v2：狀態管理、可疑回報、搬動提示、掃描、回收區 ── */
+@layer components {
+  .eng-toolbar {
+    flex-wrap: wrap;
+  }
+  .eng-toolbar-end {
+    flex-wrap: wrap;
+  }
+  .eng-machine-head {
+    flex-wrap: wrap;
+  }
+  .eng-machine-id {
+    margin-left: var(--space-2);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 400;
+    color: var(--color-text-tertiary);
+  }
+  .eng-machine[data-stale] .eng-machine-name {
+    color: var(--color-text-secondary);
+  }
+  .eng-machine > .ui-alert {
+    margin: var(--space-3) var(--space-4) 0;
+  }
+  .eng-machine-empty {
+    padding: var(--space-3) var(--space-4);
+  }
+  .eng-pending {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+  }
+  .eng-pending > span:first-child {
+    flex: 1 1 280px;
+    min-width: 0;
+  }
+  .eng-pending-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .eng-hint {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+    min-width: 0;
+    max-width: 260px;
+  }
+  .eng-hint .eng-path {
+    max-width: 100%;
+  }
+  .eng-status-add {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .eng-status-add-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+  }
+
+  /* 掃描預覽 */
+  .eng-scan {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+  }
+  .eng-scan-summary {
+    margin: 0;
+    font-size: var(--text-sm);
+  }
+  .eng-scan-list,
+  .eng-trash-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    max-height: 48vh;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+  }
+  .eng-scan-item,
+  .eng-trash-item {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+  }
+  .eng-scan-item[data-action='existing'] {
+    background: var(--color-surface-sunken, var(--color-surface));
+    opacity: 0.75;
+  }
+  .eng-scan-label {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    cursor: pointer;
+    min-width: 0;
+  }
+  .eng-scan-label .ui-checkbox {
+    margin-top: 3px;
+    flex: none;
+  }
+  .eng-scan-label .eng-two-line {
+    min-width: 0;
+    flex: 1;
+  }
+  .eng-scan-head {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .eng-trash-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    min-width: 0;
+  }
+  .eng-trash-item .eng-two-line {
+    flex: 1;
+    min-width: 0;
+  }
+
+  @media (max-width: 640px) {
+    .eng-hint {
+      max-width: none;
+    }
+    .eng-trash-item {
+      flex-wrap: wrap;
+    }
+  }
+}

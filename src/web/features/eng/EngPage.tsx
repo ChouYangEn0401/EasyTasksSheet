@@ -14,6 +14,8 @@ import {
   type EngTab,
 } from './model.ts';
 import { WorktreesTab } from './WorktreesTab.tsx';
+import { StatusAdminProvider } from './EngStatus.tsx';
+import { useStatusList } from './statusHooks.ts';
 import './eng.css';
 
 /**
@@ -26,6 +28,7 @@ export function EngPage() {
   const issues = useIssues();
   const worktrees = useWorktrees();
   const projects = useProjects();
+  const issueStatuses = useStatusList('issue');
 
   // 專案 / repo 名稱建議：既有問題的專案欄、任務專案、回報的 repo 名稱
   const names = useMemo(
@@ -60,7 +63,11 @@ export function EngPage() {
     <div className="eng-page">
       <div className="eng-tabs">
         <nav className="view-tabs-nav" aria-label="工程追蹤">
-          {tabLink('issues', '問題', issues.data ? openIssueCount(issues.data.issues) : undefined)}
+          {tabLink(
+            'issues',
+            '問題',
+            issues.data ? openIssueCount(issues.data.issues, issueStatuses) : undefined,
+          )}
           {tabLink(
             'worktrees',
             '工作樹',
@@ -75,7 +82,9 @@ export function EngPage() {
           )}
         </nav>
       </div>
-      {tab === 'issues' ? <IssuesTab query={issues} names={names} /> : <WorktreesTab query={worktrees} />}
+      <StatusAdminProvider>
+        {tab === 'issues' ? <IssuesTab query={issues} names={names} /> : <WorktreesTab query={worktrees} />}
+      </StatusAdminProvider>
     </div>
   );
 }

@@ -55,8 +55,11 @@ class Config:
     #: 前端載入問題列表時，距上次同步超過幾分鐘就自動同步一次
     GITHUB_SYNC_MINUTES: float = 5
     ISSUE_CACHE_MINUTES: float = 5
-    WORKTREE_STALE_DAYS: float = 7
+    #: 電腦超過幾天沒有回報，工作樹頁面就標示「未回報（最後看到 N 天前）」（資料不會因此刪除）
+    WORKTREE_STALE_DAYS: float = 2
     WORKTREE_REPORT_TOKEN: str | None = None
+    #: 網頁「掃描本機專案」允許的資料夾（逗號分隔；未設定 = 功能停用）。只掃描這些資料夾內（以真實路徑比對）
+    WORKTREE_SCAN_ROOTS: str | None = None
     GIT_TIMEOUT_MS: int = 10_000
 
     #: 附件（工程問題等）：檔案存放目錄（檔名為隨機 id）、單檔上限、影片單檔上限、每筆項目的檔案數上限
