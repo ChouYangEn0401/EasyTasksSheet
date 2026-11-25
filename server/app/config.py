@@ -36,6 +36,8 @@ class Config:
     LOGIN_MAX_FAILS_PER_USER: int = 5
     LOGIN_LOCK_MINUTES: float = 15
     LOGIN_MAX_FAILS_PER_IP: int = 20
+    #: 前面有反向代理（Caddy/nginx）時設 true，才採用 X-Forwarded-For；直連時必須維持 false
+    TRUSTED_PROXY: bool = False
     ADMIN_USERNAME: str | None = None
     ADMIN_PASSWORD: str | None = None
 
@@ -83,7 +85,7 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
                 if raw not in ("development", "production", "test"):
                     raise ValueError(raw)
                 values[name] = raw
-            elif name == "COOKIE_SECURE":
+            elif name in ("COOKIE_SECURE", "TRUSTED_PROXY"):
                 if raw not in ("true", "false"):
                     raise ValueError(raw)
                 values[name] = raw == "true"

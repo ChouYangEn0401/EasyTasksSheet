@@ -21,6 +21,8 @@ class AuthSettings:
     login_max_fails_per_user: int
     login_lock_ms: int
     login_max_fails_per_ip: int
+    #: 是否信任反向代理附加的 X-Forwarded-For（預設否：一律用 socket 位址）
+    trusted_proxy: bool = False
 
     def with_overrides(self, **overrides: Any) -> "AuthSettings":
         return replace(self, **overrides) if overrides else self
@@ -36,4 +38,5 @@ def auth_settings_from(config: Config) -> AuthSettings:
         login_max_fails_per_user=config.LOGIN_MAX_FAILS_PER_USER,
         login_lock_ms=round(config.LOGIN_LOCK_MINUTES * MINUTE),
         login_max_fails_per_ip=config.LOGIN_MAX_FAILS_PER_IP,
+        trusted_proxy=config.TRUSTED_PROXY,
     )

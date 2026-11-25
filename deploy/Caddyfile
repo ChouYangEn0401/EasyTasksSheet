@@ -3,7 +3,9 @@
 # 把 tasks.lab.example 換成實際主機名稱（或設環境變數 SITE_ADDRESS）。
 # 後端（uvicorn）請只綁 127.0.0.1:3000（deploy/tasks-sheets.service 已固定 --host 127.0.0.1）；
 # 容器部署時以環境變數 UPSTREAM=app:3000 覆寫。
-# Caddy 會覆寫 X-Forwarded-For（不信任用戶端送來的值），後端以它判斷登入失敗的來源 IP。
+# Caddy 會把真實對端 IP 附加到 X-Forwarded-For 鏈尾；後端在 .env 設 TRUSTED_PROXY=true 時
+# 取該標頭「最右邊一段」判斷登入失敗的來源 IP（用戶端自填的前綴無效）。
+# 使用此反向代理時務必設 TRUSTED_PROXY=true，否則所有人會共用 127.0.0.1 這個 IP 桶。
 
 {$SITE_ADDRESS:tasks.lab.example} {
 	# ── HTTPS 憑證（三選一）────────────────────────────────

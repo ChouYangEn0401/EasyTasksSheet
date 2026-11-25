@@ -116,8 +116,20 @@ def test_spread_failures_do_not_lock_and_success_resets():
         clock.advance(4 * MIN)
 
 
-def test_ip_limit_20_failures():
+def test_ip_limit_ignores_forwarded_header_by_default():
+    """未設 TRUSTED_PROXY：X-Forwarded-For 被忽略，同一 socket IP 的連續失敗仍觸發限制"""
     t, _db, clock, user = setup()
+    for i in range(20):
+        spoof = {"x-forwarded-for": f"10.0.{i}.1"}
+        assert login(t, f"someone{i % 5}x{i}", "bad-password", spoof).status_code == 401
+    assert login(t, user["username"]).status_code == 429
+    assert login(t, user["username"], headers={"x-forwarded-for": "10.9.9.9"}).status_code == 429
+    clock.advance(15 * MIN)
+    assert login(t, user["username"]).status_code == 200
+
+
+def test_ip_limit_20_failures_with_trusted_proxy():
+    t, _db, clock, user = setup(trusted_proxy=True)
     ip = {"x-forwarded-for": "10.0.0.9"}
     for i in range(20):
         assert login(t, f"someone{i % 5}x{i}", "bad-password", ip).status_code == 401
@@ -125,6 +137,17 @@ def test_ip_limit_20_failures():
     assert login(t, user["username"], headers={"x-forwarded-for": "10.0.0.10"}).status_code == 200
     clock.advance(15 * MIN)
     assert login(t, user["username"], headers=ip).status_code == 200
+
+
+def test_trusted_proxy_spoofed_prefix_cannot_bypass():
+    """代理把真實對端 IP 附加到鏈尾；用戶端自填的前綴不影響判斷"""
+    t, _db, _clock, user = setup(trusted_proxy=True)
+    for i in range(20):
+        spoof = {"x-forwarded-for": f"1.2.3.{i}, 10.0.0.9"}
+        assert login(t, f"someone{i % 5}x{i}", "bad-password", spoof).status_code == 401
+    assert login(t, user["username"], headers={"x-forwarded-for": "10.0.0.9"}).status_code == 429
+    assert login(t, user["username"], headers={"x-forwarded-for": "8.8.8.8, 10.0.0.9"}).status_code == 429
+    assert login(t, user["username"], headers={"x-forwarded-for": "10.0.0.10"}).status_code == 200
 
 
 # ── session 期限 ──

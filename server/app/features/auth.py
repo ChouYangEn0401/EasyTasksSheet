@@ -32,12 +32,19 @@ router = APIRouter()
 LOGIN_FAILED = "帳號或密碼不正確"
 
 
-def client_ip(request: Request) -> str:
-    """用戶端 IP：反向代理（Caddy）會覆寫 X-Forwarded-For，取第一段；直連時取 socket 位址"""
-    fwd = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
-    if fwd:
-        return fwd
-    return request.client.host if request.client else "unknown"
+def client_ip(request: Request, trusted_proxy: bool) -> str:
+    """用戶端 IP（登入失敗的 IP 限制用）。
+
+    - trusted_proxy=False：一律用 socket 位址，忽略 X-Forwarded-For（直連時標頭可任意偽造）。
+    - trusted_proxy=True：視為單層反向代理，取 X-Forwarded-For「最右邊」一段——那是代理自己
+      附加的對端位址；左側各段可能是用戶端偽造的前綴，不採用。
+    """
+    socket_ip = request.client.host if request.client else "unknown"
+    if not trusted_proxy:
+        return socket_ip
+    values = ",".join(request.headers.getlist("x-forwarded-for"))
+    parts = [p.strip() for p in values.split(",") if p.strip()]
+    return parts[-1] if parts else socket_ip
 
 
 def me(ctx: Ctx, user: Any, session: SessionRow) -> dict[str, Any]:
@@ -48,7 +55,7 @@ def me(ctx: Ctx, user: Any, session: SessionRow) -> dict[str, Any]:
 async def login(request: Request, response: Response) -> dict[str, Any]:
     ctx = get_ctx(request)
     data = await read_json(request, LoginInput)
-    ip = client_ip(request)
+    ip = client_ip(request, ctx.settings.trusted_proxy)
     t = ctx.now()
     wait_ms = login_blocked_for(ctx.db, ctx.settings, data.username, ip, t)
     if wait_ms > 0:

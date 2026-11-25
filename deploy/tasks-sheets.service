@@ -27,6 +27,7 @@ EnvironmentFile=-/opt/tasks-sheets/.env
 # 只綁 127.0.0.1（不論 .env 的 HOST），由 Caddy 反向代理對外提供 HTTPS。
 # 必須單一 worker（不要加 --workers）：即時同步（SSE）的事件中樞與 SQLite 連線都在同一個行程內。
 # --timeout-graceful-shutdown：SSE 長連線不會讓停止 / 重啟卡住。
+# --no-proxy-headers：X-Forwarded-For 由應用層依 .env 的 TRUSTED_PROXY 處理（經 Caddy 時須設 true）。
 ExecStart=/opt/tasks-sheets/.venv/bin/python -m uvicorn server.app.main:app \
     --host 127.0.0.1 --port ${PORT} \
     --no-proxy-headers --timeout-graceful-shutdown 3

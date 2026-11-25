@@ -70,6 +70,7 @@ npm run dev                   # 後端 uvicorn :3000（自動重載）+ Vite :51
 | `LOGIN_MAX_FAILS_PER_USER` | `5`             | 同帳號失敗幾次後鎖定                                                                                |
 | `LOGIN_LOCK_MINUTES`       | `15`            | 帳號鎖定時間                                                                                        |
 | `LOGIN_MAX_FAILS_PER_IP`   | `20`            | 同 IP 失敗幾次後暫拒                                                                                |
+| `TRUSTED_PROXY`            | `false`         | 經 Caddy/nginx 反向代理時**必須設 `true`**（取 `X-Forwarded-For` 最右段）；直連 uvicorn 維持 `false`（忽略該標頭，避免偽造） |
 | `ADMIN_USERNAME`           | `admin`         | 首次啟動（尚無帳號時）建立的管理員帳號                                                              |
 | `ADMIN_PASSWORD`           | （空）          | 首次管理員密碼；空白則隨機產生並**只在主控台顯示一次**                                              |
 | `CHANGES_RETENTION_DAYS`   | `30`            | 變更流水保留天數（即時同步用）                                                                      |
@@ -122,6 +123,8 @@ NODE_ENV=production
 HOST=127.0.0.1
 PORT=3000
 APP_ORIGIN=https://tasks.lab.example
+# 經 Caddy/nginx 反向代理時必須為 true（否則所有人共用 127.0.0.1 這個登入失敗 IP 桶）
+TRUSTED_PROXY=true
 DATABASE_PATH=data/app.db
 ADMIN_USERNAME=admin
 # 建議留空讓系統產生隨機密碼（見「預設管理員」）；若要指定，首次登入後仍會被要求更改
@@ -326,7 +329,7 @@ location /api/events {
 確認 `ExecStart` 有 `--timeout-graceful-shutdown`（或使用 `python -m server.app`，已內建 3 秒）；否則 uvicorn 會等所有 SSE 連線結束。
 
 **Q：為什麼後端只綁 `127.0.0.1`？**
-登入失敗的 IP 限制會參考 `X-Forwarded-For`；只讓 Caddy 連入可確保該標頭由 Caddy 設定、無法被用戶端偽造，也避免繞過 HTTPS。
+登入失敗的 IP 限制在 `TRUSTED_PROXY=true` 時採用 `X-Forwarded-For` 最右段（由代理附加、用戶端無法偽造）；只讓 Caddy 連入可確保該標頭一定經過代理，也避免繞過 HTTPS。沒有反向代理時請維持 `TRUSTED_PROXY=false`，後端改用連線的 socket 位址並忽略該標頭。
 
 **Q：可以開多個 uvicorn worker 嗎？**
 不行。即時同步的事件中樞在行程記憶體內，多 worker 會讓部分使用者收不到更新。實驗室規模單一行程即足夠。
