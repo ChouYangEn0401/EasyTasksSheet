@@ -619,3 +619,22 @@ def test_sync_auto_created_user_follows_in_overview(env):
     _sid, token = make_source(e, name="自動", autoCreateUsers=True)
     push(e, token)
     assert e["central"].db.scalar("SELECT in_overview FROM users WHERE username = 'quiet'") == 0
+
+
+def test_backup_day_boundary_uses_config_tz_not_os():
+    from datetime import datetime, timezone
+
+    from server.app.sync_push import _local_day
+
+    t = int(datetime(2026, 1, 4, 23, 59, tzinfo=timezone.utc).timestamp() * 1000)  # 台北 01-05 07:59
+    t2 = t + 2 * 60_000  # 台北 01-05 08:01（UTC 01-05 00:01）
+    assert _local_day(t, "UTC") == "2026-01-04" and _local_day(t2, "UTC") == "2026-01-05"
+    assert _local_day(t, "Asia/Taipei") == _local_day(t2, "Asia/Taipei") == "2026-01-05"
+    t3 = int(datetime(2026, 1, 4, 15, 30, tzinfo=timezone.utc).timestamp() * 1000)  # 台北 01-04 23:30
+    t4 = t3 + 60 * 60_000  # 台北 01-05 00:30
+    assert _local_day(t3, "Asia/Taipei") != _local_day(t4, "Asia/Taipei")
+    assert _local_day(t3, "UTC") == _local_day(t4, "UTC")
+    # 預設取 config.TZ（測試環境為 Asia/Taipei）
+    from server.app.config import config
+
+    assert _local_day(t) == _local_day(t, config.TZ)

@@ -116,7 +116,7 @@ npm run dev                   # 後端 uvicorn :3000（自動重載）+ Vite :51
 | `TRUSTED_PROXY`            | `false`         | 經 Caddy/nginx 反向代理時**必須設 `true`**（取 `X-Forwarded-For` 最右段）；直連 uvicorn 維持 `false`（忽略該標頭，避免偽造） |
 | `ADMIN_USERNAME`           | `admin`         | 首次啟動（尚無帳號時）建立的預設管理員帳號；可選覆寫，首次登入強制重設帳號與密碼                    |
 | `ADMIN_PASSWORD`           | `password`      | 預設管理員的初始密碼；可選覆寫（留空即 `password`）                                                 |
-| `CHANGES_RETENTION_DAYS`   | `30`            | 變更流水保留天數（即時同步用）                                                                      |
+| `CHANGES_RETENTION_DAYS`   | `30`            | 變更流水保留天數（啟動時與每日修剪；須 > 0）                                                                      |
 | `AUDIT_RETENTION_DAYS`     | `365`           | 稽核紀錄保留天數（啟動時與每日自動修剪，見「稽核紀錄與還原」）                                      |
 | `PRESENCE_ONLINE_SECONDS`  | `45`            | 在線感知：最後一次回報在幾秒內算「在線」                                                            |
 | `PRESENCE_IDLE_SECONDS`    | `300`           | 在線感知：幾秒內算「閒置」，超過即「離線」                                                          |
