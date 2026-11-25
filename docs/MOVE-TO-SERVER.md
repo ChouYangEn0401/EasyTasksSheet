@@ -230,6 +230,8 @@ sudo systemctl reload caddy
 
 適合 server 上**已經有資料**，要把本機的資料合併進去。匯出檔不含密碼雜湊與 session，也**沒有附件**。規格見 [design/data-export.md](design/data-export.md)。
 
+資料涵蓋範圍：JSON 匯出含任務待辦清單、任務關聯、任務依賴、任務討論區留言（不含各人的留言已讀位置）、描述鎖定狀態；**不含稽核紀錄**（稽核紀錄只隨完整 .db 備份帶走）。
+
 ### 3.1 本機匯出
 
 網頁：管理者以上 →「資料管理 → 下載 JSON 匯出檔」。或指令【已實測】：
@@ -300,6 +302,7 @@ sudo -u tasks-sheets .venv/bin/python -m server.cli import /tmp/export.json \
 
 - 資料以 uid 對應，**只新增與更新，缺少的資料絕不刪除**；兩邊都改過且更新時間差 ≤ `SYNC_AUTO_RESOLVE_MINUTES`（預設 10 分鐘）會列為「待確認衝突」，由管理者在「資料同步」頁決定。
 - 不上傳密碼、session、權限設定、**附件檔案**。
+- 涵蓋範圍：含任務與任務待辦清單；**不含任務關聯、任務依賴、討論區留言**（要搬這些請用搬法 A 或 B）；稽核紀錄只隨完整 .db 備份。
 
 步驟：
 
@@ -326,6 +329,9 @@ sudo -u tasks-sheets .venv/bin/python -m server.cli import /tmp/export.json \
 - 本機時鐘要準（建議開網路校時），衝突判斷依各電腦的更新時間。
 
 ## 5. 常見問題
+
+**升級提醒：migration 0019（總覽成員卡）**
+migration 0019 會把**既有 root 帳號**的 `in_overview` 設為 0，所以升級（或整包搬到新版程式）後，root 不再出現在總覽的成員卡與近三週統計。這是設計行為（超級管理員預設不列入總覽）；要列入請到「成員管理」重新開啟該帳號的總覽統計開關。任務本身不受影響。
 
 **版本不一致 / migration**
 啟動與所有 CLI 指令都會**自動套用尚未執行的 migration**。把舊版資料庫搬到較新的程式上沒問題，會自動升級（建議搬之前保留一份備份）。反過來——用**較舊**的程式開**較新**版本的資料庫——程式沒有防呆也不保證可用（新欄位 / 新表它不認得），請先把 server 的程式更新到相同或更新的版本。JSON 匯出檔（與 sync-push 上傳內容）的 `schemaVersion` 比 server 新時會被拒絕並提示先更新 server（目前格式版本為 2，新版仍可匯入版本 1 的舊檔）。最新 migration 請看 `server/migrations/` 中編號最大的檔案（撰寫時為 `0020_*.sql`）。

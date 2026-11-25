@@ -30,6 +30,9 @@ python main.py                             # 啟動，開啟 http://localhost:30
 | [docs/MOVE-TO-SERVER.md](docs/MOVE-TO-SERVER.md)        | 把本機資料搬到 server 的逐步教學（整包搬 / JSON / 同步） |
 | [docs/permissions.md](docs/permissions.md)              | 角色與權限矩陣                                         |
 | [docs/design/task-discussion.md](docs/design/task-discussion.md) | 任務討論區（討論串、未讀、捲軸）與描述鎖定     |
+| [docs/design/audit-log.md](docs/design/audit-log.md)    | 稽核紀錄與一鍵還原                                     |
+| [docs/design/delay-link.md](docs/design/delay-link.md)  | 任務依賴與延遲鏈                                       |
+| [docs/design/undo.md](docs/design/undo.md)              | 全站復原 / 重做                                        |
 | [docs/multi-user.md](docs/multi-user.md)                | 多人同時使用、在線感知、限制                           |
 | [docs/sync.md](docs/sync.md)                            | 多台電腦同步（sync-push）                              |
 | [docs/product-principles.md](docs/product-principles.md) | 產品原則                                               |
@@ -37,7 +40,6 @@ python main.py                             # 啟動，開啟 http://localhost:30
 ## 功能簡介
 
 - **總覽**：只呈現「列入總覽統計」的成員（超級管理員預設不列入，成員管理可調整），任務仍可指派給任何帳號。
-- **任務檢視**：List（就地編輯、快速新增、自訂欄位、任務詳情抽屜）、Kanban（拖曳改狀態與排序）、Gantt 與總覽主畫面、月曆排程。
 - **相關任務與複製任務**：在任務詳情抽屜可把任務互相建立「相關」連結（清單與看板顯示 🔗 數量，點擊即跳轉），並可從「⋯」選單或按 `D` 複製任務（可選擇要帶過去的內容與狀態）。
 - **復原 / 重做**：`Ctrl+Z` 復原、`Ctrl+Shift+Z`（或 `Ctrl+Y`）重做自己剛才的任務編輯、拖曳、新增與刪除（Mac 用 `Cmd`；在輸入框內為一般文字復原；重新整理後清空），頂欄也有按鈕；規則見 `docs/design/undo.md`。
 - **任務檢視**：List（就地編輯、快速新增、自訂欄位、任務詳情抽屜；按住列左側把手可直接拖到別的狀態 / 負責人 / 專案群組或調整順序）、Kanban（拖曳改狀態與排序）、Gantt 與總覽主畫面、月曆排程。
@@ -119,6 +121,11 @@ npm run dev                   # 後端 uvicorn :3000（自動重載）+ Vite :51
 | `PRESENCE_ONLINE_SECONDS`  | `45`            | 在線感知：最後一次回報在幾秒內算「在線」                                                            |
 | `PRESENCE_IDLE_SECONDS`    | `300`           | 在線感知：幾秒內算「閒置」，超過即「離線」                                                          |
 | `WORKTREE_REPORT_TOKEN`    | （空）          | 各人電腦回報 worktree 用的 token；空白 = 停用回報端點（一律 403）                                   |
+| `WORKTREE_SCAN_ROOTS`      | （空）          | 網頁「掃描本機專案」允許的資料夾（逗號分隔）；空白 = 停用，見「工程追蹤的使用方式」               |
+| `WORKTREE_STALE_DAYS`      | `2`             | 電腦超過幾天沒回報，工作樹頁面標示「未回報」（只是提示，不刪資料）                                  |
+| `GIT_TIMEOUT_MS`           | `10000`         | 伺服器端 git 指令（掃描本機專案、`scan-worktrees`）的逾時毫秒數                                     |
+| `SYNC_AUTO_RESOLVE_MINUTES` | `10`           | sync-push：兩邊更新時間差距超過幾分鐘才自動採較新者，否則列為待確認衝突（見「多台電腦同步」）      |
+| `GITHUB_TOKEN` / `GITHUB_API_URL` / `GITHUB_SYNC_MINUTES` | （空）/ `https://api.github.com` / `5` | 選配 GitHub 連動，見「選配：GitHub 連動」；token 空白 = 停用 |
 | `BACKUP_DIR`               | `backups`       | 備份目錄（`python -m server.cli backup` 使用；建議放在不同磁碟）                                    |
 | `BACKUP_KEEP`              | `14`            | 保留最近幾份備份                                                                                    |
 | `DATA_IMPORT_MAX_MB`       | `50`            | 「資料管理」匯入檔大小上限（MB）                                                                    |

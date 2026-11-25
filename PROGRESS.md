@@ -1,13 +1,13 @@
 # PROGRESS
 
 專案：實驗室專案管理工具（TasksSheets）
-最後更新：2026-11-25（第二輪修正已合併）
+最後更新：2026-11-25（第六輪功能與審查修正完成，整合分支 `integration/wave6`）
 
 ## 目前階段
-全部完成並合併至 main，等待使用者驗收。後端已依使用者要求改為 **Python（FastAPI + uvicorn + SQLite）**，前端維持 React + Vite。
-`git worktree list` 只剩主 worktree，無殘留分支。
+第六輪（11 項功能）已合併到整合分支 `integration/wave6`（已包含 `main`），並完成 fable 三方審查與修正；審查修正分支收斂後再 ff-only 合併回 `main`，等待使用者驗收。後端為 **Python（FastAPI + uvicorn + SQLite）**，前端 React + Vite。
+目前 worktree：主 worktree（`main`）與整合分支；各功能分支已合併。第五輪以前的驗收數字見下方各輪紀錄，**最新數字見「第六輪」**。
 
-## 驗收狀態（main）
+## 驗收狀態（第二階段 Python 重寫時；歷史數字）
 - `npm run check` 全綠：vitest 141、pytest 132、lint、typecheck、build。
 - `npm run test:e2e`（預設即 Python 後端）24/24。
 - `npm run backup:self-test` 通過；備份→還原演練完成。
@@ -81,7 +81,7 @@
 - 多人在線（頂欄雲朵頭像、hover 卡片、任務層級提示）與併發驗證（docs/multi-user.md）。
 - 工程追蹤：UI 修正、附件（圖片/檔案/影片含 Range）、連結預覽（SSRF 防護）、可自訂狀態、一鍵掃描本機專案、多台電腦回報「不見不等於刪除」（空回報攔截、回收區）。
 - 資料：完整 .db 備份、JSON 匯出匯入（預覽→策略→逐筆覆寫）、多台電腦 sync-push 增量上傳（時間差大自動採新、相近進待確認衝突；管理者以上）。
-- 修正：requirements.txt 改純 ASCII（cp950 下 pip 會失敗）、E2E 對負載敏感斷言重試一次。
+- 修正：requirements.txt 改純 ASCII（cp950 下 pip 會失敗）、E2E 對負載敏感斷言重試一次（第六輪已取消，改為 `retries: 0`）。
 - 交接文件：docs/HANDOFF.md、docs/MOVE-TO-SERVER.md（搬到 server 的逐步教學，已實測演練）。
 驗收（main）：vitest 227、pytest 479、E2E 53/53、build 成功；以使用者真實 DB 的複本測試 migration（9→13），資料筆數不變、integrity ok。
 
@@ -89,6 +89,38 @@
 - Docker/Caddy/systemd/scp 未實測；GitHub 連動只用假資料測過。
 - 後端仍不強制「改密碼前封鎖其他 API」（使用者決定維持）。
 - 附件檔案本體不隨 JSON 匯出/sync-push 同步（需用完整備份帶走）。
-- 單一 worker 限制；E2E 計時敏感斷言偶發（已設重試一次）。
+- 單一 worker 限制；E2E 計時敏感斷言曾偶發（第六輪已改為不重試，見下）。
 - 使用者本機正在運行的 server 需重啟才會載入最新程式與 migration（啟動前建議先 `python -m server.cli backup`），並 Ctrl+F5。
 - 網頁掃描只掃伺服器所在電腦，且需設定 WORKTREE_SCAN_ROOTS；掃描對不可信資料夾有殘餘風險（clean filter），已寫入文件。
+
+## 第六輪（2026-11-25）— 11 項功能與 fable 三方審查，整合分支 `integration/wave6`
+功能（皆有 docs/design 規格；migration 0013–0020）：
+1. 相關任務與複製任務（0013 `task_relations`；`task_relations.py`）。
+2. 任務待辦清單 checklist（0014 `task_checklist_items`；`task_checklist.py`；清單 / 看板 ☑ 徽章）。
+3. 依賴與延遲鏈（0015 `task_dependencies`；`dependencies.py`、`dependency_calc.py`；`/tasks/delay-link`）。
+4. 討論區與描述鎖定（0016 `task_comments`、0017 描述鎖定；`task_comments.py`；討論串、@提及、未讀徽章）。
+5. 稽核與還原（0018 `audit_log`；`audit_log.py`、`audit.py`、`audit_events.py`；`/admin/audit`、任務活動歷史）。
+6. 總覽排除（0019 `users.in_overview`）：root 預設不列入總覽，成員管理可切換。**升級提醒：0019 會把既有 root 的 in_overview 設為 0，升級後 root 不再出現在總覽成員卡（設計行為，可在成員管理重新開啟）。**
+7. 匯報報告（0020 `personal_items.done_at`；`personal_report.py`）。
+8. 全站復原 / 重做（純前端記憶體堆疊；`POST /api/tasks/:id/restore`）。
+9. 清單拖曳（換群組 / 排序，接入復原）。
+10. 甘特圖未排程任務拖曳排程。
+11. 工程追蹤工作樹每人一份（`?user=<id|all>`）；另含「貼上 `git worktree list` 登記」。
+
+第六輪新增 capability：`audit.view_task_history`、`audit.view`、`audit.revert`、`comments.write`、`comments.moderate`、`tasks.lock`（`eng.status.manage`、`eng.scan`、`sync.manage`、`sync.resolve` 等第五輪已有；完整矩陣見 docs/permissions.md）。匯出格式 `schemaVersion` 升為 2。
+
+fable 三方審查與修正：
+- 後端：M1、M2 與 m3–m8（驗證、稽核隱私與還原、匯入 / 同步規則、效能）。
+- 前端：M1–M4 與 m1–m11（復原堆疊、拖曳 Esc、標題徽章、討論區與即時同步等）。
+- 404 根因：任務刪除後，詳情的子資源查詢仍會重抓而得 404，屬真缺陷（非測試不穩）；已把任務子資源查詢移到詳情鍵下。**retries 政策改變**：`playwright.config.ts` 由 `retries: 1` 改為預設 `0`（`E2E_RETRIES` 可臨時覆寫，不得用重試掩蓋缺陷）。
+- 文件與測試收尾：realtime-feedback 等待上限放寬為 5 秒（2 秒產品目標只做單次量測記錄）；E2E 資料衛生（`tests/helpers/hygiene.ts`，每個 spec 結束清自己的任務 / 待辦；core-shell、personal 的計數斷言改為專屬前綴）；768 寬討論區測試不再於驗收時 skip；HANDOFF / README / MOVE-TO-SERVER / permissions 等文件對照現況更新。
+
+驗收數字（實測，`npm run check` 與 `$env:E2E_PORT=3230; npm run test:e2e`，retries 0）：vitest 429（38 檔）、pytest 690、E2E 96/96（連跑皆全綠、無 skip）（連跑兩次皆全綠）。
+
+仍存在的問題：
+- sync-push 不含任務關聯、依賴、討論區留言（待辦清單會同步；JSON 匯出 / 匯入有帶，不含留言已讀位置）。
+- root 預設不列入總覽（0019，見上方升級提醒）。
+- 整頁網頁截圖（視覺驗收）未做。
+- Docker / Caddy / systemd 未實測；真實 GitHub API 未測。
+- 甘特圖尚未畫依賴箭頭；依賴只支援 finish-to-start、延後以日曆天推算。
+- 後端 5 處與測試 5 檔 docstring 仍寫「行為同 src/server/…」（歷史對照）。

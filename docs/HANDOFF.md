@@ -22,7 +22,7 @@ TasksSheets 是給實驗室內部用的多人任務 / 專案管理網站。本�
 
 ## 1. 專案現況與功能清單
 
-功能全部完成並合併到 `main`，等使用者驗收。後端為 Python（FastAPI + uvicorn + SQLite），前端為 React + Vite。測試數量以 `npm run check` 實跑結果為準（見[第 10 節](#10-測試如何跑)）。
+第六輪功能（見 PROGRESS.md「第六輪」）已合併到整合分支 `integration/wave6`（已包含 `main`），審查修正後將 ff-only 合併回 `main`，等使用者驗收。後端為 Python（FastAPI + uvicorn + SQLite），前端為 React + Vite。測試數量以 `npm run check` 實跑結果為準（見[第 10 節](#10-測試如何跑)）。
 
 | 頁面（路由）                          | 功能                                                                                                                 |
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
@@ -53,7 +53,7 @@ server/
   cli.py                 管理指令：user-add / backup / restore / export / import / sync-push / scan-worktrees / attachments-prune
   sync_client.py         sync-push 本機端
   e2e_setup.py           E2E 前建立專用 DB 與固定帳號
-  migrations/            0000_init.sql ... 0012_*.sql，啟動時自動套用
+  migrations/            0000_init.sql … 0020_personal_done_at.sql（共 21 個，下一個編號 0021），啟動時自動套用
   app/
     main.py / app.py     組裝 app、掛全部 router、middleware（CSRF、登入、寫入權限守門）
     config.py            唯一的環境變數來源（預設值、驗證）
@@ -90,6 +90,15 @@ docs/                    規格與說明；docs/design/ 為各頁面介面規格
 | 資料匯出入 / 備份下載 | `data_admin.py`                    | `admin/DataPage.tsx`          |
 | 多電腦同步    | `sync_push.py`、`sync.py`（SSE）           | `admin/SyncPage.tsx`          |
 | 在線感知      | `presence.py`                              | `presence/`                   |
+| 相關任務 / 複製任務 | `task_relations.py`（0013）          | `tasks/`（詳情抽屜）          |
+| 任務待辦清單  | `task_checklist.py`（0014）                | `tasks/`（詳情抽屜、徽章）    |
+| 依賴與延遲鏈  | `dependencies.py` + `dependency_calc.py`（0015） | `delay-link/`           |
+| 討論區與描述鎖定 | `task_comments.py`（0016、0017）        | `tasks/`（討論區、鎖定橫幅）  |
+| 稽核與還原    | `audit_log.py` + `audit.py` + `audit_events.py`（0018） | `audit/`      |
+| 匯報報告      | `personal_report.py`（`personal_items.done_at`，0020） | `personal/`    |
+| 復原 / 重做   | （純前端，記憶體堆疊）                     | `undo/`                       |
+
+`audit.py`、`audit_events.py`、`dependency_calc.py`、`personal_report.py` 位於 `server/app/`（非 `features/`）。
 
 資料庫以純 SQL migration 管理（沒有 ORM），參數化查詢。每次寫入同一個 transaction 記一筆 `changes` 流水，SSE hub 每 250 ms 查新流水推給所有連線。
 
@@ -196,7 +205,9 @@ npm run backup:self-test
 npx prettier --check .
 ```
 
-- 測試數量會隨功能增加，這裡不寫死；以 `npm run check` 與 `npm run test:e2e` 實跑結果為準。
+- 測試數量會隨功能增加；以 `npm run check` 與 `npm run test:e2e` 實跑結果為準。2026-11-25 第六輪審查修正後實測：vitest 429（38 檔）、pytest 690、Playwright E2E 96/96（連跑皆全綠、無 skip）。
+- **E2E 不重試**：`playwright.config.ts` 預設 `retries: 0`。偶發失敗多半是真缺陷（曾經的偶發 404 就是真 bug），**不得用重試掩蓋缺陷**；高負載機器臨時可設環境變數 `E2E_RETRIES=1`，但失敗仍須查明根因。
+- E2E 資料衛生：每個 spec 以 `tests/helpers/hygiene.ts` 的 `useDataHygiene()` 在結束時清掉自己建立的任務與自由待辦（軟刪除），任務計數類斷言一律用專屬標題前綴（`?q=`），不依賴檔名順序或前一個 spec 的清理。
 - **`requirements.txt` 必須維持純 ASCII**：pip 以系統碼頁讀取，繁中 Windows（cp950）遇到非 ASCII 會安裝失敗（曾因此出過 bug）。
 - E2E 帳號（由 `server/e2e_setup.py` 建立，同 `tests/helpers/e2eUsers.ts`）：`admin`（root）、`manager`、`member`（user）、`newbie`（首次登入須改密碼）、`bootstrap`（模擬預設管理員，ADMIN_USERNAME）、`peer`。其他 spec 請勿動 `newbie` 與 `bootstrap`。
 - E2E 專用 DB 路徑必須含 `e2e`（`e2e_setup.py` 會拒絕其他路徑，避免誤刪正式資料）。
@@ -223,19 +234,23 @@ npx prettier --check .
 11. 在線感知：多分頁以最後回報為準；重啟後即時狀態全部視為離線。
 12. 匯入「取代全部」後可能留下沒有對應問題的附件檔，用 `python -m server.cli attachments-prune` 清除。
 13. 稽核紀錄（feat/audit-log，[audit-log.md](design/audit-log.md)）：留言、描述鎖定、待辦清單、相關任務、依賴已接入（範圍見 audit-log.md「記錄範圍」）；匯入與同步只記一筆摘要、不可逐筆還原，同步衝突的手動處理不記錄；個人待辦、問題回饋、工程追蹤不記錄；專案與成員的「建立」、狀態「改移並刪除」不可還原；保留 `AUDIT_RETENTION_DAYS`（預設 365）天後自動刪除。即時更新沿用各資料本身的變更流水（不另寫 `audit` 流水）。
-14. 任務討論區：留言與已讀位置**不透過 sync-push 同步**（JSON 匯出 / 匯入有帶）；沒有獨立通知系統，@提及只反映在清單 / 看板的未讀徽章；「與我有關」篩選只看已載入的討論串；軟刪除的訊息內容仍留在資料庫與匯出檔；資料管理頁尚未顯示留言的匯入統計（API 回應有 `taskComments`）。描述鎖定只在詳情抽屜切換（快速新增未提供「建立後鎖定」）。見 [design/task-discussion.md](design/task-discussion.md) §9。
+14. 任務討論區：留言**不透過 sync-push 同步**；JSON 匯出 / 匯入有帶留言（`taskComments`），但**不含各人的已讀位置**（匯入後未讀徽章重新計算）；沒有獨立通知系統，@提及只反映在清單 / 看板的未讀徽章；「與我有關」篩選只看已載入的討論串；軟刪除的訊息內容仍留在資料庫與匯出檔；資料管理頁尚未顯示留言的匯入統計（API 回應有 `taskComments`）。描述鎖定只在詳情抽屜切換（快速新增未提供「建立後鎖定」）。見 [design/task-discussion.md](design/task-discussion.md) §9。
 
 **UI 小瑕疵（依 PROGRESS，未重驗）**
 
 15. 部分頁面失敗仍用頁內提示列而非 toast；編輯衝突「採用」鈕未做。
 16. 看板 PinButton 一直顯示；768–1023px 回饋頁拖曳時「取消排程」放置列未做（鍵盤可取消）。
 17. 甘特圖：長條起點在畫面左側外時，條內標題被切；768 寬時分組標頭同時有逾期 Badge，成員名稱會被截斷。
-18. 6 處 Python docstring 仍寫「行為同 src/server/…」（歷史對照，`src/server` 已移除，已核對仍存在）。
+18. 後端 5 處（`admin.py`、`sync.py`、`_overview_compute.py`、`security.py`、`sync_hub.py`）與測試 5 個檔案的 docstring 仍寫「行為同 / 對應 src/server/…」（歷史對照，`src/server` 已移除，2026-11-25 已核對仍存在）。
 
 **任務依賴（feat/delay-link，[design/delay-link.md](design/delay-link.md)）**
 
-19. 多台電腦同步（sync-push）不同步依賴（JSON 匯出 / 匯入有包含，成環者略過並列出原因）。
+19. 多台電腦同步（sync-push）不同步任務依賴、任務關聯與討論區留言（JSON 匯出 / 匯入有包含，依賴成環者略過並列出原因）；待辦清單會同步，描述鎖定旗標不會被同步改寫。要搬關聯 / 依賴 / 留言請用整包搬或 JSON（見 [sync.md](sync.md)、[MOVE-TO-SERVER.md](MOVE-TO-SERVER.md)）。
 20. 甘特圖尚未畫依賴箭頭；只支援 finish-to-start；延後以日曆天推算（不排除週末與假日）。
+
+**升級提醒**
+
+21. **migration 0019 會把既有 root 帳號的 `in_overview` 設為 0**：升級後 root 不再出現在總覽成員卡與近三週統計。這是設計行為（超級管理員預設不列入總覽），可在「成員管理」重新開啟；任務本身不受影響。
 
 ## 12. 待使用者決策
 
@@ -255,16 +270,16 @@ npx prettier --check .
 
 1. **後端 router**：在 `server/app/features/<name>.py` 建 `APIRouter`，於 `server/app/app.py` 以 `app.include_router(<name>.router, prefix="/api/<name>")` 掛上；請求內容用 pydantic 驗證（`schemas.py` 或該檔內），錯誤用 `errors.py` 的 `HttpError`。需登入的路由預設就受 `api_guard` 保護；免登入的要加進 `PUBLIC_PATHS`（慎用）。
 2. **寫入要記變更流水**：在 transaction 內呼叫 `record_change(conn, entity_type, id, action, actor, t)`，SSE 才會推給其他使用者；前端 `src/web/lib/sync.ts` 的 `ENTITY_QUERY_KEYS` 依 `entity_type` 重抓對應查詢（新的 entity_type 要在此登記）。
-3. **migration 編號**：在 `server/migrations/` 新增下一個編號 `0013_<說明>.sql`（四位數字連號，**已合併的 migration 不要修改**）。純 SQL，語句可用 `--> statement-breakpoint` 分隔；啟動時自動套用。需要的 trigger / uid 欄位參考 `0005_uid.sql`。
+3. **migration 編號**：在 `server/migrations/` 新增下一個編號（目前為 `0021_<說明>.sql`）（四位數字連號，**已合併的 migration 不要修改**）。純 SQL，語句可用 `--> statement-breakpoint` 分隔；啟動時自動套用。需要的 trigger / uid 欄位參考 `0005_uid.sql`。
 4. **權限 capability 登錄**：在 `server/app/permissions.py` 的 `CAPABILITIES` 加入 `名稱: 最低角色`，在 `CAPABILITY_INFO` 補中文名稱 / 說明 / 分組；端點用 `Depends(require("名稱"))`；寫入類的一般協作路徑則加進 `WRITE_GUARDS`。受保護項目加進 `PROTECTED_CAPABILITIES`。前端名稱表 `src/shared/permissions.ts` 要同步（pytest 會比對兩邊一致）。新 capability 不需 migration，自動採預設。更新 [permissions.md](permissions.md) 的矩陣。
 5. **前端 feature 資料夾**：`src/web/features/<name>/` 放頁面元件、`api.ts`（fetch 與 TanStack Query hooks）、`model.ts`（純邏輯，附 `model.test.ts`）、`<name>.css`；在 `src/web/routes.tsx` 註冊路由、`src/shared/<name>.ts` 放 zod schema；導覽項目依 capability 以 `useCan()` 顯示。
-6. **介面規格**：先在 `docs/design/<name>.md` 寫規格（現有 15 份可參考）。
+6. **介面規格**：先在 `docs/design/<name>.md` 寫規格（現有 19 份可參考）。
 7. **測試**：後端 `server/tests/test_<name>.py`（pytest，共用設定在 `server/tests/conftest.py`、`helpers.py`）；前端純邏輯 vitest；關鍵流程加 `tests/e2e/<name>.spec.ts`，帳號用 `tests/helpers/e2eUsers.ts`。新增的環境變數要同時寫進 `config.py`、`.env.example`、README 的環境變數表。
 8. 新增功能前先對照 [product-principles.md](product-principles.md)（尤其總覽相關：不排名、不比較）。
 
 ## 14. 開發流程紀錄
 
-專案以 `parallel-dev-orchestrator` 流程開發：先有 PLAN.md（經使用者審核）；核心分支先行（foundation → auth-data → shell），共用的資料表、路由掛載點、相依套件一次建好；其餘功能每條軌道一個 `git worktree`（獨立 `PORT`、獨立 DB 檔），只改自己的 `features/<name>`，避免互踩；完成後以 **`git merge --ff-only`** 合併回 `main`（保持線性歷史）並立即清理 worktree 與分支；hotfix 另開 `hotfix/<topic>` 同樣 ff-only。每輪結束更新 PROGRESS.md。目前只剩主 worktree 與 `main`；這份交接文件在 `docs/handoff` 分支，未合併。
+專案以 `parallel-dev-orchestrator` 流程開發：先有 PLAN.md（經使用者審核）；核心分支先行（foundation → auth-data → shell），共用的資料表、路由掛載點、相依套件一次建好；其餘功能每條軌道一個 `git worktree`（獨立 `PORT`、獨立 DB 檔），只改自己的 `features/<name>`，避免互踩；完成後以 **`git merge --ff-only`** 合併回 `main`（保持線性歷史）並立即清理 worktree 與分支；hotfix 另開 `hotfix/<topic>` 同樣 ff-only。每輪結束更新 PROGRESS.md。第六輪（11 項功能）以多條功能分支平行開發後合併到整合分支 `integration/wave6`（已先合併 `main`），再經 fable 三方審查與修正分支（後端 / 前端 / 文件與測試）收斂；現況 worktree 有主 worktree（`main`）與整合分支；交接文件（本文）已隨 `main` 合併，審查修正完成後整合分支再 ff-only 回 `main`。
 
 ## 15. 文件索引
 

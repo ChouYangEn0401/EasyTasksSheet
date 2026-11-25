@@ -30,7 +30,7 @@ Button、Input、Textarea、Field、Select、MultiSelect、Menu、Dialog、Badge
 - `<PinButton taskId size? />`（features/personal，T5 實作；core 版回傳 null）。
 
 ## 後端（Python：server/app）
-- 進入點 `server/app/main.py`（`python -m server.app` 或 `uvicorn server.app.main:app`）；各功能在 `server/app/features/*.py`；migration 為 `server/migrations/*.sql`（0000–0002）；測試在 `server/tests/`（pytest）。
+- 進入點 `server/app/main.py`（`python -m server.app` 或 `uvicorn server.app.main:app`）；各功能在 `server/app/features/*.py`；migration 為 `server/migrations/*.sql`（目前 0000–0020，下一個編號 0021）；測試在 `server/tests/`（pytest）。
 - 前端共用型別 / zod schema 在 `src/shared/*.ts`（只剩前端使用者；後端回應格式須與之相符）。
 - 管理指令：`python -m server.cli user-add | backup | restore`（npm：`user:add`、`backup`、`backup:self-test`）。
 - 即時同步：`/api/events`（SSE）與 `/api/changes?since=`；前端收到任務刪除事件時不重抓該任務詳情（避免 404）。

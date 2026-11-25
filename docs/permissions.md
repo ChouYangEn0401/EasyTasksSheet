@@ -26,9 +26,9 @@
 | `properties.edit`       | 自訂欄位（property）                                         |  ✓   |    ✓    |  ✓   |
 | `profile.edit`          | 自己的個人資料與密碼                                         |  ✓   |    ✓    |  ✓   |
 | `audit.view_task_history` | 任務詳情的「活動歷史」（看不到還原按鈕與全站稽核頁；docs/design/audit-log.md） |  ✓   |    ✓    |  ✓   |
+| `comments.write`        | 任務討論區：留言、回覆、編輯 / 刪除自己的訊息、標記自己發起的討論串已解決（[task-discussion.md](design/task-discussion.md)） |  ✓   |    ✓    |  ✓   |
 | `audit.view`            | 後台「稽核紀錄」頁：查看所有重要改動的前後內容               |      |    ✓    |  ✓   |
 | `audit.revert`          | 從稽核紀錄還原改動（另需該項目原本的管理權限，例如還原權限設定需 `permissions.configure`） |      |    ✓    |  ✓   |
-| `comments.write`        | 任務討論區：留言、回覆、編輯 / 刪除自己的訊息、標記自己發起的討論串已解決（[task-discussion.md](design/task-discussion.md)） |  ✓   |    ✓    |  ✓   |
 | `members.manage`        | 成員新增 / 停用 / 啟用 / 重設密碼 / 解鎖 / 編輯；角色限 user ↔ manager |      |    ✓    |  ✓   |
 | `statuses.manage`       | 狀態新增 / 改名 / 改色 / 排序 / 刪除                         |      |    ✓    |  ✓   |
 | `projects.manage`       | 專案改名 / 改色 / 排序 / 封存                                |      |    ✓    |  ✓   |
@@ -109,7 +109,7 @@ root 在「權限設定」頁勾選 / 取消 manager 與 user 的各項權限，
 | `POST /api/tasks/:id/comments/read`                            | 全員（只更新自己的已讀位置，不受寫入守門）                |
 | 寫入 `/api/feedback*`                                          | `feedback.edit`                                           |
 | 寫入 `/api/personal*`                                          | `personal.edit`                                           |
-| 寫入 `/api/eng/issues*`、`/api/eng/worktree-records*`、`/api/eng/worktrees/pending/*` | `eng.edit`                         |
+| 寫入 `/api/eng/issues*`、`/api/eng/worktree-records*`、`/api/eng/worktrees/pending/*`、`/api/eng/worktrees/paste*` | `eng.edit`（`paste` 為貼上 `git worktree list` 登記；對照 `WRITE_GUARDS`） |
 | `POST / PATCH / DELETE /api/eng/statuses`                      | `eng.status.manage`；內建狀態不可刪除（可封存）、使用中的自訂狀態 → 409（只能封存）、每類至少保留一個未封存狀態 |
 | `POST /api/eng/worktrees/scan`、`/scan/apply`                  | `eng.scan`；未設定 `WORKTREE_SCAN_ROOTS` → 409 `SCAN_DISABLED`；範圍外 → 400 |
 | `POST /api/eng/worktree-records/trash/purge`                   | `eng.trash.purge`（另受 `eng.edit` 寫入守門）；body `{ "confirm": true }` |
