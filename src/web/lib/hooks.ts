@@ -9,13 +9,19 @@ import type {
   StatusUpdateInput,
 } from '../../shared/projects.ts';
 import type { PropertyDef } from '../../shared/properties.ts';
-import type { Task, TaskUpdateInput } from '../../shared/tasks.ts';
+import type { Task, TaskCreateInput, TaskUpdateInput } from '../../shared/tasks.ts';
 import type { PublicUser } from '../../shared/users.ts';
 import { api } from './api.ts';
 import { emptyFilters, toTaskQueryString, type TaskFilters } from './filters.ts';
 import { queryKeys } from './queryClient.ts';
 import { listPollInterval } from './sync.ts';
-import { findCachedTask, recordTaskUpdate, type UndoOption } from './taskUndo.ts';
+import {
+  findCachedTask,
+  recordTaskCreate,
+  recordTaskDelete,
+  recordTaskUpdate,
+  type UndoOption,
+} from './taskUndo.ts';
 
 /*
  * 共用資料 hooks（tasks / users / projects / statuses / properties）。
@@ -44,6 +50,19 @@ export function useTask(id: number | null | undefined) {
   });
 }
 
+export function useCreateTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ undo: _undo, ...input }: TaskCreateInput & { undo?: UndoOption }) =>
+      api.post<Task>('/tasks', input),
+    onSuccess: (task, { undo }) => {
+      qc.setQueryData(queryKeys.tasks.detail(task.id), task);
+      recordTaskCreate(qc, task, undo);
+      return qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
+    },
+  });
+}
+
 /**
  * PATCH 任務。成功後自動登記復原（lib/taskUndo.ts）：前值於 onMutate 從快取取出；
  * 呼叫端若已先樂觀改寫快取，請在 undo.before 帶動作前的值；undo: false 不入堆疊。
@@ -61,6 +80,20 @@ export function useUpdateTask({ silentError = false }: { silentError?: boolean }
     onSuccess: (task, { id, undo, ...patch }, ctx) => {
       qc.setQueryData(queryKeys.tasks.detail(task.id), task);
       recordTaskUpdate(qc, { id, patch, before: ctx?.before, result: task, option: undo });
+      return qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
+    },
+  });
+}
+
+/** 軟刪除任務；成功後登記復原（undo: false 不入堆疊） */
+export function useDeleteTask({ undo }: { undo?: UndoOption } = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.delete<{ ok: true }>(`/tasks/${id}`),
+    onMutate: (id) => ({ title: findCachedTask(qc, id)?.title ?? '' }),
+    onSuccess: (_res, id, ctx) => {
+      qc.removeQueries({ queryKey: queryKeys.tasks.detail(id) });
+      recordTaskDelete(qc, { id, title: ctx?.title ?? '' }, undo);
       return qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
     },
   });
