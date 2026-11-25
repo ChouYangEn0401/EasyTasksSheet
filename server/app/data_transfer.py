@@ -423,6 +423,8 @@ ExportDoc = create_model(
     exportedAt=(_Int, ...),
     users=_list_of(UserItem),
     **{s.key: _list_of(_item_model(s)) for s in SPECS},
+    #: 任務依賴（feat/delay-link；見檔尾 taskDependencies 段落）。舊匯出檔沒有時為空
+    taskDependencies=(Annotated[list[dict[str, Any]], Field(max_length=MAX_ITEMS)], []),
     #: 附件清單（只有元資料，不含檔案本體；匯入時忽略——附件檔案請用完整備份帶走）
     attachments=(Annotated[list[dict[str, Any]], Field(max_length=MAX_ITEMS)], []),
     #: 任務關聯（0013；不在 SPECS 中，sync-push 不同步）。舊匯出檔沒有此鍵時為空
@@ -465,6 +467,7 @@ def parse_document(raw: bytes | str | dict[str, Any]) -> dict[str, Any]:
         elif not p["isDone"]:
             p["doneAt"] = None
     _check_integrity(doc)
+    doc[DEP_KEY] = _parse_dependencies(doc.get(DEP_KEY) or [])
     return doc
 
 
@@ -607,6 +610,7 @@ def export_document(db: Database, now: int) -> dict[str, Any]:
             doc[spec.key] = [_export_row(spec, r, idx) for r in idx.rows[spec.key]]
         doc["attachments"] = _export_attachments(conn, idx)
         doc[RELATIONS_KEY] = _export_relations(conn, idx)
+        doc[DEP_KEY] = _export_dependencies(conn, idx)
     return doc
 
 
@@ -680,6 +684,8 @@ class Plan:
     local_counts: dict[str, int]
     #: 任務關聯的預覽統計（new / same / skip / total / local）
     relations: dict[str, Any] = field(default_factory=dict)
+    #: 任務依賴的預覽統計（new / same / conflict；不列入逐筆衝突清單）
+    dependencies: dict[str, int] = field(default_factory=dict)
 
 
 def _relation_end(uid: str, local_task_ids: dict[str, int], file_task_uids: set[str]) -> str | None:
@@ -802,7 +808,13 @@ def plan_import(conn: sqlite3.Connection, doc: dict[str, Any]) -> Plan:
                 {"username": username, "displayName": names.get(username) or username, "references": refs.get(username, 0)}
             )
     local_counts = {spec.key: len(idx.rows[spec.key]) for spec in SPECS}
-    return Plan(items, missing, local_counts, plan_relations(conn, doc))
+    return Plan(
+        items,
+        missing,
+        local_counts,
+        relations=plan_relations(conn, doc),
+        dependencies=_plan_dependencies(conn, doc, idx),
+    )
 
 
 def _clip(v: Any, n: int = 200) -> Any:
@@ -870,7 +882,7 @@ def preview_summary(plan: Plan, doc: dict[str, Any]) -> dict[str, Any]:
         "categories": [
             {**stats[s.key], "total": len(doc[s.key]), "local": plan.local_counts[s.key]} for s in SPECS
         ]
-        + [_relations_category(plan.relations)],
+        + [_relations_category(plan.relations), _dependency_preview(plan, doc)],
         "users": {"total": len(doc["users"]), "existing": existing_users, "missing": len(plan.missing_users)},
         "conflicts": conflicts,
         "missingUsers": plan.missing_users,
@@ -1115,8 +1127,11 @@ def _apply_in_tx(
         "skipped": 0,
         "deleted": 0,
     }
+    dep_stats = _dependency_stats()
     if opts.mode == "replace":
         rel_stats["deleted"] = conn.execute("DELETE FROM task_relations").rowcount
+        # 任務刪除時依賴關係由外鍵 ON DELETE CASCADE 一併刪除；先記下筆數
+        dep_stats["deleted"] = conn.execute("SELECT count(*) FROM task_dependencies").fetchone()[0]
         for key in _BUSINESS_DELETE_ORDER:
             spec = SPEC_BY_KEY[key]
             ids = [r[0] for r in conn.execute(f"SELECT id FROM {spec.table}")]
@@ -1159,13 +1174,172 @@ def _apply_in_tx(
             s["skipped"] += 1
 
     skipped_relations = _apply_relations(w, rel_stats)
+    dep_issues = _apply_dependencies(w, doc, opts, dep_stats)
 
     return {
         "mode": opts.mode,
         "strategy": opts.strategy,
-        "categories": [stats[s.key] for s in SPECS] + [rel_stats],
+        "categories": [stats[s.key] for s in SPECS] + [rel_stats, dep_stats],
         "skippedRelations": skipped_relations,
+        "dependencyIssues": dep_issues,
         "createdUsers": created_users,
         "missingUsersSkipped": [m["username"] for m in plan.missing_users] if opts.missing_users == "skip" else [],
     }
 
+
+
+# ── 任務依賴（feat/delay-link）──────────────────────────────
+# 不放進 SPECS：多台電腦同步（sync_push）沿用 SPECS，依賴目前不同步（見 docs/design/delay-link.md 已知限制）。
+# 以兩端任務的 uid 表示；冪等（同 uid 或同一對任務視為同一筆）；會形成循環或任務不存在時略過並記錄。
+
+DEP_KEY = "taskDependencies"
+DEP_LABEL = "任務依賴"
+
+DependencyItem = create_model(
+    "Import_taskDependencies",
+    __config__=_STRICT,
+    uid=(Uid, ...),
+    blockerTaskUid=(Uid, ...),
+    blockedTaskUid=(Uid, ...),
+    type=(Literal["finish_to_start"], "finish_to_start"),
+    lagDays=(Annotated[int, Field(ge=0, le=365)], 0),
+    note=(Annotated[str, StringConstraints(max_length=500)], ""),
+    createdByUsername=(Optional[UsernameRef], None),
+    createdAt=(Optional[_Int], None),
+    updatedAt=(Optional[_Int], None),
+)
+
+
+def _parse_dependencies(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out = []
+    seen: set[str] = set()
+    issues: list[Any] = []
+    for i, raw in enumerate(items):
+        try:
+            item = DependencyItem.model_validate(raw).model_dump()
+        except ValidationError as e:
+            issues.extend({**x, "path": [DEP_KEY, i, *x["path"]]} for x in pydantic_issues(e))
+            continue
+        if item["uid"] in seen:
+            issues.append({"path": [DEP_KEY, i], "message": f"{DEP_LABEL}：識別碼重複（{item['uid']}）"})
+        seen.add(item["uid"])
+        out.append(item)
+    if issues:
+        raise TransferError("匯出檔內容驗證失敗", issues[:50])
+    return out
+
+
+def _export_dependencies(conn: sqlite3.Connection, idx: LocalIndex) -> list[dict[str, Any]]:
+    task_uid = idx.uid_by_id["tasks"]
+    out = []
+    for r in conn.execute("SELECT * FROM task_dependencies ORDER BY id"):
+        out.append(
+            {
+                "uid": r["uid"],
+                "blockerTaskUid": task_uid.get(r["blocker_task_id"]),
+                "blockedTaskUid": task_uid.get(r["blocked_task_id"]),
+                "type": r["type"],
+                "lagDays": r["lag_days"],
+                "note": r["note"],
+                "createdByUsername": idx.user_by_id.get(r["created_by"]) if r["created_by"] else None,
+                "createdAt": r["created_at"],
+                "updatedAt": r["updated_at"],
+            }
+        )
+    return out
+
+
+def _dependency_stats() -> dict[str, Any]:
+    return {"key": DEP_KEY, "label": DEP_LABEL, "created": 0, "updated": 0, "unchanged": 0, "skipped": 0, "deleted": 0}
+
+
+def _plan_dependencies(conn: sqlite3.Connection, doc: dict[str, Any], idx: LocalIndex) -> dict[str, int]:
+    """預覽：同 uid 且 lagDays / note 相同為 same，不同為 conflict，其餘為 new"""
+    local = {r["uid"]: r for r in conn.execute("SELECT uid, lag_days, note FROM task_dependencies")}
+    stats = {"new": 0, "same": 0, "conflict": 0, "local": len(local)}
+    for item in doc.get(DEP_KEY) or []:
+        r = local.get(item["uid"])
+        if r is None:
+            stats["new"] += 1
+        elif r["lag_days"] == item["lagDays"] and r["note"] == item["note"]:
+            stats["same"] += 1
+        else:
+            stats["conflict"] += 1
+    return stats
+
+
+def _dependency_preview(plan: Plan, doc: dict[str, Any]) -> dict[str, Any]:
+    d = plan.dependencies
+    return {
+        "key": DEP_KEY,
+        "label": DEP_LABEL,
+        "new": d.get("new", 0),
+        "same": d.get("same", 0),
+        "conflict": d.get("conflict", 0),
+        "total": len(doc.get(DEP_KEY) or []),
+        "local": d.get("local", 0),
+    }
+
+
+def _apply_dependencies(w: _Writer, doc: dict[str, Any], opts: ApplyOptions, stats: dict[str, Any]) -> list[str]:
+    """在任務套用完成後寫入依賴；回傳略過原因（例如會形成循環）"""
+    from .dependency_calc import find_cycle
+
+    conn = w.conn
+    issues: list[str] = []
+    local_task = {r["uid"]: r["id"] for r in conn.execute("SELECT id, uid FROM tasks")}
+    titles = {r["id"]: r["title"] for r in conn.execute("SELECT id, title FROM tasks")}
+
+    def task_id(uid: str) -> int | None:
+        return w.maps["tasks"].get(uid) or local_task.get(uid)
+
+    for item in doc.get(DEP_KEY) or []:
+        blocker, blocked = task_id(item["blockerTaskUid"]), task_id(item["blockedTaskUid"])
+        if blocker is None or blocked is None or blocker == blocked:
+            stats["skipped"] += 1
+            issues.append(f"{DEP_LABEL}（{item['uid']}）：對應的任務不存在，已略過")
+            continue
+        existing = conn.execute(
+            "SELECT * FROM task_dependencies WHERE uid = ? OR (blocker_task_id = ? AND blocked_task_id = ?)",
+            (item["uid"], blocker, blocked),
+        ).fetchone()
+        if existing is not None:
+            same_pair = existing["blocker_task_id"] == blocker and existing["blocked_task_id"] == blocked
+            same = same_pair and existing["lag_days"] == item["lagDays"] and existing["note"] == item["note"]
+            choice = resolve(opts.strategy, None, existing["updated_at"], item["updatedAt"])
+            if same or choice == "keep_local" or not same_pair:
+                stats["unchanged"] += 1
+                continue
+            conn.execute(
+                "UPDATE task_dependencies SET lag_days = ?, note = ?, updated_at = ? WHERE id = ?",
+                (item["lagDays"], item["note"], item["updatedAt"] or w.now, existing["id"]),
+            )
+            record_change(conn, "task", blocked, "update", w.actor, w.now)
+            stats["updated"] += 1
+            continue
+        pairs = [(r[0], r[1]) for r in conn.execute("SELECT blocker_task_id, blocked_task_id FROM task_dependencies")]
+        cycle = find_cycle(pairs, blocker, blocked)
+        if cycle is not None:
+            stats["skipped"] += 1
+            names = " → ".join(f"「{titles.get(i, i)}」" for i in cycle)
+            issues.append(f"{DEP_LABEL}：{names} 會形成循環，已略過")
+            continue
+        created_by = w.user_id.get(item["createdByUsername"]) if item["createdByUsername"] else None
+        conn.execute(
+            "INSERT INTO task_dependencies (uid, blocker_task_id, blocked_task_id, type, lag_days, note, created_by, "
+            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                item["uid"],
+                blocker,
+                blocked,
+                item["type"],
+                item["lagDays"],
+                item["note"],
+                created_by,
+                item["createdAt"] or w.now,
+                item["updatedAt"] or w.now,
+            ),
+        )
+        record_change(conn, "task", blocked, "update", w.actor, w.now)
+        stats["created"] += 1
+    return issues

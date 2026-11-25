@@ -29,6 +29,7 @@ TasksSheets 是給實驗室內部用的多人任務 / 專案管理網站。本�
 | 總覽 `/`                              | 每位成員的進行中任務卡、近三週完成 / 處理件數；語氣中性、不排名（[product-principles.md](product-principles.md)）   |
 | 任務 `/tasks/list` `kanban` `gantt`   | 清單（就地編輯、快速新增、自訂欄位、詳情抽屜）、看板（拖曳改狀態與排序）、甘特圖；可直接管理狀態與專案；抽屜內可建立相關任務（`task_relations`，0013）與複製任務（`features/task_relations.py`，規格見 [design/task-list.md §13](design/task-list.md)） |
 | 任務 `/tasks/list` `kanban` `gantt`   | 清單（就地編輯、快速新增、自訂欄位、詳情抽屜、拖曳列換群組 / 排序）、看板（拖曳改狀態與排序）、甘特圖；可直接管理狀態與專案               |
+| 延遲鏈 `/tasks/delay-link`          | 任務依賴（前置任務 → 等待中的任務，禁止循環）、看板琥珀色「等待中 · 預計延後 N 天」、整條依賴鏈與最長延遲路徑（[design/delay-link.md](design/delay-link.md)） |
 | 問題回饋 `/feedback`                  | 回饋 / 問題清單與月曆排程（拖曳排程）                                                                                |
 | 個人清單 `/me`                        | 我的任務、釘選、自由待辦（含延後 / 取消等小狀態）；「產生匯報報告」依日期區間彙整完成事項（`personal_report.py`、`personal_items.done_at` 0020，規格見 [design/personal.md §10](design/personal.md)） |
 | 個人設定 `/settings`                  | 改顯示名稱、帳號、密碼（改密碼後其他裝置登出）                                                                       |
@@ -227,6 +228,11 @@ npx prettier --check .
 14. 看板 PinButton 一直顯示；768–1023px 回饋頁拖曳時「取消排程」放置列未做（鍵盤可取消）。
 15. 甘特圖：長條起點在畫面左側外時，條內標題被切；768 寬時分組標頭同時有逾期 Badge，成員名稱會被截斷。
 16. 6 處 Python docstring 仍寫「行為同 src/server/…」（歷史對照，`src/server` 已移除，已核對仍存在）。
+
+**任務依賴（feat/delay-link，[design/delay-link.md](design/delay-link.md)）**
+
+17. 多台電腦同步（sync-push）不同步依賴（JSON 匯出 / 匯入有包含，成環者略過並列出原因）。
+18. 甘特圖尚未畫依賴箭頭；只支援 finish-to-start；延後以日曆天推算（不排除週末與假日）。
 
 ## 12. 待使用者決策
 

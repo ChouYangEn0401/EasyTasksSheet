@@ -38,7 +38,7 @@
 ## 3. 資料規則（後端 `server/app/data_transfer.py`，CLI 共用）
 
 - 匯出：users（不含密碼雜湊）、statuses、projects、propertyDefs、tasks（含軟刪除，帶 deletedAt）、feedbackItems、
-  personalItems、manualIssues、worktreeRecords、engGithubLinks。不含 sessions、login_attempts、changes 與快取 / 快照表。
+  personalItems、manualIssues、worktreeRecords、engGithubLinks、taskDependencies（任務依賴，以兩端任務 uid 表示；成環者匯入時略過，見 delay-link.md）。不含 sessions、login_attempts、changes 與快取 / 快照表。
   關聯以 uid（`0005_uid` migration，trigger 自動產生）表示；成員以 username、GitHub 連動以 project 為自然鍵。
 - 對應：同 uid 為同一筆；狀態與專案 uid 對不到時以「名稱相同且唯一」對應（新安裝的預設資料不重複）。
 - 相同：createdAt / updatedAt / updatedByUsername 以外欄位都相同。衝突：兩邊都有且內容不同。

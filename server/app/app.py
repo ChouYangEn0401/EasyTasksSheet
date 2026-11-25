@@ -23,6 +23,7 @@ from .features import presence
 from .features import sync_push
 from .features import eng_paste, eng_status
 from .features import task_relations
+from .features import dependencies
 
 #: 不需登入的路由。/api/eng/worktrees/report 由端點自行以 WORKTREE_REPORT_TOKEN 驗證（仍受 CSRF 檢查約束）
 PUBLIC_PATHS = {
@@ -81,6 +82,8 @@ def create_app(
     app.include_router(profile.router, prefix="/api/profile")
     app.include_router(projects.router, prefix="/api/projects")
     app.include_router(projects.statuses_router, prefix="/api/statuses")
+    # 任務依賴 / 延遲鏈：須在 tasks.router 之前（/api/tasks/delay-chains 不可被 /{id} 攔截）
+    app.include_router(dependencies.router, prefix="/api/tasks")
     app.include_router(tasks.router, prefix="/api/tasks")
     app.include_router(task_relations.router, prefix="/api/tasks")
     app.include_router(properties.router, prefix="/api/properties")

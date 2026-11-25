@@ -22,6 +22,7 @@ import { Avatar, Badge, ColorDot, Button, Icon, Input, Spinner, StatusBadge } fr
 import { PinButton } from '../personal/PinButton.tsx';
 import { openAdminDialog } from './adminUi.ts';
 import { TaskPresenceDots } from '../presence/TaskPresence.tsx';
+import { BlockedLock } from '../delay-link/DependencyBadge.tsx';
 import { flashTask, useUpdateProperty } from './data.ts';
 import { EditableField, type EditState } from './EditableField.tsx';
 import { ListGroupDnd, ListInsertDnd, ListRowDnd } from './ListDnd.tsx';
@@ -869,6 +870,7 @@ function TaskCell({
         className={col.kind === 'estimate' || col.kind === 'number' ? 'tl-right' : ''}
         {...cellProps(rowKey, colIndex)}
       />
+      {col.kind === 'title' && <BlockedLock task={task} mode="list" />}
       {col.kind === 'title' && task.id > 0 && <RelationBadge count={task.relationCount} />}
       {col.kind === 'title' && task.id > 0 && <TaskPresenceDots taskId={task.id} />}
       {extra}

@@ -27,6 +27,7 @@ export const NAV_ENTRIES: NavEntry[] = [
       { key: 'list', label: '清單', to: '/tasks/list' },
       { key: 'kanban', label: '看板', to: '/tasks/kanban' },
       { key: 'gantt', label: '甘特圖', to: '/tasks/gantt' },
+      { key: 'delay-link', label: '延遲鏈', to: '/tasks/delay-link' },
     ],
   },
   { key: 'feedback', label: '問題回饋', to: '/feedback', icon: 'chat' },
@@ -58,7 +59,7 @@ export const NAV_ENTRIES: NavEntry[] = [
   },
 ];
 
-export const TASK_VIEWS = ['list', 'kanban', 'gantt'] as const;
+export const TASK_VIEWS = ['list', 'kanban', 'gantt', 'delay-link'] as const;
 export type TaskView = (typeof TASK_VIEWS)[number];
 
 export const LAST_TASK_VIEW_KEY = 'ts.lastTaskView';

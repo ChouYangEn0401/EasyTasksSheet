@@ -139,6 +139,7 @@ const VIEW_BY_PATH: Record<string, string> = {
   '/tasks/list': '清單',
   '/tasks/kanban': '看板',
   '/tasks/gantt': '甘特圖',
+  '/tasks/delay-link': '延遲鏈',
   '/feedback': '問題回饋',
   '/me': '個人清單',
   '/eng': '工程追蹤',

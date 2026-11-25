@@ -9,6 +9,7 @@ const VIEWS: { key: TaskView; label: string; icon: IconName }[] = [
   { key: 'list', label: '清單', icon: 'list' },
   { key: 'kanban', label: '看板', icon: 'kanban' },
   { key: 'gantt', label: '甘特圖', icon: 'gantt' },
+  { key: 'delay-link', label: '延遲鏈', icon: 'link' },
 ];
 
 /**

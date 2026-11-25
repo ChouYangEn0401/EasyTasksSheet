@@ -31,6 +31,7 @@ ALL_TABLES = [
     "sync_conflicts",
     "sync_sources",
     "sync_uid_aliases",
+    "task_dependencies",
     "task_relations",
     "tasks",
     "user_presence",

@@ -23,6 +23,7 @@ import {
   UpdatedAt,
 } from '../../ui/index.ts';
 import { PinButton } from '../personal/PinButton.tsx';
+import { DependenciesSection } from '../delay-link/DependenciesSection.tsx';
 import { TaskPresenceHint } from '../presence/TaskPresence.tsx';
 import { reportEditing } from '../../lib/presence.ts';
 import { useDeleteTaskOptimistic, useOptimisticUpdate } from './data.ts';
@@ -364,6 +365,7 @@ function TaskDetail({ task, titleId }: { task: Task; titleId: string }) {
         )}
       </div>
       <RelatedTasks task={task} />
+      <DependenciesSection task={task} />
       <Description task={task} fx={fieldFx('description')} />
     </>
   );

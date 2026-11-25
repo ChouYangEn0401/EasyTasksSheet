@@ -16,6 +16,7 @@ from ..db import next_sort_order, row_to_dict, rows_to_dicts
 from ..errors import bad_request, not_found, validation_error
 from ..schemas import TaskCreateInput, TaskUpdateInput
 from ..validate import parse_id, present, read_json
+from .dependencies import attach_dependency_fields
 from .properties import merge_custom_values
 
 router = APIRouter()
@@ -116,13 +117,15 @@ async def list_tasks(request: Request):
             conds.append("instr(lower(title), lower(?)) > 0")
             params.append(q)
 
+    ctx = get_ctx(request)
     # relationCount：每個任務的相關任務數（不含已刪除的對方任務），以單一查詢聚合（task_relations.py）
-    rows = get_ctx(request).db.all(
+    rows = ctx.db.all(
         f"WITH {RELATION_COUNT_CTE} SELECT tasks.*, coalesce(rc.n, 0) AS relation_count FROM tasks "
         f"LEFT JOIN rc ON rc.task_id = tasks.id WHERE {' AND '.join(conds)} ORDER BY tasks.sort_order, tasks.id",
         tuple(params),
     )
-    return rows_to_dicts(rows)
+    # 依賴（阻擋關係）欄位：isBlocked / blockedByCount / blocksCount / delayDays / projectedEnd（單次批次推算）
+    return attach_dependency_fields(ctx.db, rows_to_dicts(rows), ctx.now())
 
 
 @router.post("")

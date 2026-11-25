@@ -314,3 +314,13 @@
 
 - 拖曳期間呼叫 `suspendGlobalShortcuts()` 暫停全域快捷鍵；`aria-live="assertive"` 以中文播報：「已拿起『X』，目前在 進行中 第 1 筆」「移到 待辦 第 2 筆」「已放到 待辦 第 1 筆」「已取消，回到 進行中 第 1 筆」。
 - 效能：列只訂閱自己的標記（外部 store + `useSyncExternalStore`），標記以 data-* 屬性寫在列上，拖曳中不會整張表重新渲染。
+
+## 15. 依賴標示（feat/delay-link）
+
+完整規格見 [delay-link.md](delay-link.md)。清單 / 看板 / 詳情只做最小接入，元件在 `src/web/features/delay-link/`。
+
+- **看板卡片**：被擋住（有未完成的前置任務）時加琥珀左側色條與淡琥珀底（`--color-warning*`，不用紅色），標題前鎖頭，卡片底部徽章「等待中 · 預計延後 N 天 → 12/20」（無法推算或未延後時只寫「等待中」）；正在擋住別人時顯示中性小徽章「擋住 N」。皆有 Tooltip。徽章列在中繼列下方、可換行，與逾期、待辦清單、相關任務等徽章並存不擠壓。
+- **顯示開關**：看板右上「顯示依賴標示」（預設開，記在 localStorage `ts.kanban.showDeps`）。
+- **清單列**：標題旁小鎖頭（被擋住時）與 Tooltip。
+- **任務詳情**：在「自訂欄位」與「描述」之間新增「依賴」區（等待這些任務完成 / 完成後可開始的任務、＋ 新增、移除附復原）。
+- 資料來自 `GET /api/tasks` 附帶的 `isBlocked`、`blockedByCount`、`blocksCount`、`delayDays`、`projectedEnd`。

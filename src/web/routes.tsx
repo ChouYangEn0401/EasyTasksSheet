@@ -1,6 +1,7 @@
 import { createBrowserRouter, type RouteObject } from 'react-router';
 import { AdminUsersPage } from './features/admin/AdminUsersPage.tsx';
 import { DataPage } from './features/admin/DataPage.tsx';
+import { DelayLinkPage } from './features/delay-link/DelayLinkPage.tsx';
 import { PermissionsPage } from './features/admin/PermissionsPage.tsx';
 import { SyncPage } from './features/admin/SyncPage.tsx';
 import { LoginPage } from './features/auth/LoginPage.tsx';
@@ -53,6 +54,7 @@ export const routes: RouteObject[] = [
           { path: 'list', element: <ListPage />, handle: h('任務') },
           { path: 'kanban', element: <KanbanPage />, handle: h('任務') },
           { path: 'gantt', element: <GanttPage />, handle: h('任務') },
+          { path: 'delay-link', element: <DelayLinkPage />, handle: h('任務') },
         ],
       },
     ],

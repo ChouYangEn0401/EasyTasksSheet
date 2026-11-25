@@ -4,6 +4,8 @@ import { useProjects, useStatuses, useTasks } from '../../lib/hooks.ts';
 import { useTaskFilters } from '../../lib/useTaskFilters.ts';
 import { NoFilterResults } from '../../shell/FilterBar.tsx';
 import { ErrorState } from '../../ui/index.ts';
+import { ViewTabsActions } from '../../shell/ViewTabs.tsx';
+import { DependencyMarksToggle } from '../delay-link/DependencyBadge.tsx';
 import { KanbanBoard } from './KanbanBoard.tsx';
 import { KanbanSkeleton } from './KanbanColumn.tsx';
 import { visibleStatuses } from './kanbanModel.ts';
@@ -47,6 +49,9 @@ export function KanbanPage() {
 
   return (
     <section className="kanban" aria-label="任務看板">
+      <ViewTabsActions>
+        <DependencyMarksToggle />
+      </ViewTabsActions>
       {body}
     </section>
   );

@@ -8,6 +8,8 @@ import { Avatar, ColorDot, UpdatedAt } from '../../ui/index.ts';
 import { PinButton } from '../personal/PinButton.tsx';
 import { TaskPresenceDots } from '../presence/TaskPresence.tsx';
 import { RelationBadge } from '../tasks/RelationBadge.tsx';
+import { BlockedLock, DependencyBadges } from '../delay-link/DependencyBadge.tsx';
+import { dependencyAriaSuffix, useDependencyCardClass } from '../delay-link/depFields.ts';
 import { cardAriaLabel, dueDisplay, formatHours } from './kanbanModel.ts';
 
 /** 16px 線條圖示（core Icon 尚無日曆 / 時鐘，僅供卡片中繼列使用） */
@@ -64,7 +66,10 @@ export function KanbanCardContent({ task, project, showProject, isDone }: CardVi
       >
         <PinButton taskId={task.id} size="sm" />
       </span>
-      <div className="kanban-card-title">{task.title}</div>
+      <div className="kanban-card-title">
+        <BlockedLock task={task} />
+        {task.title}
+      </div>
       {task.id > 0 && <TaskPresenceDots taskId={task.id} />}
       <div className="kanban-card-meta">
         <Avatar userId={task.assigneeId} size="sm" />
@@ -87,6 +92,7 @@ export function KanbanCardContent({ task, project, showProject, isDone }: CardVi
           <UpdatedAt at={task.updatedAt} by={task.updatedBy} />
         </span>
       </div>
+      <DependencyBadges task={task} isDone={isDone} />
     </>
   );
 }
@@ -129,6 +135,7 @@ export function KanbanCard(props: KanbanCardProps) {
       : { duration: motionMs('--duration-base'), easing: motionEasing('--ease-standard') },
   });
   const nodeRef = useRef<HTMLDivElement | null>(null);
+  const depClass = useDependencyCardClass(task, props.isDone);
 
   // UpdatedAt 預設可聚焦；為維持 roving tabindex，卡片內的時間不進入 Tab 順序
   useEffect(() => {
@@ -162,7 +169,7 @@ export function KanbanCard(props: KanbanCardProps) {
         if (e.target === e.currentTarget) onFocusCard(task.id);
       }}
       onClick={onClick}
-      aria-label={cardAriaLabel(task, assigneeName)}
+      aria-label={cardAriaLabel(task, assigneeName) + dependencyAriaSuffix(task)}
       aria-current={selected ? 'true' : undefined}
       data-task-id={task.id}
       {...fxAttr(isDragging ? undefined : fx)}
@@ -171,6 +178,7 @@ export function KanbanCard(props: KanbanCardProps) {
         selected && 'is-selected',
         isDragging && 'is-placeholder',
         isDragging && keyboardActive && 'is-keyboard',
+        depClass,
       ]
         .filter(Boolean)
         .join(' ')}
