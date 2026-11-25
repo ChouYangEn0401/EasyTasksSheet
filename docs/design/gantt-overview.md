@@ -106,7 +106,7 @@
 ### B3. 成員卡片
 
 - 兩個區段（標題 `--text-lg` 600 + 計數）：**「目前無任務」在上、「進行中」在下**。無任務人數為 0 時，該區段改為一行 success 提示列「所有成員都有進行中的任務」（`-soft` 底、`-border` 邊、`-text` 字）。
-- 排序：無任務區段依待辦數少 → 多（完全沒任務者最前）、再依顯示名稱；進行中區段依逾期數多 → 少、再依顯示名稱；「未指派」卡固定最後（未指派未完成數為 0 時不顯示）。只列 `is_active` 成員。格線 `repeat(auto-fill, minmax(280px, 1fr))`、間距 `--space-4`。卡片：surface、1px border、`--radius-lg`、`--shadow-xs`、內距 `--space-4`。
+- 排序：無任務區段依待辦數少 → 多（完全沒任務者最前）、再依顯示名稱；進行中區段依逾期數多 → 少、再依顯示名稱（名稱定序由前端 `Intl.Collator('zh-Hant')` 處理；後端只依數值條件與使用者 id 排序）；「未指派」卡固定最後（未指派未完成數為 0 時不顯示）。只列 `is_active` 成員。格線 `repeat(auto-fill, minmax(280px, 1fr))`、間距 `--space-4`。卡片：surface、1px border、`--radius-lg`、`--shadow-xs`、內距 `--space-4`。
 
 | 部位 | 規格 |
 |---|---|
@@ -123,7 +123,7 @@
 - `<Gantt compact />` 固定：負責人分組、週刻度、唯讀、列高 28、左欄 220px、無未排程區；只顯示未完成且已排程的任務；進頁捲到今天；群組順序同成員卡片（無任務成員在最上，顯示「無排程任務」）。右上連結「開啟完整 Gantt →」到 `/tasks/gantt?group=assignee`。
 - 載入中：統計數字與卡片皆 Skeleton（4 格 + 6 張卡 + Gantt 骨架）。錯誤：「統計 + 成員」與「Gantt」兩塊各自顯示 `ErrorState`。無任務：統計為 0、成員區 `EmptyState`「還沒有任務」。統計與成員卡來自 `GET /api/overview`，精簡 Gantt 用 core 的 tasks hook；皆沿用 30 秒輪詢與 focus 重抓，靜默更新。
 - `/api/overview` 需提供：`totals.by_status[]`（status_id、name、category、color、count）、`totals.overdue`、`totals.done_this_week`、`week_range`；`members[]`（user、`doing[]` 含 id / title / status_id / due_date / updated_at / updated_by、`counts.todo|doing|done`、`overdue`、`remaining_hours`、`unestimated_count`、`last_updated_at`）；`unassigned`（open_count、remaining_hours）。
-- 定義：無任務 = category `doing` 的任務數為 0；逾期 = 到期日早於今天且 category ≠ done；未完成預估 = category ≠ done 的 `estimate_hours` 合計；本週完成 = category `done` 且 `updated_at` 落在本週（**schema 無完成時間欄位，此為近似值，需協調者確認**）。
+- 定義：無任務 = category `doing` 的任務數為 0；逾期 = 到期日早於今天且 category ≠ done；未完成預估 = category ≠ done 的 `estimate_hours` 合計；本週完成 = category `done` 且 `completed_at`（狀態類別轉為 done 的時刻；改回非 done 時清空；既有資料以 `updated_at` 回填）落在本週（Asia/Taipei 週一 00:00 起），不含已刪除任務。
 
 ## C. 鍵盤操作
 

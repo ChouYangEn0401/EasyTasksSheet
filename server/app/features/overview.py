@@ -1,4 +1,4 @@
-"""/api/overview：每人進行中任務、未完成預估工時、各狀態數量、逾期、未指派、本週完成（近似）。"""
+"""/api/overview：每人進行中任務、未完成預估工時、各狀態數量、逾期、未指派、本週完成（依 completed_at）。"""
 
 from __future__ import annotations
 
@@ -34,9 +34,10 @@ async def get_overview(request: Request):
                 "estimateHours": r[5],
                 "updatedAt": r[6],
                 "updatedBy": r[7],
+                "completedAt": r[8],
             }
             for r in conn.execute(
-                "SELECT id, title, status_id, assignee_id, due_date, estimate_hours, updated_at, updated_by "
+                "SELECT id, title, status_id, assignee_id, due_date, estimate_hours, updated_at, updated_by, completed_at "
                 "FROM tasks WHERE deleted_at IS NULL"
             )
         ]

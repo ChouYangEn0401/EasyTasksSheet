@@ -8,6 +8,9 @@ from server.app.db import DEFAULT_STATUSES, DRIZZLE_WHEN, MIGRATIONS_DIR, create
 
 from .helpers import create_test_db, create_test_user
 
+#: 依檔名排序的全部 migration（新增 migration 不需改測試）
+ALL_MIGRATIONS = [f.stem for f in sorted(MIGRATIONS_DIR.glob("*.sql"))]
+
 ALL_TABLES = [
     "changes",
     "feedback_items",
@@ -42,7 +45,7 @@ def table_names(db):
 def test_fresh_db_full_schema_and_idempotent(tmp_path):
     path = str(tmp_path / "sub" / "test.db")
     db = create_db(path)
-    assert run_migrations(db) == ["0000_init", "0001_worktree_is_merged", "0002_eng_manual"]
+    assert run_migrations(db) == ALL_MIGRATIONS
     run_seed(db)
     assert table_names(db) == ALL_TABLES
     db.close()
@@ -97,7 +100,7 @@ def test_upgrade_old_db_adds_is_merged(tmp_path):
     db.close()
 
     db2 = create_db(path)
-    assert run_migrations(db2) == ["0001_worktree_is_merged", "0002_eng_manual"]
+    assert run_migrations(db2) == ALL_MIGRATIONS[1:]
     assert run_migrations(db2) == []
     assert "is_merged" in columns(db2)
     rows = db2.all("SELECT * FROM worktree_snapshots")
@@ -130,9 +133,9 @@ def test_adopts_existing_drizzle_db(tmp_path):
 
     db = create_db(path)
     # drizzle 已套用者不重跑，只補上 Python 端新增的 migration
-    assert run_migrations(db) == ["0002_eng_manual"]
+    assert run_migrations(db) == ALL_MIGRATIONS[2:]
     assert run_migrations(db) == []
-    assert db.scalar("SELECT count(*) FROM _migrations") == 3
+    assert db.scalar("SELECT count(*) FROM _migrations") == len(ALL_MIGRATIONS)
     assert db.scalar("SELECT count(*) FROM manual_issues") == 0
     db.close()
 

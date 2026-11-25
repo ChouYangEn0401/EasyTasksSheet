@@ -52,8 +52,8 @@ export const overviewResponse = z.object({
     byStatus: z.array(statusTotal),
     overdue: z.number(),
     /**
-     * 本週完成（近似值）：category = done 且 updated_at 落在本週。
-     * schema 無完成時間欄位，完成後再被編輯也會計入當週。
+     * 本週完成：category = done 且 completed_at（轉為 done 的時刻）落在本週
+     * （Asia/Taipei 週一 00:00 起）；不含已刪除任務。完成後再編輯其他欄位不影響。
      */
     doneThisWeek: z.number(),
     /** 目前無任務的成員數 */
@@ -62,7 +62,8 @@ export const overviewResponse = z.object({
   }),
   /**
    * 只含啟用中的成員；已排序：
-   * 無任務者在前（待辦數少 → 多，再依名稱），其後進行中者（逾期多 → 少，再依名稱）
+   * 無任務者在前（待辦數少 → 多），其後進行中者（逾期多 → 少），同條件依使用者 id。
+   * 同條件成員的名稱定序（zh-Hant）由前端 sortOverviewMembers 處理。
    */
   members: z.array(memberSummary),
   unassigned: z.object({

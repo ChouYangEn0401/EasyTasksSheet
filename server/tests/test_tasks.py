@@ -87,6 +87,7 @@ def test_create_with_title_only():
         "startDate": None,
         "dueDate": None,
         "estimateHours": None,
+        "completedAt": None,
     }
     assert {k: t[k] for k in expected} == expected
     assert set(t) == {*expected, "id", "sortOrder"}
@@ -143,6 +144,70 @@ def test_member_can_update_others_task_partial_patch():
     assert cleared["assigneeId"] is None and cleared["progress"] == 50
     assert a.request("PATCH", f"/api/tasks/{t['id']}", {"title": None}).status_code == 400
     assert a.request("PATCH", "/api/tasks/abc", {"title": "x"}).status_code == 400
+
+
+DONE_STATUS, DOING_STATUS, REVIEW_STATUS = 4, 2, 3
+
+
+def test_completed_at_on_create():
+    _t, clock, _alice, _bob, a, _b, _cc = setup()
+    done = a.request("POST", "/api/tasks", {"title": "建立即完成", "statusId": DONE_STATUS}).json()
+    assert done["completedAt"] == clock.now()
+    todo = a.request("POST", "/api/tasks", {"title": "待辦"}).json()
+    assert todo["completedAt"] is None
+    assert a.get(f"/api/tasks/{done['id']}").json()["completedAt"] == clock.now()
+
+
+def test_completed_at_status_round_trip():
+    _t, clock, _alice, _bob, a, _b, _cc = setup()
+    task = a.request("POST", "/api/tasks", {"title": "來回"}).json()
+    path = f"/api/tasks/{task['id']}"
+
+    clock.advance(60_000)
+    # 非 done → 非 done：仍為 null
+    assert a.request("PATCH", path, {"statusId": DOING_STATUS}).json()["completedAt"] is None
+
+    clock.advance(60_000)
+    done_at = clock.now()
+    assert a.request("PATCH", path, {"statusId": DONE_STATUS}).json()["completedAt"] == done_at
+
+    # 仍在 done：編輯其他欄位或再送同一 done 狀態都不改
+    clock.advance(60_000)
+    edited = a.request("PATCH", path, {"title": "改標題", "progress": 80}).json()
+    assert edited["completedAt"] == done_at and edited["updatedAt"] == clock.now()
+    clock.advance(60_000)
+    assert a.request("PATCH", path, {"statusId": DONE_STATUS}).json()["completedAt"] == done_at
+
+    # done → 非 done：清除
+    clock.advance(60_000)
+    assert a.request("PATCH", path, {"statusId": REVIEW_STATUS}).json()["completedAt"] is None
+
+    # 再次完成：設為新時間
+    clock.advance(60_000)
+    assert a.request("PATCH", path, {"statusId": DONE_STATUS}).json()["completedAt"] == clock.now()
+
+
+def test_completed_at_migration_backfill(tmp_path):
+    """0003 回填：既有 done 類別任務 completed_at = updated_at，其餘為 NULL"""
+    import shutil
+
+    from server.app.db import MIGRATIONS_DIR, create_db, run_migrations, run_seed
+
+    for f in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        if f.stem < "0003":
+            shutil.copy(f, tmp_path / f.name)
+    db = create_db(":memory:")
+    run_migrations(db, tmp_path)
+    run_seed(db)
+    with db.tx() as conn:
+        for title, status_id, updated_at in (("完成", DONE_STATUS, 111), ("進行", DOING_STATUS, 222), ("待辦", 1, 333)):
+            conn.execute(
+                "INSERT INTO tasks (project_id, title, status_id, created_at, updated_at) VALUES (1, ?, ?, 1, ?)",
+                (title, status_id, updated_at),
+            )
+    assert "0003_task_completed_at" in run_migrations(db)
+    rows = db.all("SELECT title, completed_at FROM tasks ORDER BY id")
+    assert [(r["title"], r["completed_at"]) for r in rows] == [("完成", 111), ("進行", None), ("待辦", None)]
 
 
 def test_soft_delete():

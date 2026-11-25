@@ -4,7 +4,8 @@
 - 目前無任務：category doing 的任務數為 0
 - 逾期：到期日早於今天且 category ≠ done
 - 未完成預估：category ≠ done 的 estimate_hours 合計
-- 本週完成（近似）：category done 且 updated_at 落在本週（週一 00:00 至下週一 00:00，以 tz 計）
+- 本週完成：category done 且 completed_at 落在本週（週一 00:00 至下週一 00:00，以 tz 計）
+- 成員排序：只依數值條件與使用者 id 穩定排序；名稱定序交給前端（Intl.Collator，Python 端無 ICU）
 """
 
 from __future__ import annotations
@@ -62,19 +63,17 @@ def week_of(now: int, time_zone: str) -> dict[str, Any]:
     }
 
 
-def _name_key(m: dict[str, Any]) -> tuple[str, str]:
-    # 近似 localeCompare(..., 'zh-Hant')：不分大小寫，再以原字串定序
-    name = m["user"]["displayName"]
-    return (name.casefold(), name)
-
-
 def sort_members(members: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
-    """成員排序：無任務在前（待辦少 → 多，再依名稱）；進行中（逾期多 → 少，再依名稱）"""
+    """成員排序：無任務在前（待辦少 → 多）；進行中（逾期多 → 少）；同條件依使用者 id。
+
+    不以名稱排序：Python 端無 ICU，中文定序與瀏覽器不同；前端會在同條件成員間以
+    Intl.Collator('zh-Hant') 依顯示名稱重排（src/web/features/overview/sortMembers.ts）。
+    """
 
     def key(m: dict[str, Any]) -> tuple:
         if m["idle"]:
-            return (0, m["counts"]["todo"], _name_key(m))
-        return (1, -m["overdue"], _name_key(m))
+            return (0, m["counts"]["todo"], m["user"]["id"])
+        return (1, -m["overdue"], m["user"]["id"])
 
     return sorted(members, key=key)
 
@@ -93,7 +92,7 @@ def compute_overview(
     time_zone: str,
 ) -> dict[str, Any]:
     """statuses：id/name/color/category/sortOrder；users：id/username/displayName/isActive；
-    tasks（未刪除）：id/title/statusId/assigneeId/dueDate/estimateHours/updatedAt/updatedBy"""
+    tasks（未刪除）：id/title/statusId/assigneeId/dueDate/estimateHours/updatedAt/updatedBy/completedAt"""
     week = week_of(now, time_zone)
     today = week["today"]
     status_by_id = {s["id"]: s for s in statuses}
@@ -113,7 +112,8 @@ def compute_overview(
         status_count[t["statusId"]] = status_count.get(t["statusId"], 0) + 1
         if is_overdue(t):
             overdue += 1
-        if category_of(t) == "done" and week["startMs"] <= t["updatedAt"] < week["endMs"]:
+        completed_at = t.get("completedAt")
+        if category_of(t) == "done" and completed_at is not None and week["startMs"] <= completed_at < week["endMs"]:
             done_this_week += 1
         by_assignee.setdefault(t["assigneeId"], []).append(t)
 

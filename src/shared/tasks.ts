@@ -23,6 +23,11 @@ export const task = z.object({
   createdBy: z.number().int().nullable(),
   updatedBy: z.number().int().nullable(),
   deletedAt: z.number().int().nullable(),
+  /**
+   * 完成時間（ms）：狀態類別轉為 done 時由後端寫入，改回非 done 時為 null。
+   * 選填以相容舊資料與既有測試資料。
+   */
+  completedAt: z.number().int().nullable().optional(),
   ...timestamps,
 });
 export type Task = z.infer<typeof task>;

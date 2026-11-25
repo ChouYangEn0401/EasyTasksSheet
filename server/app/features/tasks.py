@@ -55,6 +55,11 @@ def _check_refs(conn: sqlite3.Connection, fields: dict[str, Any]) -> None:
         raise bad_request("負責人不存在")
 
 
+def _is_done(conn: sqlite3.Connection, status_id: int) -> bool:
+    r = conn.execute("SELECT category FROM statuses WHERE id = ?", (status_id,)).fetchone()
+    return r is not None and r["category"] == "done"
+
+
 def _find_task(conn: sqlite3.Connection, task_id: int) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM tasks WHERE id = ? AND deleted_at IS NULL", (task_id,)).fetchone()
 
@@ -132,8 +137,17 @@ async def create_task(request: Request):
             fields["sortOrder"] = next_sort_order(conn, "tasks")
         merged = merge_custom_values(conn, fields["projectId"], {}, custom) if custom else {}
         t = ctx.now()
-        cols = [_COLUMNS[k] for k in fields] + ["custom", "created_by", "updated_by", "created_at", "updated_at"]
-        values = [*fields.values(), json.dumps(merged, ensure_ascii=False), uid, uid, t, t]
+        # 以 done 類別狀態建立 → 視為此刻完成
+        completed_at = t if _is_done(conn, fields["statusId"]) else None
+        cols = [_COLUMNS[k] for k in fields] + [
+            "custom",
+            "created_by",
+            "updated_by",
+            "created_at",
+            "updated_at",
+            "completed_at",
+        ]
+        values = [*fields.values(), json.dumps(merged, ensure_ascii=False), uid, uid, t, t, completed_at]
         cur = conn.execute(
             f"INSERT INTO tasks ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", tuple(values)
         )
@@ -174,6 +188,14 @@ async def update_task(request: Request, id: str):
                 conn, fields.get("projectId", current["project_id"]), json.loads(current["custom"]), custom
             )
             sets["custom"] = json.dumps(merged, ensure_ascii=False)
+        # 完成時間：非 done → done 設為此刻；done → 非 done 清除；仍為 done（或仍非 done）不變
+        if "statusId" in fields:
+            was_done = _is_done(conn, current["status_id"])
+            now_done = _is_done(conn, fields["statusId"])
+            if now_done and not was_done:
+                sets["completed_at"] = t
+            elif was_done and not now_done:
+                sets["completed_at"] = None
         sets["updated_by"] = uid
         sets["updated_at"] = t
         conn.execute(

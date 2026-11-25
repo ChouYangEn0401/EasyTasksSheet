@@ -2,14 +2,16 @@ import { useQuery } from '@tanstack/react-query';
 import type { OverviewResponse } from '../../../shared/overview.ts';
 import { api } from '../../lib/api.ts';
 import { LIST_POLL_MS } from '../../lib/queryClient.ts';
+import { withSortedMembers } from './sortMembers.ts';
 
 export const overviewKey = ['overview'] as const;
 
-/** GET /api/overview；沿用 30 秒輪詢與 focus 重抓，靜默更新 */
+/** GET /api/overview；沿用 30 秒輪詢與 focus 重抓，靜默更新。成員在同條件間依名稱（zh-Hant）重排 */
 export function useOverview() {
   return useQuery({
     queryKey: overviewKey,
     queryFn: ({ signal }) => api.get<OverviewResponse>('/overview', { signal }),
+    select: withSortedMembers,
     refetchInterval: LIST_POLL_MS,
     placeholderData: (prev) => prev,
   });

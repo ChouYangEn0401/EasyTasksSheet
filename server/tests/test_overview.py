@@ -25,22 +25,34 @@ def setup():
     eve = create_test_user(t.db, display_name="Eve", is_active=0)
     seq = [0]
 
-    def add(status_id, assignee_id=None, due_date=None, estimate_hours=None, updated_at=None, deleted_at=None):
+    def add(
+        status_id,
+        assignee_id=None,
+        due_date=None,
+        estimate_hours=None,
+        updated_at=None,
+        deleted_at=None,
+        completed_at=None,
+    ):
         seq[0] += 1
+        updated = clock.now() if updated_at is None else updated_at
+        # done 任務未指定完成時間時，以 updated_at 為完成時間
+        completed = completed_at if completed_at is not None else (updated if status_id == DONE else None)
         with t.db.tx() as conn:
             cur = conn.execute(
                 "INSERT INTO tasks (project_id, title, status_id, assignee_id, due_date, estimate_hours, "
-                "updated_at, created_at, deleted_at, updated_by) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "updated_at, created_at, deleted_at, updated_by, completed_at) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     f"T{seq[0]}",
                     status_id,
                     assignee_id,
                     due_date,
                     estimate_hours,
-                    clock.now() if updated_at is None else updated_at,
+                    updated,
                     at("2025-12-01T00:00:00+08:00"),
                     deleted_at,
                     alice["id"],
+                    completed,
                 ),
             )
             return {"id": cur.lastrowid, "title": f"T{seq[0]}"}
@@ -66,6 +78,10 @@ def setup():
     add(TODO, estimate_hours=2)
     add(DOING)
     add(DONE, updated_at=at("2026-01-12T00:00:00+08:00"))  # 下週一 00:00，不算本週
+    # 上週完成、本週才被編輯其他欄位：依 completed_at，不算本週
+    add(DONE, completed_at=at("2026-01-02T10:00:00+08:00"))
+    # 本週完成但已軟刪除：不計
+    add(DONE, completed_at=at("2026-01-05T08:00:00+08:00"), deleted_at=clock.now())
 
     api = login_as(t, alice)
     return api, alice, bob, carol, dave, a1, a2
@@ -88,7 +104,7 @@ def test_overview_numbers():
         ["待辦", "todo", 5],
         ["進行中", "doing", 4],
         ["審查中", "doing", 1],
-        ["完成", "done", 4],
+        ["完成", "done", 5],
     ]
     assert set(o["totals"]["byStatus"][0]) == {"statusId", "name", "category", "color", "count"}
     assert o["totals"]["overdue"] == 4
@@ -160,14 +176,55 @@ def test_week_of_taipei_across_utc_day():
     assert w["start"] == "2026-11-23" and w["end"] == "2026-11-29"
 
 
-def test_sort_members_by_name_on_tie():
-    def mk(name, idle, todo, overdue):
+def test_sort_members_by_user_id_on_tie():
+    """同條件不依名稱（Python 無 ICU），改依使用者 id；名稱定序由前端處理"""
+
+    def mk(uid, name, idle, todo, overdue):
         return {
-            "user": {"id": 0, "username": name, "displayName": name},
+            "user": {"id": uid, "username": name, "displayName": name},
             "idle": idle,
             "counts": {"todo": todo, "doing": 0 if idle else 1, "done": 0},
             "overdue": overdue,
         }
 
-    ordered = sort_members([mk("b", False, 0, 1), mk("a", False, 0, 1), mk("z", True, 1, 0), mk("y", True, 1, 0)])
-    assert [x["user"]["displayName"] for x in ordered] == ["y", "z", "a", "b"]
+    ordered = sort_members(
+        [
+            mk(4, "a", False, 0, 1),
+            mk(3, "b", False, 0, 1),
+            mk(5, "王", False, 0, 3),
+            mk(2, "y", True, 1, 0),
+            mk(1, "z", True, 1, 0),
+            mk(6, "陳", True, 0, 0),
+        ]
+    )
+    assert [x["user"]["id"] for x in ordered] == [6, 1, 2, 5, 3, 4]
+
+
+def _week_count_app():
+    clock = FakeClock()
+    t = create_test_app(now=clock.now)
+    alice = create_test_user(t.db, display_name="Alice")
+    return t, clock, alice, login_as(t, alice)
+
+
+def test_done_this_week_follows_completed_at_via_api():
+    t, clock, alice, api = _week_count_app()
+    # 上週日完成（台北 1/4 23:00）
+    clock.set(at("2026-01-04T23:00:00+08:00"))
+    old = api.request("POST", "/api/tasks", {"title": "上週完成", "statusId": DONE}).json()
+    # 本週一 09:00：編輯上週完成任務的其他欄位 → 仍不算本週
+    clock.set(at("2026-01-05T09:00:00+08:00"))
+    api = login_as(t, alice)  # 時鐘跳過閒置逾時，重新登入
+    api.request("PATCH", f"/api/tasks/{old['id']}", {"title": "改標題"})
+    assert api.get("/api/overview").json()["totals"]["doneThisWeek"] == 0
+    # 本週完成一筆
+    task = api.request("POST", "/api/tasks", {"title": "本週"}).json()
+    api.request("PATCH", f"/api/tasks/{task['id']}", {"statusId": DONE})
+    assert api.get("/api/overview").json()["totals"]["doneThisWeek"] == 1
+    # 改回非 done → 不計；軟刪除的 done 任務不計
+    api.request("PATCH", f"/api/tasks/{task['id']}", {"statusId": DOING})
+    assert api.get("/api/overview").json()["totals"]["doneThisWeek"] == 0
+    gone = api.request("POST", "/api/tasks", {"title": "刪除", "statusId": DONE}).json()
+    assert api.get("/api/overview").json()["totals"]["doneThisWeek"] == 1
+    api.request("DELETE", f"/api/tasks/{gone['id']}")
+    assert api.get("/api/overview").json()["totals"]["doneThisWeek"] == 0
