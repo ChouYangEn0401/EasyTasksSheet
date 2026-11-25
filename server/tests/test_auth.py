@@ -261,15 +261,14 @@ def test_app_origin_only():
 # ── 預設管理員 ──
 
 
-def test_ensure_admin_random_password_logged_once():
+def test_ensure_admin_default_admin_password():
     db: Database = create_test_db()
     logs: list[str] = []
     admin = ensure_admin(db, log=logs.append)
     assert admin is not None
     assert admin["username"] == "admin" and admin["role"] == "admin" and admin["must_change_password"] == 1
-    assert len(logs) == 1
-    password = re.search(r"初始密碼：(\S+?)（", logs[0]).group(1)  # type: ignore[union-attr]
-    assert verify_password(admin["password_hash"], password)
+    assert verify_password(admin["password_hash"], "password")
+    assert logs == ["[auth] 已建立預設管理員 admin / password，首次登入須重設帳號與密碼"]
     # 已有帳號時不再建立
     assert ensure_admin(db, log=logs.append) is None
     assert len(logs) == 1
@@ -279,9 +278,22 @@ def test_ensure_admin_from_env_does_not_log_password():
     db = create_test_db()
     logs: list[str] = []
     admin = ensure_admin(db, "boss", "env-password-1", log=logs.append)
-    assert admin is not None and admin["username"] == "boss"
+    assert admin is not None and admin["username"] == "boss" and admin["must_change_password"] == 1
     assert verify_password(admin["password_hash"], "env-password-1")
+    assert len(logs) == 1
     assert "env-password-1" not in ",".join(logs)
+
+
+def test_config_admin_defaults_and_override():
+    from server.app.config import load_config
+    from server.app.settings import auth_settings_from
+
+    c = load_config({"ADMIN_USERNAME": "", "ADMIN_PASSWORD": ""})
+    assert (c.ADMIN_USERNAME, c.ADMIN_PASSWORD) == ("admin", "password")
+    assert auth_settings_from(c).bootstrap_admin_username == "admin"
+    c = load_config({"ADMIN_USERNAME": "boss", "ADMIN_PASSWORD": "env-password-1"})
+    assert (c.ADMIN_USERNAME, c.ADMIN_PASSWORD) == ("boss", "env-password-1")
+    assert auth_settings_from(c).bootstrap_admin_username == "boss"
 
 
 def test_verify_existing_node_argon2_hash():

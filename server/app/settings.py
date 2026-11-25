@@ -23,6 +23,8 @@ class AuthSettings:
     login_max_fails_per_ip: int
     #: 是否信任反向代理附加的 X-Forwarded-For（預設否：一律用 socket 位址）
     trusted_proxy: bool = False
+    #: 預設管理員帳號（ADMIN_USERNAME）：此帳號在 must_change_password 時須同時改帳號與密碼
+    bootstrap_admin_username: str = "admin"
 
     def with_overrides(self, **overrides: Any) -> "AuthSettings":
         return replace(self, **overrides) if overrides else self
@@ -39,4 +41,5 @@ def auth_settings_from(config: Config) -> AuthSettings:
         login_lock_ms=round(config.LOGIN_LOCK_MINUTES * MINUTE),
         login_max_fails_per_ip=config.LOGIN_MAX_FAILS_PER_IP,
         trusted_proxy=config.TRUSTED_PROXY,
+        bootstrap_admin_username=config.ADMIN_USERNAME,
     )

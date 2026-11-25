@@ -172,6 +172,51 @@ test('登入 → 強制改密碼 → 走訪導覽 → 快速新增 → 另一瀏
   expect(errors.filter((e) => !/status of 401/.test(e))).toEqual([]);
 });
 
+test('預設管理員首次登入須重設帳號與密碼，之後改用新帳號登入', async ({ page }) => {
+  const boot = E2E_USERS.bootstrap;
+  const NEW_USERNAME = 'e2e-owner';
+  const NEW_PW = 'e2e-owner-pass-1';
+
+  await page.goto('/login');
+  await page.getByLabel('帳號').fill(boot.username);
+  await page.getByLabel('密碼', { exact: true }).fill(boot.password);
+  await page.getByRole('button', { name: '登入' }).click();
+
+  await expect(page.getByRole('heading', { name: '請設定新帳號與新密碼' })).toBeVisible();
+  const username = page.getByLabel('新帳號', { exact: true });
+  await expect(username).toHaveValue(boot.username);
+  const submit = page.getByRole('button', { name: '更新帳號與密碼' });
+
+  await page.getByLabel('目前密碼', { exact: true }).fill(boot.password);
+  await page.getByLabel('新密碼', { exact: true }).fill(NEW_PW);
+  await page.getByLabel('確認新密碼', { exact: true }).fill(NEW_PW);
+  // 帳號未改 → 不可送出
+  await expect(page.getByText(`請改成 ${boot.username} 以外的帳號`)).toBeVisible();
+  await expect(submit).toBeDisabled();
+  // 與既有帳號重複 → 後端 409 顯示在帳號欄位
+  await username.fill(E2E_USERS.member.username);
+  await submit.click();
+  await expect(page.getByText('此帳號已被使用')).toBeVisible();
+
+  await username.fill(NEW_USERNAME);
+  await submit.click();
+  const nav = page.getByRole('navigation', { name: '主要導覽' });
+  await expect(nav).toBeVisible();
+
+  // 舊帳號無法登入，新帳號可以
+  await page.getByRole('button', { name: /使用者選單/ }).click();
+  await page.getByRole('menuitem', { name: '登出' }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.getByLabel('帳號').fill(boot.username);
+  await page.getByLabel('密碼', { exact: true }).fill(boot.password);
+  await page.getByRole('button', { name: '登入' }).click();
+  await expect(page.getByRole('alert')).toHaveText('帳號或密碼不正確');
+  await page.getByLabel('帳號').fill(NEW_USERNAME);
+  await page.getByLabel('密碼', { exact: true }).fill(NEW_PW);
+  await page.getByRole('button', { name: '登入' }).click();
+  await expect(nav).toBeVisible();
+});
+
 test('閒置逾時後前端自動回到登入頁', async ({ page }) => {
   await page.clock.install();
   await loginViaUi(page, E2E_USERS.admin, '/feedback');

@@ -38,8 +38,9 @@ class Config:
     LOGIN_MAX_FAILS_PER_IP: int = 20
     #: 前面有反向代理（Caddy/nginx）時設 true，才採用 X-Forwarded-For；直連時必須維持 false
     TRUSTED_PROXY: bool = False
-    ADMIN_USERNAME: str | None = None
-    ADMIN_PASSWORD: str | None = None
+    #: 首次啟動（尚無帳號）建立的預設管理員；首次登入強制重設帳號與密碼
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = "password"
 
     CHANGES_RETENTION_DAYS: float = 30
 

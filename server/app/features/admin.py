@@ -36,7 +36,8 @@ LAST_ADMIN_MESSAGE = "至少需保留一位管理員"
 _USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{2,31}$")
 
 
-def _check_username(v: str) -> str:
+def check_username(v: str) -> str:
+    """帳號格式檢查（trim、轉小寫）；不符時拋 ValueError（訊息可直接顯示）"""
     v = v.strip().lower()
     if not v:
         raise ValueError("請輸入帳號")
@@ -45,7 +46,7 @@ def _check_username(v: str) -> str:
     return v
 
 
-AdminUsername = Annotated[str, AfterValidator(_check_username)]
+AdminUsername = Annotated[str, AfterValidator(check_username)]
 DisplayName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 Role = Literal["admin", "member"]
 

@@ -29,6 +29,8 @@ export default defineConfig({
       COOKIE_SECURE: 'false',
       APP_ORIGIN: `http://localhost:${port}`,
       PYTHONUTF8: '1',
+      // 預設管理員帳號改用 E2E 專用的 bootstrap（tests/helpers/e2eUsers.ts），不影響固定的 admin 帳號
+      ADMIN_USERNAME: 'bootstrap',
     },
   },
 });

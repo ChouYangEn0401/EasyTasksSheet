@@ -7,9 +7,17 @@ export const loginInput = z.object({
 });
 export type LoginInput = z.infer<typeof loginInput>;
 
+/** 預設管理員的初始密碼；改密碼時不可再使用 */
+export const DEFAULT_ADMIN_PASSWORD = 'password';
+
+/**
+ * POST /api/auth/password。username 只在預設管理員首次重設（me.mustChangeUsername）時送出，
+ * 其他情況送出會被拒絕。
+ */
 export const changePasswordInput = z.object({
   currentPassword: z.string().min(1).max(256),
   newPassword: z.string().min(8).max(256),
+  username: z.string().max(64).optional(),
 });
 export type ChangePasswordInput = z.infer<typeof changePasswordInput>;
 
@@ -21,6 +29,13 @@ export const sessionInfo = z.object({
 });
 export type SessionInfo = z.infer<typeof sessionInfo>;
 
-/** GET /api/auth/me、POST /api/auth/login 的回應 */
-export const meResponse = z.object({ user: publicUser, session: sessionInfo });
+/**
+ * GET /api/auth/me、POST /api/auth/login 的回應。
+ * mustChangeUsername：預設管理員首次登入，須同時設定新帳號與新密碼。
+ */
+export const meResponse = z.object({
+  user: publicUser,
+  session: sessionInfo,
+  mustChangeUsername: z.boolean(),
+});
 export type MeResponse = z.infer<typeof meResponse>;

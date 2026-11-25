@@ -10,7 +10,7 @@ from fastapi import APIRouter, Request
 from ..changes import record_change
 from ..context import get_ctx
 from ..db import Database, now_ms
-from ..security import hash_password, random_password
+from ..security import hash_password
 
 router = APIRouter()
 
@@ -59,21 +59,26 @@ def create_user(
         return conn.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
 
 
+#: 預設管理員帳密（可由 ADMIN_USERNAME / ADMIN_PASSWORD 覆寫）
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_PASSWORD = "password"
+
+
 def ensure_admin(
     db: Database,
     username: str | None = None,
     password: str | None = None,
     log: Callable[[str], None] = print,
 ) -> sqlite3.Row | None:
-    """首次啟動（尚無任何帳號）時建立管理員：帳密取自 ADMIN_USERNAME / ADMIN_PASSWORD；
-    未設定密碼則產生隨機密碼並只在主控台顯示一次。首次登入強制改密碼。"""
+    """首次啟動（尚無任何帳號）時建立預設管理員（預設 admin / password，可由
+    ADMIN_USERNAME / ADMIN_PASSWORD 覆寫）。首次登入強制重設帳號與密碼。"""
     if db.scalar("SELECT count(*) FROM users") > 0:
         return None
-    name = username or "admin"
-    pw = password or random_password()
+    name = username or DEFAULT_ADMIN_USERNAME
+    pw = password or DEFAULT_ADMIN_PASSWORD
     user = create_user(db, username=name, display_name="管理員", password=pw, role="admin")
-    if password:
-        log(f"[auth] 已建立管理員帳號 {name}（密碼取自 ADMIN_PASSWORD，首次登入需變更）")
+    if password and password != DEFAULT_ADMIN_PASSWORD:
+        log(f"[auth] 已建立預設管理員 {name}（密碼取自 ADMIN_PASSWORD），首次登入須重設帳號與密碼")
     else:
-        log(f"[auth] 已建立管理員帳號 {name}，初始密碼：{pw}（只顯示這一次，首次登入需變更）")
+        log(f"[auth] 已建立預設管理員 {name} / {DEFAULT_ADMIN_PASSWORD}，首次登入須重設帳號與密碼")
     return user

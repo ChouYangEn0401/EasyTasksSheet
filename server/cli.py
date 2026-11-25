@@ -1,7 +1,8 @@
 """管理指令（於專案根目錄執行，會讀取工作目錄的 .env）。
 
-  python -m server.cli user-add <帳號> [--name 顯示名稱] [--admin] [--password 密碼]
-      未給密碼則產生隨機密碼並顯示一次；新帳號首次登入需改密碼。
+  python -m server.cli user-add <帳號> [--name 顯示名稱] [--admin] [--password 密碼] [--db 資料庫]
+      預設建立一般成員（--admin 為管理員）。給 --password 直接使用該密碼（至少 8 字元），
+      未給則產生隨機密碼並顯示一次；兩種情況首次登入都必須改密碼。帳號已存在時 exit code 1。
   python -m server.cli backup [--db 資料庫] [--out 備份目錄] [--keep 保留份數]
       線上備份（服務運行中可執行）；預設取 DATABASE_PATH / BACKUP_DIR（backups）/ BACKUP_KEEP（14）。
   python -m server.cli backup --self-test
@@ -21,7 +22,8 @@ from .app.config import config
 
 USAGE = (
     "用法：\n"
-    "  python -m server.cli user-add <帳號> [--name 顯示名稱] [--admin] [--password 密碼]\n"
+    "  python -m server.cli user-add <帳號> [--name 顯示名稱] [--admin] [--password 密碼] [--db 資料庫]\n"
+    "      建立一般帳號（--admin 為管理員）；未給 --password 則隨機產生，首次登入須改密碼\n"
     "  python -m server.cli backup [--db 資料庫] [--out 備份目錄] [--keep 保留份數]\n"
     "  python -m server.cli backup --self-test\n"
     "  python -m server.cli restore <備份檔> [--db 資料庫] --yes"
@@ -33,45 +35,68 @@ def _env(name: str) -> str | None:
     return v if v else None
 
 
+MIN_PASSWORD = 8
+MAX_PASSWORD = 256
+
+
 def user_add(argv: list[str]) -> int:
     from .app.db import create_db, run_migrations
+    from .app.features.admin import check_username, generate_temp_password
     from .app.features.users import create_user
-    from .app.security import random_password
 
-    p = argparse.ArgumentParser(prog="python -m server.cli user-add")
-    p.add_argument("username", nargs="?")
-    p.add_argument("--name")
-    p.add_argument("--admin", action="store_true")
-    p.add_argument("--password")
+    p = argparse.ArgumentParser(
+        prog="python -m server.cli user-add",
+        description="建立帳號（預設為一般成員）。新帳號首次登入一律須變更密碼。",
+    )
+    p.add_argument("username", nargs="?", help="帳號：3–32 個英文字母、數字或 . _ -，以字母或數字開頭")
+    p.add_argument("--name", help="顯示名稱（預設同帳號）")
+    p.add_argument("--admin", action="store_true", help="建立為管理員（預設為一般成員）")
+    p.add_argument(
+        "--password",
+        help=f"初始密碼（至少 {MIN_PASSWORD} 個字元）；省略則產生隨機密碼並顯示一次",
+    )
+    p.add_argument("--db", help="資料庫檔（預設 DATABASE_PATH）")
     args = p.parse_args(argv)
 
-    username = (args.username or "").strip()
-    if not username:
+    if not (args.username or "").strip():
         print(USAGE, file=sys.stderr)
         return 1
-    if args.password is not None and len(args.password) < 8:
-        print("密碼至少 8 個字元", file=sys.stderr)
+    try:
+        username = check_username(args.username)
+    except ValueError as e:
+        print(f"[user-add] 錯誤：{e}", file=sys.stderr)
         return 1
+    if args.password is not None and not (MIN_PASSWORD <= len(args.password) <= MAX_PASSWORD):
+        print(f"[user-add] 錯誤：密碼須為 {MIN_PASSWORD}–{MAX_PASSWORD} 個字元", file=sys.stderr)
+        return 1
+    display_name = (args.name or "").strip() or None
 
-    db = create_db(config.DATABASE_PATH)
+    db = create_db(args.db or config.DATABASE_PATH)
     try:
         run_migrations(db)
-        password = args.password or random_password()
+        if db.one("SELECT id FROM users WHERE username = ?", (username,)):
+            print(f"[user-add] 錯誤：帳號 {username} 已存在", file=sys.stderr)
+            return 1
+        password = args.password if args.password is not None else generate_temp_password()
         try:
             user = create_user(
                 db,
                 username=username,
-                display_name=args.name,
+                display_name=display_name,
                 password=password,
                 role="admin" if args.admin else "member",
+                must_change_password=True,
             )
-        except sqlite3.IntegrityError as e:
-            print(f"帳號 {username} 已存在" if "UNIQUE" in str(e) else str(e), file=sys.stderr)
+        except sqlite3.IntegrityError:
+            print(f"[user-add] 錯誤：帳號 {username} 已存在", file=sys.stderr)
             return 1
-        role = "管理員" if user["role"] == "admin" else "成員"
-        print(f"[user:add] 已建立 {role} {user['username']}（id {user['id']}）")
+        role = "管理員" if user["role"] == "admin" else "一般成員"
+        print(f"[user-add] 已建立{role}帳號 {user['username']}（顯示名稱：{user['display_name']}，id {user['id']}）")
         if args.password is None:
-            print(f"[user:add] 初始密碼：{password}（只顯示這一次，首次登入需變更）")
+            print(f"[user-add] 隨機初始密碼：{password}（只顯示這一次，請轉交本人）")
+        else:
+            print("[user-add] 初始密碼為 --password 指定的密碼")
+        print("[user-add] 首次登入後須立即變更密碼")
         return 0
     finally:
         db.close()
@@ -130,6 +155,9 @@ COMMANDS = {"user-add": user_add, "backup": backup_cmd, "restore": restore_cmd}
 
 
 def main(argv: list[str]) -> int:
+    if argv[:1] in (["-h"], ["--help"]):
+        print(USAGE)
+        return 0
     if not argv or argv[0] not in COMMANDS:
         print(USAGE, file=sys.stderr)
         return 1

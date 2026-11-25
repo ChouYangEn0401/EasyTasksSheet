@@ -40,6 +40,8 @@ class LoginInput(_Input):
 class ChangePasswordInput(_Input):
     currentPassword: Annotated[str, StringConstraints(min_length=1, max_length=256)]
     newPassword: Annotated[str, StringConstraints(min_length=8, max_length=256)]
+    #: 新帳號：僅預設管理員首次重設時使用（格式於 handler 檢查，錯誤帶 field）
+    username: Annotated[str, StringConstraints(max_length=64)] = None  # type: ignore[assignment]
 
 
 # ── projects ──

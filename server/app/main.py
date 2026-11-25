@@ -1,6 +1,6 @@
 """正式進入點：`python -m uvicorn server.app.main:app --port $PORT`（或 `python -m server.app`）。
 
-啟動時：migration → seed → 首次啟動建立預設管理員；正式模式同時提供 dist/web 靜態檔。
+啟動時：migration → seed → 首次啟動建立預設管理員（admin / password，首次登入強制重設帳號與密碼）；正式模式同時提供 dist/web 靜態檔。
 """
 
 from __future__ import annotations

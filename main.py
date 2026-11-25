@@ -1,7 +1,8 @@
 """專案進入點：`python main.py`
 
 啟動 Python 後端（FastAPI + uvicorn）。啟動時自動建立資料庫、套用 migration、寫入預設資料，
-並在沒有任何帳號時建立預設管理員（帳密見主控台或 .env 的 ADMIN_USERNAME / ADMIN_PASSWORD）。
+並在沒有任何帳號時建立預設管理員 admin / password（可由 .env 的 ADMIN_USERNAME / ADMIN_PASSWORD
+覆寫），首次登入須重設帳號與密碼。
 
 用法：
     python main.py              開發模式（HOST / PORT 讀 .env，預設 http://127.0.0.1:3000）

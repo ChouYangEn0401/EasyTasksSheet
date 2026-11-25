@@ -18,7 +18,7 @@ python main.py                             # 啟動，開啟 http://localhost:30
 
 - 前端已建置在 `dist/web` 時，後端會一併提供頁面；若是第一次取得原始碼或改了前端，需先 `npm ci && npm run build`（Node 只用在建置前端）。
 - `python main.py --prod` 是正式模式：登入 cookie 會要求 HTTPS（`Secure`），請搭配 Caddy 等反向代理使用；用純 http 在區網測試請不要加 `--prod`。
-- 第一次啟動會自動建立資料庫與預設管理員，帳號與密碼會印在主控台（或由 `.env` 的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 指定），首次登入要先改密碼。
+- 第一次啟動會自動建立資料庫與預設管理員：帳號 `admin`、密碼 `password`。首次登入會被要求**重設帳號與密碼**（新帳號不可再用 `admin`）。
 - 開發時用 `python main.py --reload`（後端自動重載）；管理指令（新增帳號、備份、還原）用 `python -m server.cli --help`。
 - 後端程式碼在 [`server/app/`](server/app)：`main.py` 組裝應用、`app.py` 掛路由、`features/` 每個功能一個檔案、`migrations/` 放資料表 SQL。
 
@@ -54,7 +54,7 @@ cp .env.example .env          # Windows PowerShell：Copy-Item .env.example .env
 npm run dev                   # 後端 uvicorn :3000（自動重載）+ Vite :5173（/api 由 Vite 代理到後端）
 ```
 
-開啟 <http://localhost:5173>。後端啟動時會自動建立資料庫、套用 migration 並寫入預設資料；若沒有任何帳號，會建立管理員（見「預設管理員與首次改密碼」），主控台會顯示帳密資訊。
+開啟 <http://localhost:5173>。後端啟動時會自動建立資料庫、套用 migration 並寫入預設資料；若沒有任何帳號，會建立預設管理員 `admin` / `password`（見「預設管理員與首次改密碼」）。
 
 常用指令：
 
@@ -64,7 +64,7 @@ npm run dev                   # 後端 uvicorn :3000（自動重載）+ Vite :51
 | `npm run build`                                          | 建置前端到 `dist/web`                                      |
 | `npm run dev:py`                                         | 只啟動後端（`python -m server.app --reload`）              |
 | `python -m server.app`                                   | 以 `.env` 的 `HOST` / `PORT` 啟動後端（正式模式同時提供前端） |
-| `python -m server.cli user-add <帳號> [--admin]`         | 從命令列新增帳號（未給密碼則產生並顯示一次）               |
+| `python -m server.cli user-add <帳號> [--password 密碼]` | 從命令列新增一般帳號（`--admin` 為管理員；未給密碼則隨機產生並顯示一次；首次登入須改密碼） |
 | `python -m server.cli backup`                            | 備份資料庫（見「備份與還原」）                             |
 
 > `python` 指 `.venv` 內的 Python：Linux / macOS 為 `.venv/bin/python`，Windows 為 `.venv\Scripts\python.exe`（或先啟用 venv）。所有指令都在專案根目錄執行，會讀取該目錄的 `.env`。
@@ -91,8 +91,8 @@ npm run dev                   # 後端 uvicorn :3000（自動重載）+ Vite :51
 | `LOGIN_LOCK_MINUTES`       | `15`            | 帳號鎖定時間                                                                                        |
 | `LOGIN_MAX_FAILS_PER_IP`   | `20`            | 同 IP 失敗幾次後暫拒                                                                                |
 | `TRUSTED_PROXY`            | `false`         | 經 Caddy/nginx 反向代理時**必須設 `true`**（取 `X-Forwarded-For` 最右段）；直連 uvicorn 維持 `false`（忽略該標頭，避免偽造） |
-| `ADMIN_USERNAME`           | `admin`         | 首次啟動（尚無帳號時）建立的管理員帳號                                                              |
-| `ADMIN_PASSWORD`           | （空）          | 首次管理員密碼；空白則隨機產生並**只在主控台顯示一次**                                              |
+| `ADMIN_USERNAME`           | `admin`         | 首次啟動（尚無帳號時）建立的預設管理員帳號；可選覆寫，首次登入強制重設帳號與密碼                    |
+| `ADMIN_PASSWORD`           | `password`      | 預設管理員的初始密碼；可選覆寫（留空即 `password`）                                                 |
 | `CHANGES_RETENTION_DAYS`   | `30`            | 變更流水保留天數（即時同步用）                                                                      |
 | `WORKTREE_REPORT_TOKEN`    | （空）          | 各人電腦回報 worktree 用的 token；空白 = 停用回報端點（一律 403）                                   |
 | `BACKUP_DIR`               | `backups`       | 備份目錄（`python -m server.cli backup` 使用；建議放在不同磁碟）                                    |
@@ -146,8 +146,8 @@ APP_ORIGIN=https://tasks.lab.example
 # 經 Caddy/nginx 反向代理時必須為 true（否則所有人共用 127.0.0.1 這個登入失敗 IP 桶）
 TRUSTED_PROXY=true
 DATABASE_PATH=data/app.db
+# 留空即預設 admin / password（見「預設管理員」）；首次登入一定會被要求重設帳號與密碼
 ADMIN_USERNAME=admin
-# 建議留空讓系統產生隨機密碼（見「預設管理員」）；若要指定，首次登入後仍會被要求更改
 ADMIN_PASSWORD=
 BACKUP_DIR=backups
 BACKUP_KEEP=14
@@ -225,20 +225,22 @@ docker compose -f deploy/docker-compose.yml exec app python -m server.cli backup
 
 ## 預設管理員與首次改密碼
 
-- 資料庫中**還沒有任何帳號**時，第一次啟動會建立管理員 `ADMIN_USERNAME`（預設 `admin`）。
-- `ADMIN_PASSWORD` 留空時會產生隨機密碼，**只在啟動紀錄顯示一次**：
-
-  ```bash
-  sudo journalctl -u tasks-sheets | grep '初始密碼'
-  ```
-
-- 管理員第一次登入會被要求更改密碼。改完後若 `.env` 有填 `ADMIN_PASSWORD`，請把它清空（之後不會再被使用）。
-- 其他成員由管理員在「成員管理」頁新增（給臨時密碼，對方首次登入需改密碼），或在主機上執行：
+- 資料庫中**還沒有任何帳號**時，第一次啟動會建立預設管理員：帳號 **`admin`**、密碼 **`password`**（可用 `.env` 的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 覆寫，留空即用預設值）。主控台會印出一行提示。
+- 以預設管理員第一次登入時，會進入「請設定新帳號與新密碼」頁面，必須**同時設定新帳號與新密碼**才能繼續：
+  - 新帳號不可再是 `admin`（或覆寫的 `ADMIN_USERNAME`），須為 3–32 個英文字母、數字或 `. _ -`，且不可與他人重複。
+  - 新密碼至少 8 個字元，不可與目前密碼相同，也不可使用 `password`。
+  - 完成後原帳號 `admin` 就不存在了，之後請用新帳號登入；其他裝置上的登入會被登出。
+- 其他成員由管理員在「成員管理」頁新增（給臨時密碼，對方首次登入只需改密碼），或在主機上用指令建立一般帳號：
 
   ```bash
   cd /opt/tasks-sheets
-  sudo -u tasks-sheets .venv/bin/python -m server.cli user-add <帳號> [--name 顯示名稱] [--admin]
+  # 指定初始密碼（至少 8 字元）
+  sudo -u tasks-sheets .venv/bin/python -m server.cli user-add <帳號> --name 顯示名稱 --password 初始密碼
+  # 不給密碼：產生隨機密碼並只顯示這一次
+  sudo -u tasks-sheets .venv/bin/python -m server.cli user-add <帳號> --name 顯示名稱
   ```
+
+  預設建立一般成員，加 `--admin` 則為管理員。兩種情況對方首次登入都必須立刻改密碼；帳號已存在時會顯示錯誤並以非零 exit code 結束。完整說明見 `python -m server.cli user-add --help`。
 
 ## 備份與還原
 
@@ -340,8 +342,8 @@ token 權限：fine-grained token 選定相關 repo，**Issues：Read-only** 即
 **Q：忘記管理員密碼？**
 由另一位管理員在成員管理頁重設；若沒有其他管理員，在主機上 `.venv/bin/python -m server.cli user-add <新帳號> --admin` 建立新管理員再處理。
 
-**Q：首次啟動的隨機密碼沒看到？**
-`journalctl -u tasks-sheets | grep 初始密碼`。若紀錄已被清除，可停服務、刪除資料庫重新初始化（僅限尚未有資料時），或用 `user-add --admin` 建立新管理員。
+**Q：首次啟動後要用什麼登入？**
+帳號 `admin`、密碼 `password`（若 `.env` 有覆寫 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 則以其為準）。登入後須立即重設帳號與密碼。
 
 **Q：即時更新延遲、或每隔一段時間斷線？**
 通常是反向代理緩衝或逾時。Caddy 請用 `deploy/Caddyfile` 的 `/api/events` 設定；nginx 需對該路徑設定：
