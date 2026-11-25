@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { Task } from '../../../shared/tasks.ts';
 import type { TaskRelation } from '../../../shared/taskRelations.ts';
@@ -15,6 +16,7 @@ import {
   Spinner,
   StatusBadge,
 } from '../../ui/index.ts';
+import { recordRelationAdd, recordRelationRemove, undoFromToast } from '../undo/linkUndo.ts';
 import { jumpToTask } from './drawerNav.ts';
 import { Popover } from './Popover.tsx';
 import { useAddRelation, useRelationSearch, useRemoveRelation, useTaskRelations } from './relationData.ts';
@@ -26,22 +28,23 @@ export function RelatedTasks({ task }: { task: Task }) {
   const query = useTaskRelations(task.id);
   const remove = useRemoveRelation(task.id);
   const add = useAddRelation(task.id);
+  const qc = useQueryClient();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const relations = query.data ?? [];
 
   const onRemove = (rel: TaskRelation) =>
     remove.mutate(rel, {
-      onSuccess: () =>
+      onSuccess: () => {
+        // 登記到全站復原堆疊（Ctrl+Z）；toast 的「復原」走同一筆
+        const entry = recordRelationRemove(qc, task.id, rel);
         toast({
           tone: 'success',
           title: '已移除相關任務',
           description: truncate(rel.task.title),
-          action: {
-            label: '復原',
-            onClick: () => add.mutateAsync({ targetId: rel.task.id }).catch(() => undefined),
-          },
+          action: { label: '復原', onClick: () => undoFromToast(entry) },
           duration: 5000,
-        }),
+        });
+      },
     });
 
   return (
@@ -87,7 +90,8 @@ export function RelatedTasks({ task }: { task: Task }) {
               add.mutate(
                 { targetId: target.id },
                 {
-                  onSuccess: () => {
+                  onSuccess: (rel) => {
+                    recordRelationAdd(qc, task.id, rel);
                     setAnchor(null);
                     anchor.focus();
                   },

@@ -21,6 +21,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import Field, StringConstraints
 
+from .. import audit_events
 from ..changes import record_change
 from ..context import get_ctx
 from ..db import Database
@@ -426,6 +427,7 @@ async def create_dependency(request: Request, id: str):
         )
         _touch(conn, [blocker, blocked], actor, t)
         dep = conn.execute("SELECT * FROM task_dependencies WHERE id = ?", (cur.lastrowid,)).fetchone()
+        audit_events.link_created(conn, ctx.user, "dependency", dep, t, task_id=tid)
         item = _item_for(conn, dep, tid, today)
     return JSONResponse(item, status_code=201)
 
@@ -468,7 +470,9 @@ async def delete_dependency(request: Request, id: str, dep_id: str):
             raise not_found("此任務不存在或已被刪除")
         dep = _find_dep(conn, tid, did)
         conn.execute("DELETE FROM task_dependencies WHERE id = ?", (did,))
-        _touch(conn, [dep["blocker_task_id"], dep["blocked_task_id"]], actor, ctx.now())
+        t = ctx.now()
+        _touch(conn, [dep["blocker_task_id"], dep["blocked_task_id"]], actor, t)
+        audit_events.link_deleted(conn, ctx.user, "dependency", dep, t, task_id=tid)
     # 回傳足以「復原」的內容（前端撤銷時以 POST 重新建立）
     return {
         "ok": True,

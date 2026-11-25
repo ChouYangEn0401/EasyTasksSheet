@@ -16,6 +16,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StringConstraints
 
+from .. import audit_events
 from ..changes import record_change
 from ..context import get_ctx
 from ..db import row_to_dict, rows_to_dicts
@@ -154,6 +155,7 @@ async def create_items(request: Request, id: str):
             )
             ids.append(int(cur.lastrowid))  # type: ignore[arg-type]
         _touch(conn, tid, uid, t)
+        audit_events.checklist_added(conn, ctx.user, tid, [text for text, _ in new], t)
         rows = conn.execute(
             f"SELECT * FROM task_checklist_items WHERE id IN ({','.join('?' * len(ids))}) ORDER BY sort_order, id",
             tuple(ids),
@@ -189,6 +191,8 @@ async def update_item(request: Request, id: str, item_id: str):
                 (*sets.values(), iid),
             )
             _touch(conn, tid, uid, t)
+            if "is_done" in sets:
+                audit_events.checklist_toggled(conn, ctx.user, tid, bool(sets["is_done"]), t)
         row = conn.execute("SELECT * FROM task_checklist_items WHERE id = ?", (iid,)).fetchone()
     return row_to_dict(row)
 
@@ -200,11 +204,20 @@ async def clear_done(request: Request, id: str):
     uid = ctx.user["id"]
     with ctx.db.tx() as conn:
         _task_exists(conn, tid)
+        texts = [
+            r["text"]
+            for r in conn.execute(
+                "SELECT text FROM task_checklist_items WHERE task_id = ? AND is_done = 1 ORDER BY sort_order, id",
+                (tid,),
+            )
+        ]
         removed = conn.execute(
             "DELETE FROM task_checklist_items WHERE task_id = ? AND is_done = 1", (tid,)
         ).rowcount
         if removed:
-            _touch(conn, tid, uid, ctx.now())
+            t = ctx.now()
+            _touch(conn, tid, uid, t)
+            audit_events.checklist_cleared(conn, ctx.user, tid, texts, t)
     return {"removed": removed}
 
 
@@ -215,7 +228,9 @@ async def delete_item(request: Request, id: str, item_id: str):
     uid = ctx.user["id"]
     with ctx.db.tx() as conn:
         _task_exists(conn, tid)
-        _find_item(conn, tid, iid)
+        item = _find_item(conn, tid, iid)
         conn.execute("DELETE FROM task_checklist_items WHERE id = ?", (iid,))
-        _touch(conn, tid, uid, ctx.now())
+        t = ctx.now()
+        _touch(conn, tid, uid, t)
+        audit_events.checklist_item_deleted(conn, ctx.user, tid, item["text"], t)
     return {"ok": True}

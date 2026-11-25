@@ -35,7 +35,19 @@ REORDER_MERGE_MS = 10 * 60_000
 DAY_MS = 86_400_000
 
 SOURCES = ("web", "api", "import", "sync", "system", "revert")
-ENTITY_TYPES = ("task", "project", "status", "property", "user", "permission", "import", "sync")
+ENTITY_TYPES = (
+    "task",
+    "project",
+    "status",
+    "property",
+    "user",
+    "permission",
+    "import",
+    "sync",
+    "relation",
+    "dependency",
+    "checklist",
+)
 ACTIONS = ("create", "update", "delete", "restore", "reorder", "reset_password", "unlock", "apply")
 
 # ── 欄位定義（API 欄位名 → DB 欄位）──────────────────────────────
@@ -46,7 +58,21 @@ ENTITY_TABLES = {
     "status": "statuses",
     "property": "property_defs",
     "user": "users",
+    "relation": "task_relations",
+    "dependency": "task_dependencies",
 }
+
+#: 任務之間的連結（相關任務 / 依賴）：稽核快照欄位（API 名 → DB 欄位）。建立 ↔ 移除可互相還原
+LINK_FIELDS: dict[str, dict[str, str]] = {
+    "relation": {"taskAId": "task_a_id", "taskBId": "task_b_id", "type": "type"},
+    "dependency": {
+        "blockerTaskId": "blocker_task_id",
+        "blockedTaskId": "blocked_task_id",
+        "lagDays": "lag_days",
+        "note": "note",
+    },
+}
+_LINK_TASK_FIELDS = {"taskAId", "taskBId", "blockerTaskId", "blockedTaskId"}
 
 ENTITY_FIELDS: dict[str, dict[str, str]] = {
     "task": {
@@ -78,6 +104,9 @@ ENTITY_CAPABILITY = {
     "property": "properties.edit",
     "user": "members.manage",
     "permission": "permissions.configure",
+    "relation": "tasks.edit",
+    "dependency": "tasks.edit",
+    "checklist": "tasks.edit",
 }
 
 FIELD_LABELS: dict[str, dict[str, str]] = {
@@ -98,6 +127,9 @@ FIELD_LABELS: dict[str, dict[str, str]] = {
     "status": {"name": "名稱", "color": "顏色", "category": "類別", "sortOrder": "順序"},
     "property": {"name": "名稱", "type": "型別", "projectId": "適用專案", "options": "選項", "sortOrder": "順序"},
     "user": {"username": "帳號", "displayName": "顯示名稱", "role": "角色", "isActive": "帳號狀態"},
+    "relation": {"taskAId": "任務", "taskBId": "相關任務", "type": "類型"},
+    "dependency": {"blockerTaskId": "前置任務", "blockedTaskId": "等待中的任務", "lagDays": "間隔天數", "note": "備註"},
+    "checklist": {"items": "項目", "completed": "完成", "reopened": "取消完成", "count": "項數"},
     "import": {
         "mode": "方式",
         "strategy": "衝突處理",
@@ -400,6 +432,81 @@ def record_reorder(
     )
 
 
+def record_merged_count(
+    conn: sqlite3.Connection,
+    *,
+    actor: Any,
+    entity_type: str,
+    entity_id: int,
+    merge_tag: str,
+    counts: Mapping[str, int],
+    summary_of: Callable[[dict[str, int]], str],
+    entity_label: str | None = None,
+    task_id: int | None = None,
+    ts: int | None = None,
+    note: str | None = None,
+) -> int | None:
+    """高頻小動作（例如勾選待辦項目）：同一人在 REORDER_MERGE_MS 內對同一筆的同類動作合併為一筆並累加次數。
+    merge_tag 存在 request_id 欄位作為合併鍵；不可還原。"""
+    t = now_ms() if ts is None else ts
+    aid = _row_get(actor, "id")
+    prev = conn.execute(
+        "SELECT id, ts, actor_id, request_id, after_json FROM audit_log "
+        "WHERE entity_type = ? AND entity_id = ? ORDER BY id DESC LIMIT 1",
+        (entity_type, entity_id),
+    ).fetchone()
+    if (
+        prev is not None
+        and prev["request_id"] == merge_tag
+        and prev["actor_id"] == aid
+        and 0 <= t - prev["ts"] <= REORDER_MERGE_MS
+    ):
+        try:
+            prev_after, _ = load_fields(prev["after_json"])
+            merged = {k: int((prev_after or {}).get(k) or 0) for k in counts}
+            for k, v in counts.items():
+                merged[k] += int(v)
+            conn.execute(
+                "UPDATE audit_log SET ts = ?, after_json = ?, summary = ? WHERE id = ?",
+                (t, _dump(merged)[0], summary_of(merged), prev["id"]),
+            )
+            return int(prev["id"])
+        except sqlite3.Error:
+            log.warning("稽核紀錄合併失敗", exc_info=True)
+            return None
+    first = {k: int(v) for k, v in counts.items()}
+    return record_audit(
+        conn,
+        actor=actor,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        action="update",
+        summary=summary_of(first),
+        after=first,
+        task_id=task_id,
+        revertable=False,
+        note=note,
+        entity_label=entity_label,
+        request_id=merge_tag,
+        ts=t,
+    )
+
+
+def link_snapshot(entity_type: str, row: Any) -> dict[str, Any]:
+    """相關任務 / 依賴資料列 → 稽核快照"""
+    return {f: _row_get(row, col) for f, col in LINK_FIELDS[entity_type].items()}
+
+
+def touch_tasks(conn: sqlite3.Connection, task_ids: Any, actor_id: Any, t: int) -> None:
+    """連結變動：兩端（未刪除）任務更新 updated_at 並寫 task update 流水（SSE 即時更新）"""
+    for tid in dict.fromkeys(task_ids):
+        cur = conn.execute(
+            "UPDATE tasks SET updated_at = ?, updated_by = ? WHERE id = ? AND deleted_at IS NULL", (t, actor_id, tid)
+        )
+        if cur.rowcount:
+            record_change(conn, "task", tid, "update", actor_id, t)
+
+
 # ── 保留期限 ─────────────────────────────────────────────
 
 _last_prune: dict[int, int] = {}
@@ -469,6 +576,9 @@ class Labeler:
     def users(self) -> dict[int, Any]:
         return self._table("users", "SELECT id, display_name FROM users")
 
+    def tasks(self) -> dict[int, Any]:
+        return self._table("tasks", "SELECT id, title FROM tasks")
+
     def properties(self) -> dict[int, Any]:
         return self._table("properties", "SELECT id, name, type, options FROM property_defs")
 
@@ -517,6 +627,14 @@ class Labeler:
             return "未設定"
         if is_empty(v):
             return "（空）"
+        if field in _LINK_TASK_FIELDS:
+            return self._name(self.tasks(), v, "title", "任務")
+        if entity_type == "relation" and field == "type":
+            return "相關" if v == "related" else str(v)
+        if entity_type == "dependency" and field == "lagDays":
+            return f"{_fmt_number(v)} 天"
+        if entity_type == "checklist" and field == "items" and isinstance(v, list):
+            return "、".join(clip(x, 60) for x in v)
         if field == "statusId":
             return self._name(self.statuses(), v, "name", "已刪除的狀態")
         if field == "projectId":
@@ -796,6 +914,9 @@ def plan_revert(conn: sqlite3.Connection, entry: Any, lab: Labeler | None = None
     row = _load_row(conn, et, eid)
     plan.current_label = _label_of(et, row)
 
+    if et in LINK_FIELDS:
+        return _plan_link(conn, plan, et, action, row, before)
+
     if action in ("update", "reorder"):
         if row is None:
             plan.blocked = "這筆資料已不存在，無法還原"
@@ -855,6 +976,57 @@ def plan_revert(conn: sqlite3.Connection, entry: Any, lab: Labeler | None = None
         return plan
 
     plan.blocked = entry["note"] or "此類操作無法自動還原"
+    return plan
+
+
+def _link_tasks(et: str, snap: Mapping[str, Any]) -> tuple[Any, Any]:
+    if et == "relation":
+        return snap.get("taskAId"), snap.get("taskBId")
+    return snap.get("blockerTaskId"), snap.get("blockedTaskId")
+
+
+def _plan_link(
+    conn: sqlite3.Connection, plan: RevertPlan, et: str, action: str, row: Any, before: dict[str, Any]
+) -> RevertPlan:
+    """相關任務 / 依賴：建立 → 移除；移除 → 以原編號重新建立"""
+    if action == "create":
+        if row is None:
+            plan.blocked = "這個連結已經被移除了"
+        else:
+            plan.kind = "delete_link"
+        return plan
+    if action != "delete":
+        plan.blocked = "此類操作無法自動還原"
+        return plan
+    if row is not None:
+        plan.blocked = "同一編號的連結已存在，無法還原"
+        return plan
+    a, b = _link_tasks(et, before)
+    for tid in (a, b):
+        r = conn.execute("SELECT deleted_at FROM tasks WHERE id = ?", (tid,)).fetchone()
+        if r is None or r["deleted_at"] is not None:
+            plan.blocked = "連結的任務已不存在或已刪除，無法還原"
+            return plan
+    if et == "relation":
+        dup = conn.execute(
+            "SELECT 1 FROM task_relations WHERE task_a_id = ? AND task_b_id = ? AND type = ?",
+            (a, b, before.get("type") or "related"),
+        ).fetchone()
+    else:
+        dup = conn.execute(
+            "SELECT 1 FROM task_dependencies WHERE blocker_task_id = ? AND blocked_task_id = ?", (a, b)
+        ).fetchone()
+        if dup is None:
+            from .features.dependencies import find_cycle
+
+            pairs = [(r[0], r[1]) for r in conn.execute("SELECT blocker_task_id, blocked_task_id FROM task_dependencies")]
+            if find_cycle(pairs, a, b) is not None:
+                plan.blocked = "重新建立會形成循環依賴，無法還原"
+                return plan
+    if dup is not None:
+        plan.blocked = "這兩個任務之間已經有相同的連結"
+        return plan
+    plan.kind = "recreate_link"
     return plan
 
 
@@ -1079,6 +1251,28 @@ def _execute(conn: sqlite3.Connection, entry: Any, plan: RevertPlan, actor: Any,
             tuple(values.values()),
         )
         record_change(conn, et, eid, "create", actor_id, t)  # type: ignore[arg-type]
+        new_after = snap
+    elif plan.kind == "delete_link":
+        row = _load_row(conn, et, eid)
+        new_before = link_snapshot(et, row)
+        conn.execute(f"DELETE FROM {ENTITY_TABLES[et]} WHERE id = ?", (eid,))
+        touch_tasks(conn, _link_tasks(et, new_before), actor_id, t)
+    elif plan.kind == "recreate_link":
+        snap = dict(before or {})
+        values = {"id": eid, "uid": entry["entity_uid"]}
+        values.update({col: snap.get(k) for k, col in LINK_FIELDS[et].items()})
+        if et == "relation":
+            values["type"] = values.get("type") or "related"
+        else:
+            values["type"] = "finish_to_start"
+            values["lag_days"] = values.get("lag_days") or 0
+            values["note"] = values.get("note") or ""
+        values.update({"created_by": actor_id, "created_at": t, "updated_at": t})
+        conn.execute(
+            f"INSERT INTO {ENTITY_TABLES[et]} ({', '.join(values)}) VALUES ({', '.join('?' * len(values))})",
+            tuple(values.values()),
+        )
+        touch_tasks(conn, _link_tasks(et, snap), actor_id, t)
         new_after = snap
     else:  # pragma: no cover - plan_revert 已擋下
         raise RevertError(409, "NOT_REVERTABLE", "此類操作無法自動還原")

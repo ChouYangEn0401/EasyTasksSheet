@@ -19,6 +19,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from .. import audit_events
 from ..changes import record_change
 from ..context import get_ctx
 from ..db import next_sort_order, row_to_dict
@@ -124,6 +125,7 @@ async def create_relation(request: Request, id: str):
         row, created = insert_relation(conn, tid, data.targetId, data.type, uid, t)
         if created:
             _touch(conn, (tid, data.targetId), uid, t)
+            audit_events.link_created(conn, ctx.user, "relation", row, t, task_id=tid)
         view = _relation_view(conn, row, tid)
     return JSONResponse(view, status_code=201 if created else 200)
 
@@ -141,7 +143,9 @@ async def delete_relation(request: Request, id: str, relation_id: str):
         if rel is None:
             raise not_found("此關聯不存在或已被移除")
         conn.execute("DELETE FROM task_relations WHERE id = ?", (rid,))
-        _touch(conn, (rel["task_a_id"], rel["task_b_id"]), uid, ctx.now())
+        t = ctx.now()
+        _touch(conn, (rel["task_a_id"], rel["task_b_id"]), uid, t)
+        audit_events.link_deleted(conn, ctx.user, "relation", rel, t, task_id=tid)
     return {"ok": True}
 
 
@@ -212,9 +216,13 @@ async def duplicate_task(request: Request, id: str):
         )
         new_id = int(cur.lastrowid)  # type: ignore[arg-type]
         record_change(conn, "task", new_id, "create", uid, t)
+        audit_events.task_created(
+            conn, ctx.user, conn.execute("SELECT * FROM tasks WHERE id = ?", (new_id,)).fetchone(), t
+        )
         if data.relate:
-            insert_relation(conn, tid, new_id, "related", uid, t)
+            rel, _created = insert_relation(conn, tid, new_id, "related", uid, t)
             _touch(conn, (tid,), uid, t)
+            audit_events.link_created(conn, ctx.user, "relation", rel, t, task_id=new_id)
         row = conn.execute(
             f"WITH {RELATION_COUNT_CTE} SELECT tasks.*, coalesce(rc.n, 0) AS relation_count FROM tasks "
             "LEFT JOIN rc ON rc.task_id = tasks.id WHERE tasks.id = ?",

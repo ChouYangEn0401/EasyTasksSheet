@@ -5,8 +5,8 @@ import type {
   DependencyProjection,
 } from '../../../shared/dependencies.ts';
 import type { Task } from '../../../shared/tasks.ts';
-import { api, errorMessage } from '../../lib/api.ts';
-import { queryClient, queryKeys } from '../../lib/queryClient.ts';
+import { errorMessage } from '../../lib/api.ts';
+import { queryClient } from '../../lib/queryClient.ts';
 import { statusStyle, statusTone } from '../../lib/colors.ts';
 import { emptyFilters } from '../../lib/filters.ts';
 import { todayString } from '../../lib/format.ts';
@@ -14,6 +14,7 @@ import { useStatusesById, useTasks, useUsersById } from '../../lib/hooks.ts';
 import { openTask } from '../../lib/openTask.ts';
 import { useCan } from '../../lib/permissions.ts';
 import { toast, truncate } from '../../lib/toast.ts';
+import { recordDependencyAdd, recordDependencyRemove, undoFromToast } from '../undo/linkUndo.ts';
 import { Button, Icon, Input, Skeleton } from '../../ui/index.ts';
 import { Popover } from '../tasks/Popover.tsx';
 import { useCreateDependency, useDeleteDependency, useTaskDependencies } from './api.ts';
@@ -194,25 +195,18 @@ function DepRow({
     del.mutate(item.id, {
       onSuccess: (res) => {
         const r = res.removed;
+        // 登記到全站復原堆疊（Ctrl+Z）；toast 的「復原」走同一筆（列已卸載，皆直接呼叫 API）
+        const entry = recordDependencyRemove(
+          queryClient,
+          taskId,
+          item.id,
+          { direction: r.direction, targetId: r.targetId, lagDays: r.lagDays, note: r.note },
+          t.title,
+        );
         toast({
           tone: 'success',
           title: `已移除依賴「${truncate(t.title)}」`,
-          action: {
-            label: '復原',
-            // 列已卸載，直接呼叫 API（不依賴元件內的 mutation）
-            onClick: () =>
-              api
-                .post(`/tasks/${taskId}/dependencies`, {
-                  direction: r.direction,
-                  targetId: r.targetId,
-                  lagDays: r.lagDays,
-                  note: r.note,
-                })
-                .then(() => queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all }))
-                .catch((err: unknown) =>
-                  toast({ tone: 'warning', title: '無法復原依賴', description: errorMessage(err) }),
-                ),
-          },
+          action: { label: '復原', onClick: () => undoFromToast(entry) },
         });
       },
     });
@@ -304,20 +298,19 @@ function DependencyPicker({
 
   const pick = (target: Task) => {
     setError(null);
-    create.mutate(
-      { direction, targetId: target.id, ...(lag > 0 && { lagDays: lag }) },
-      {
-        onSuccess: () => {
-          toast({
-            tone: 'success',
-            title: direction === 'blocked_by' ? '已加入前置任務' : '已加入後續任務',
-            description: truncate(target.title),
-          });
-          onDone();
-        },
-        onError: (err) => setError(errorMessage(err)),
+    const input = { direction, targetId: target.id, ...(lag > 0 && { lagDays: lag }) };
+    create.mutate(input, {
+      onSuccess: (created) => {
+        recordDependencyAdd(queryClient, task.id, input, created, target.title);
+        toast({
+          tone: 'success',
+          title: direction === 'blocked_by' ? '已加入前置任務' : '已加入後續任務',
+          description: truncate(target.title),
+        });
+        onDone();
       },
-    );
+      onError: (err) => setError(errorMessage(err)),
+    });
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {

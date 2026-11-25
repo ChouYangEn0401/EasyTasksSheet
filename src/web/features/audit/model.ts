@@ -153,6 +153,9 @@ export const ENTITY_LABELS: Record<AuditEntityType, string> = {
   permission: '權限',
   import: '資料匯入',
   sync: '資料同步',
+  relation: '相關任務',
+  dependency: '依賴',
+  checklist: '待辦清單',
 };
 
 export const ACTION_LABELS: Record<AuditAction, string> = {
@@ -225,6 +228,10 @@ export function revertKindText(kind: RevertKind, entityLabel: string, entity: Au
       return `會刪除${noun}${name}（之後仍可在稽核紀錄還原）。`;
     case 'recreate_row':
       return `會以原本的設定重新建立${noun}${name}。`;
+    case 'delete_link':
+      return `會移除這個${noun}連結（之後仍可在稽核紀錄還原）。`;
+    case 'recreate_link':
+      return `會重新建立這個${noun}連結。`;
     case 'set_fields':
       return '以下欄位會改回這次修改之前的內容：';
     default:

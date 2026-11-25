@@ -25,11 +25,18 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCan } from '../../lib/permissions.ts';
 import { suspendGlobalShortcuts } from '../../lib/shortcuts.ts';
 import { toast } from '../../lib/toast.ts';
 import { Button, Checkbox, Dialog, Icon, Input, Skeleton } from '../../ui/index.ts';
 import { useChecklist, useChecklistActions } from './checklistData.ts';
+import {
+  recordChecklistAdd,
+  recordChecklistDelete,
+  recordChecklistToggle,
+  undoFromToast,
+} from '../undo/linkUndo.ts';
 import {
   MAX_PER_TASK,
   MAX_TEXT,
@@ -393,6 +400,7 @@ function AddRow({
 export function Checklist({ taskId }: { taskId: number }) {
   const q = useChecklist(taskId);
   const { add, patch, remove, clearDone } = useChecklistActions(taskId);
+  const qc = useQueryClient();
   const canEdit = useCan('tasks.edit');
   const readOnly = !canEdit;
   const titleId = useId();
@@ -418,7 +426,11 @@ export function Checklist({ taskId }: { taskId: number }) {
   );
 
   /* 動作 */
-  const onToggle = (item: ChecklistItem, isDone: boolean) => patch.mutate({ id: item.id, patch: { isDone } });
+  const onToggle = (item: ChecklistItem, isDone: boolean) =>
+    patch.mutate(
+      { id: item.id, patch: { isDone } },
+      { onSuccess: () => void recordChecklistToggle(qc, taskId, item, isDone) },
+    );
   const onRename = (item: ChecklistItem, text: string) => patch.mutate({ id: item.id, patch: { text } });
 
   const focusRowText = (id: string | undefined) => {
@@ -436,7 +448,7 @@ export function Checklist({ taskId }: { taskId: number }) {
     const rows = [...(rootRef.current?.querySelectorAll<HTMLElement>(ROW) ?? [])];
     const idx = rows.findIndex((r) => r.dataset.checklistRow === String(item.id));
     const target = (focusPrev ? rows[idx - 1] : (rows[idx + 1] ?? rows[idx - 1]))?.dataset.checklistRow;
-    remove.mutate(item.id);
+    remove.mutate(item.id, { onSuccess: () => void recordChecklistDelete(qc, taskId, item) });
     focusRowText(target);
   };
 
@@ -457,7 +469,11 @@ export function Checklist({ taskId }: { taskId: number }) {
     requestAnimationFrame(() => focused?.focus());
   };
 
-  const addOne = (text: string, sortOrder?: number) => add.mutate({ items: [{ text }], sortOrder });
+  const addOne = (text: string, sortOrder?: number) =>
+    add.mutate(
+      { items: [{ text }], sortOrder },
+      { onSuccess: (created) => void recordChecklistAdd(qc, taskId, created) },
+    );
 
   const onInsertBelow = (item: ChecklistItem) => setDraft({ afterOrder: item.sortOrder });
 
@@ -481,13 +497,18 @@ export function Checklist({ taskId }: { taskId: number }) {
       { items: batch },
       {
         onSuccess: (created) => {
+          // 同時登記到全站復原堆疊（Ctrl+Z）；toast 的「復原」走同一筆
+          const entry = recordChecklistAdd(qc, taskId, created);
           toast({
             key: 'checklist-pasted',
             tone: 'success',
             title: `已建立 ${created.length} 項待辦`,
             action: {
               label: '復原',
-              onClick: () => Promise.all(created.map((c) => remove.mutateAsync(c.id).catch(() => undefined))),
+              onClick: () =>
+                entry
+                  ? undoFromToast(entry)
+                  : void Promise.all(created.map((c) => remove.mutateAsync(c.id).catch(() => undefined))),
             },
             duration: 8000,
           });

@@ -9,6 +9,9 @@ export const AUDIT_ENTITY_TYPES = [
   'permission',
   'import',
   'sync',
+  'relation',
+  'dependency',
+  'checklist',
 ] as const;
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
 
@@ -82,7 +85,15 @@ export type RevertField = {
   conflict: boolean;
 };
 
-export type RevertKind = 'set_fields' | 'soft_delete' | 'undelete' | 'delete_row' | 'recreate_row' | 'none';
+export type RevertKind =
+  | 'set_fields'
+  | 'soft_delete'
+  | 'undelete'
+  | 'delete_row'
+  | 'recreate_row'
+  | 'delete_link'
+  | 'recreate_link'
+  | 'none';
 
 export type RevertPreview = {
   kind: RevertKind;

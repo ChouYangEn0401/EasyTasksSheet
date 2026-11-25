@@ -585,3 +585,89 @@ def test_task_history_paging_and_changes(env):
     rest = member.get(f"/api/tasks/{task['id']}/history?before={page['nextBefore']}").json()
     assert len(rest["items"]) == 2 and rest["nextBefore"] is None
     assert member.get("/api/tasks/999999/history").json() == {"items": [], "nextBefore": None}
+
+
+# ── 整合：相關任務 / 依賴 / 待辦清單 / 復原刪除 ──────────────────
+
+
+def test_relation_audit_and_revert(env):
+    t, member, manager = env["t"], env["member"], env["manager"]
+    a, b = new_task(member, title="甲"), new_task(member, title="乙")
+    rel = member.request("POST", f"/api/tasks/{a['id']}/relations", {"targetId": b["id"], "type": "related"}).json()
+    created = last(t)
+    assert (created["entity_type"], created["action"], created["task_id"]) == ("relation", "create", a["id"])
+    assert created["summary"] == "把『甲』與『乙』設為相關任務" and created["revertable"] == 1
+    # 重複建立（已存在）不記錄
+    member.request("POST", f"/api/tasks/{b['id']}/relations", {"targetId": a["id"], "type": "related"})
+    assert last(t)["id"] == created["id"]
+
+    member.request("DELETE", f"/api/tasks/{a['id']}/relations/{rel['id']}")
+    removed = last(t)
+    assert removed["action"] == "delete" and removed["summary"] == "移除了『甲』與『乙』的相關連結"
+    detail = manager.get(f"/api/admin/audit/{removed['id']}").json()
+    assert detail["revertPreview"]["kind"] == "recreate_link"
+    assert {c["afterText"] for c in detail["changes"]} == {None}
+    assert {c["beforeText"] for c in detail["changes"]} >= {"甲", "乙"}
+
+    assert manager.request("POST", f"/api/admin/audit/{removed['id']}/revert", {}).status_code == 200
+    rels = member.get(f"/api/tasks/{a['id']}/relations").json()
+    assert [r["id"] for r in rels] == [rel["id"]]
+    # 還原「建立」= 移除
+    assert manager.request("POST", f"/api/admin/audit/{created['id']}/revert", {}).status_code == 200
+    assert member.get(f"/api/tasks/{a['id']}/relations").json() == []
+    ch = t.db.one("SELECT entity_type, action FROM changes ORDER BY id DESC LIMIT 1")
+    assert tuple(ch) == ("task", "update")
+
+
+def test_dependency_audit_and_revert_with_cycle_guard(env):
+    t, member, manager = env["t"], env["member"], env["manager"]
+    a, b = new_task(member, title="前置"), new_task(member, title="後續")
+    dep = member.request(
+        "POST", f"/api/tasks/{b['id']}/dependencies", {"targetId": a["id"], "direction": "blocked_by"}
+    ).json()
+    created = last(t)
+    assert created["entity_type"] == "dependency" and created["summary"] == "設定『後續』等待『前置』完成"
+    member.request("DELETE", f"/api/tasks/{b['id']}/dependencies/{dep['id']}")
+    removed = last(t)
+    assert removed["summary"] == "移除了『後續』對『前置』的依賴"
+    # 反向建立後，還原原本的依賴會形成循環 → 不可還原
+    member.request("POST", f"/api/tasks/{a['id']}/dependencies", {"targetId": b["id"], "direction": "blocked_by"})
+    res = manager.request("POST", f"/api/admin/audit/{removed['id']}/revert", {})
+    assert res.status_code == 409 and "循環" in res.json()["error"]["message"]
+
+
+def test_checklist_audit_merged_and_batches(env):
+    t, member, clock = env["t"], env["member"], env["clock"]
+    task = new_task(member, title="清單任務")
+    tid = task["id"]
+    items = member.request(
+        "POST", f"/api/tasks/{tid}/checklist", {"items": [{"text": "一"}, {"text": "二"}, {"text": "三"}]}
+    ).json()
+    batch = last(t)
+    assert (batch["entity_type"], batch["action"]) == ("checklist", "create")
+    assert batch["summary"] == "在『清單任務』一次新增了 3 項待辦" and batch["revertable"] == 0
+    # 單項新增不記錄
+    member.request("POST", f"/api/tasks/{tid}/checklist", {"text": "四"})
+    assert last(t)["id"] == batch["id"]
+    for it in items:
+        clock.advance(1000)
+        member.request("PATCH", f"/api/tasks/{tid}/checklist/{it['id']}", {"isDone": True})
+    toggles = rows(t, "entity_type = 'checklist' AND action = 'update'")
+    assert len(toggles) == 1 and toggles[0]["summary"] == "完成了『清單任務』的待辦項目 3 項"
+    member.request("POST", f"/api/tasks/{tid}/checklist/clear-done")
+    cleared = last(t)
+    assert cleared["summary"] == "清除了『清單任務』已完成的待辦 3 項"
+    assert fields(cleared)[0]["items"] == ["一", "二", "三"]
+    # 出現在任務活動歷史
+    hist = member.get(f"/api/tasks/{tid}/history")
+    if hist.status_code == 200:
+        assert any(i["entityType"] == "checklist" for i in hist.json()["items"])
+
+
+def test_task_restore_endpoint_recorded(env):
+    t, member = env["t"], env["member"]
+    task = new_task(member, title="被刪又復原")
+    member.request("DELETE", f"/api/tasks/{task['id']}")
+    assert member.request("POST", f"/api/tasks/{task['id']}/restore").status_code == 200
+    r = last(t)
+    assert (r["action"], r["summary"], r["revertable"]) == ("restore", "還原了已刪除的任務『被刪又復原』", 1)

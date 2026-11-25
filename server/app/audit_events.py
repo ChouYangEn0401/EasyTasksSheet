@@ -16,6 +16,8 @@ from .audit import (
     permission_cells,
     quote,
     record_audit,
+    link_snapshot,
+    record_merged_count,
     record_reorder,
     snapshot,
 )
@@ -24,6 +26,7 @@ __all__ = [
     "task_created",
     "task_updated",
     "task_deleted",
+    "task_restored",
     "project_created",
     "project_updated",
     "status_created",
@@ -42,6 +45,12 @@ __all__ = [
     "permissions_changed",
     "import_applied",
     "sync_applied",
+    "link_created",
+    "link_deleted",
+    "checklist_added",
+    "checklist_toggled",
+    "checklist_item_deleted",
+    "checklist_cleared",
 ]
 
 
@@ -145,6 +154,22 @@ def task_deleted(conn: sqlite3.Connection, actor: Any, row: Any, ts: int) -> int
         action="delete",
         summary=f"刪除任務{quote(row['title'])}",
         before=_compact(snapshot("task", row)),
+        task_id=row["id"],
+        revertable=True,
+        entity_label=row["title"],
+        ts=ts,
+    )
+
+
+def task_restored(conn: sqlite3.Connection, actor: Any, row: Any, ts: int) -> int | None:
+    """復原刪除（/api/tasks/:id/restore，前端「復原」）：還原此筆 = 再次軟刪除"""
+    return record_audit(
+        conn,
+        actor=actor,
+        entity_type="task",
+        entity_id=row["id"],
+        action="restore",
+        summary=f"還原了已刪除的任務{quote(row['title'])}",
         task_id=row["id"],
         revertable=True,
         entity_label=row["title"],
@@ -527,5 +552,161 @@ def sync_applied(
         revertable=False,
         note="同步為整批套用，無法逐筆還原；如需復原請使用同步前的自動備份",
         entity_label=source["name"],
+        ts=ts,
+    )
+
+
+# ── 相關任務 / 依賴（建立 ↔ 移除可還原）──────────────────────────
+
+
+def _task_title(conn: sqlite3.Connection, task_id: Any) -> str:
+    r = conn.execute("SELECT title FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    return r["title"] if r is not None else f"任務 #{task_id}"
+
+
+def _link_sentence(conn: sqlite3.Connection, et: str, snap: Mapping[str, Any], created: bool) -> str:
+    if et == "relation":
+        a, b = quote(_task_title(conn, snap["taskAId"])), quote(_task_title(conn, snap["taskBId"]))
+        return f"把{a}與{b}設為相關任務" if created else f"移除了{a}與{b}的相關連結"
+    blocker = quote(_task_title(conn, snap["blockerTaskId"]))
+    blocked = quote(_task_title(conn, snap["blockedTaskId"]))
+    return f"設定{blocked}等待{blocker}完成" if created else f"移除了{blocked}對{blocker}的依賴"
+
+
+def _link_task_id(et: str, snap: Mapping[str, Any], context_task_id: int | None) -> Any:
+    if context_task_id is not None:
+        return context_task_id
+    return snap["taskAId"] if et == "relation" else snap["blockedTaskId"]
+
+
+def link_created(
+    conn: sqlite3.Connection, actor: Any, et: str, row: Any, ts: int, task_id: int | None = None
+) -> int | None:
+    """et：relation / dependency；task_id 為操作所在的任務（出現在其活動歷史）"""
+    snap = link_snapshot(et, row)
+    return record_audit(
+        conn,
+        actor=actor,
+        entity_type=et,
+        entity_id=row["id"],
+        entity_uid=row["uid"] if "uid" in row.keys() else None,
+        action="create",
+        summary=_link_sentence(conn, et, snap, True),
+        after=snap,
+        task_id=_link_task_id(et, snap, task_id),
+        revertable=True,
+        entity_label=_task_title(conn, _link_task_id(et, snap, task_id)),
+        ts=ts,
+    )
+
+
+def link_deleted(
+    conn: sqlite3.Connection, actor: Any, et: str, row: Any, ts: int, task_id: int | None = None
+) -> int | None:
+    snap = link_snapshot(et, row)
+    return record_audit(
+        conn,
+        actor=actor,
+        entity_type=et,
+        entity_id=row["id"],
+        entity_uid=row["uid"] if "uid" in row.keys() else None,
+        action="delete",
+        summary=_link_sentence(conn, et, snap, False),
+        before=snap,
+        task_id=_link_task_id(et, snap, task_id),
+        revertable=True,
+        entity_label=_task_title(conn, _link_task_id(et, snap, task_id)),
+        ts=ts,
+    )
+
+
+# ── 待辦清單（不可還原；勾選合併為一筆）──────────────────────────
+
+_CHECKLIST_NOTE = "待辦清單的異動不提供自動還原"
+_ITEMS_KEEP = 20
+
+
+def checklist_added(conn: sqlite3.Connection, actor: Any, task_id: int, texts: list[str], ts: int) -> int | None:
+    """批次建立（貼上多行）才記錄；單項新增屬於高頻小動作，不記錄"""
+    if len(texts) < 2:
+        return None
+    title = _task_title(conn, task_id)
+    return record_audit(
+        conn,
+        actor=actor,
+        entity_type="checklist",
+        entity_id=task_id,
+        action="create",
+        summary=f"在{quote(title)}一次新增了 {len(texts)} 項待辦",
+        after={"count": len(texts), "items": texts[:_ITEMS_KEEP]},
+        task_id=task_id,
+        revertable=False,
+        note=_CHECKLIST_NOTE,
+        entity_label=title,
+        ts=ts,
+    )
+
+
+def checklist_toggled(conn: sqlite3.Connection, actor: Any, task_id: int, done: bool, ts: int) -> int | None:
+    """勾選 / 取消勾選：同一人 10 分鐘內對同一任務的勾選合併為一筆（「完成了『X』的待辦項目 3 項」）"""
+    title = _task_title(conn, task_id)
+
+    def summary_of(c: dict[str, int]) -> str:
+        parts = []
+        if c.get("completed"):
+            parts.append(f"完成了{quote(title)}的待辦項目 {c['completed']} 項")
+        if c.get("reopened"):
+            parts.append(f"取消完成 {c['reopened']} 項" if parts else f"把{quote(title)}的待辦項目取消完成 {c['reopened']} 項")
+        return "，".join(parts) or f"調整了{quote(title)}的待辦項目"
+
+    return record_merged_count(
+        conn,
+        actor=actor,
+        entity_type="checklist",
+        entity_id=task_id,
+        merge_tag="checklist:toggle",
+        counts={"completed": 1 if done else 0, "reopened": 0 if done else 1},
+        summary_of=summary_of,
+        entity_label=title,
+        task_id=task_id,
+        note=_CHECKLIST_NOTE,
+        ts=ts,
+    )
+
+
+def checklist_item_deleted(conn: sqlite3.Connection, actor: Any, task_id: int, text: str, ts: int) -> int | None:
+    title = _task_title(conn, task_id)
+    return record_audit(
+        conn,
+        actor=actor,
+        entity_type="checklist",
+        entity_id=task_id,
+        action="delete",
+        summary=f"刪除了{quote(title)}的待辦項目{quote(text)}",
+        before={"items": [text]},
+        task_id=task_id,
+        revertable=False,
+        note=_CHECKLIST_NOTE,
+        entity_label=title,
+        ts=ts,
+    )
+
+
+def checklist_cleared(conn: sqlite3.Connection, actor: Any, task_id: int, texts: list[str], ts: int) -> int | None:
+    if not texts:
+        return None
+    title = _task_title(conn, task_id)
+    return record_audit(
+        conn,
+        actor=actor,
+        entity_type="checklist",
+        entity_id=task_id,
+        action="delete",
+        summary=f"清除了{quote(title)}已完成的待辦 {len(texts)} 項",
+        before={"count": len(texts), "items": texts[:_ITEMS_KEEP]},
+        task_id=task_id,
+        revertable=False,
+        note=_CHECKLIST_NOTE,
+        entity_label=title,
         ts=ts,
     )

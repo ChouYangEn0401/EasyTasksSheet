@@ -67,5 +67,6 @@
 - `src/web/lib/taskUndoModel.ts`：欄位攤平、衝突判斷、合併、文案（純函式）。
 - `src/web/lib/taskUndo.ts`：任務的登記、以 mutation 執行復原（樂觀更新 + 失敗回復）、衝突對話框的 promise。
 - `src/web/features/undo/`：頂欄按鈕、衝突對話框、個人待辦 / 回饋的登記。
+- `src/web/features/undo/linkUndo.ts`：相關任務、依賴（新增 / 移除）與待辦清單（新增、勾選、刪除項目）的登記；抽屜 toast 的「復原」以 `undoFromToast()` 走同一筆（仍在堆疊頂端時經 `performUndo`，之後可重做）。「清除已完成」不提供復原（確認對話框已說明）。
 - 後端：`POST /api/tasks/:id/restore`（`server/app/features/tasks.py`；需 `tasks.edit`；未刪除時冪等回傳；不存在 404；寫入 `create` 變更流水讓其他人看到任務重新出現）。
 - 測試：`src/web/lib/undo.test.ts`、`taskUndoModel.test.ts`、`shortcuts.test.ts`、`server/tests/test_tasks.py`（restore）、`tests/e2e/undo.spec.ts`。

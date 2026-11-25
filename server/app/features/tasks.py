@@ -262,4 +262,5 @@ async def restore_task(request: Request, id: str):
             )
             record_change(conn, "task", tid, "create", uid, t)
             row = conn.execute("SELECT * FROM tasks WHERE id = ?", (tid,)).fetchone()
+            audit_events.task_restored(conn, ctx.user, row, t)
         return with_checklist_counts(conn, [row_to_dict(row)])[0]
