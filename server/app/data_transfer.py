@@ -11,6 +11,8 @@
   - 缺少成員（匯入檔的成員在本機不存在）：skip（相關指派清空；個人清單因必須有擁有者而略過）或 create
     （建立為啟用中的一般成員、隨機臨時密碼、首次登入須改密碼；臨時密碼只在結果中回傳一次）。
   - mode=replace：先刪除本機全部業務資料（成員保留）再匯入，需輸入確認字樣。
+- 任務關聯（taskRelations，0013）：不在 SPECS 中（sync-push 不同步，已知限制），兩端以任務 uid 表示；
+  匯入時冪等、同一對不重複建立，對方任務不在匯入檔也不在本機時略過並記錄於 skippedRelations。
 """
 
 from __future__ import annotations
@@ -389,6 +391,22 @@ UserItem = create_model(
 )
 
 
+#: 任務關聯（taskRelations）：兩端以任務 uid 表示；related 為對稱關係
+RELATIONS_KEY = "taskRelations"
+RELATIONS_LABEL = "任務關聯"
+RelationItem = create_model(
+    "Import_taskRelations",
+    __config__=_STRICT,
+    uid=(Uid, ...),
+    taskAUid=(Uid, ...),
+    taskBUid=(Uid, ...),
+    type=(Literal["related"], "related"),
+    createdByUsername=(Optional[UsernameRef], None),
+    createdAt=(Optional[_Int], None),
+    updatedAt=(Optional[_Int], None),
+)
+
+
 def _list_of(model: Any) -> Any:
     return (Annotated[list[model], Field(max_length=MAX_ITEMS)], [])  # type: ignore[valid-type]
 
@@ -403,6 +421,8 @@ ExportDoc = create_model(
     **{s.key: _list_of(_item_model(s)) for s in SPECS},
     #: 附件清單（只有元資料，不含檔案本體；匯入時忽略——附件檔案請用完整備份帶走）
     attachments=(Annotated[list[dict[str, Any]], Field(max_length=MAX_ITEMS)], []),
+    #: 任務關聯（0013；不在 SPECS 中，sync-push 不同步）。舊匯出檔沒有此鍵時為空
+    taskRelations=(Annotated[list[RelationItem], Field(max_length=MAX_ITEMS)], []),  # type: ignore[valid-type]
 )
 
 
@@ -576,7 +596,30 @@ def export_document(db: Database, now: int) -> dict[str, Any]:
         for spec in SPECS:
             doc[spec.key] = [_export_row(spec, r, idx) for r in idx.rows[spec.key]]
         doc["attachments"] = _export_attachments(conn, idx)
+        doc[RELATIONS_KEY] = _export_relations(conn, idx)
     return doc
+
+
+def _export_relations(conn: sqlite3.Connection, idx: LocalIndex) -> list[dict[str, Any]]:
+    """任務關聯：兩端以任務 uid 表示（含軟刪除任務的關聯，與任務一併匯出）"""
+    task_uid = idx.uid_by_id["tasks"]
+    out = []
+    for r in conn.execute("SELECT * FROM task_relations ORDER BY id"):
+        a, b = task_uid.get(r["task_a_id"]), task_uid.get(r["task_b_id"])
+        if a is None or b is None:
+            continue
+        out.append(
+            {
+                "uid": r["uid"],
+                "taskAUid": a,
+                "taskBUid": b,
+                "type": r["type"],
+                "createdByUsername": idx.user_by_id.get(r["created_by"]) if r["created_by"] else None,
+                "createdAt": r["created_at"],
+                "updatedAt": r["updated_at"],
+            }
+        )
+    return out
 
 
 def _export_attachments(conn: sqlite3.Connection, idx: LocalIndex) -> list[dict[str, Any]]:
@@ -625,6 +668,48 @@ class Plan:
     items: list[ItemPlan]
     missing_users: list[dict[str, Any]]
     local_counts: dict[str, int]
+    #: 任務關聯的預覽統計（new / same / skip / total / local）
+    relations: dict[str, Any] = field(default_factory=dict)
+
+
+def _relation_end(uid: str, local_task_ids: dict[str, int], file_task_uids: set[str]) -> str | None:
+    """關聯一端：本機已有（local）/ 只在匯入檔（file）/ 都沒有（None）"""
+    if uid in local_task_ids:
+        return "local"
+    if uid in file_task_uids:
+        return "file"
+    return None
+
+
+def plan_relations(conn: sqlite3.Connection, doc: dict[str, Any]) -> dict[str, Any]:
+    """任務關聯預覽：兩端都在本機且本機已有同一對關聯 → same；任一端兩邊都找不到 → skip；其餘 new"""
+    local_task_ids = {r["uid"]: r["id"] for r in conn.execute("SELECT id, uid FROM tasks")}
+    file_task_uids = {t["uid"] for t in doc["tasks"]}
+    local_pairs = {
+        (r["task_a_id"], r["task_b_id"], r["type"])
+        for r in conn.execute("SELECT task_a_id, task_b_id, type FROM task_relations")
+    }
+    local_uids = {r[0] for r in conn.execute("SELECT uid FROM task_relations")}
+    stats = {"new": 0, "same": 0, "skip": 0}
+    seen: set[tuple[str, str, str]] = set()
+    for rel in doc[RELATIONS_KEY]:
+        ends = [_relation_end(u, local_task_ids, file_task_uids) for u in (rel["taskAUid"], rel["taskBUid"])]
+        if None in ends or rel["taskAUid"] == rel["taskBUid"]:
+            stats["skip"] += 1
+            continue
+        key = (*sorted((rel["taskAUid"], rel["taskBUid"])), rel["type"])
+        if key in seen:
+            stats["same"] += 1
+            continue
+        seen.add(key)  # type: ignore[arg-type]
+        if rel["uid"] in local_uids:
+            stats["same"] += 1
+        elif ends == ["local", "local"]:
+            a, b = sorted((local_task_ids[rel["taskAUid"]], local_task_ids[rel["taskBUid"]]))
+            stats["same" if (a, b, rel["type"]) in local_pairs else "new"] += 1
+        else:
+            stats["new"] += 1
+    return {**stats, "total": len(doc[RELATIONS_KEY]), "local": len(local_uids)}
 
 
 def _same(a: Any, b: Any) -> bool:
@@ -707,7 +792,7 @@ def plan_import(conn: sqlite3.Connection, doc: dict[str, Any]) -> Plan:
                 {"username": username, "displayName": names.get(username) or username, "references": refs.get(username, 0)}
             )
     local_counts = {spec.key: len(idx.rows[spec.key]) for spec in SPECS}
-    return Plan(items, missing, local_counts)
+    return Plan(items, missing, local_counts, plan_relations(conn, doc))
 
 
 def _clip(v: Any, n: int = 200) -> Any:
@@ -722,6 +807,20 @@ def _clip(v: Any, n: int = 200) -> Any:
 def newer_side(local_updated: int | None, import_updated: int | None) -> str:
     lu, iu = local_updated or 0, import_updated or 0
     return "import" if iu > lu else "local" if lu > iu else "same"
+
+
+def _relations_category(rel: dict[str, Any]) -> dict[str, Any]:
+    """任務關聯的預覽統計列（與其他類別同格式；skip 為兩端任務都找不到而將略過的筆數）"""
+    return {
+        "key": RELATIONS_KEY,
+        "label": RELATIONS_LABEL,
+        "new": rel.get("new", 0),
+        "same": rel.get("same", 0),
+        "conflict": 0,
+        "skip": rel.get("skip", 0),
+        "total": rel.get("total", 0),
+        "local": rel.get("local", 0),
+    }
 
 
 def preview_summary(plan: Plan, doc: dict[str, Any]) -> dict[str, Any]:
@@ -760,7 +859,8 @@ def preview_summary(plan: Plan, doc: dict[str, Any]) -> dict[str, Any]:
         "file": {"schemaVersion": doc["schemaVersion"], "exportedAt": doc["exportedAt"]},
         "categories": [
             {**stats[s.key], "total": len(doc[s.key]), "local": plan.local_counts[s.key]} for s in SPECS
-        ],
+        ]
+        + [_relations_category(plan.relations)],
         "users": {"total": len(doc["users"]), "existing": existing_users, "missing": len(plan.missing_users)},
         "conflicts": conflicts,
         "missingUsers": plan.missing_users,
@@ -952,6 +1052,43 @@ def apply_import(
     return result
 
 
+def _apply_relations(w: _Writer, s: dict[str, Any]) -> list[str]:
+    """套用任務關聯（任務已寫入後）：冪等、不重複；對方任務不在匯入檔也不在本機時略過並記錄。
+    不改動兩端任務的 updatedAt（避免匯入後內容與來源不同），但寫一筆 task update 變更讓畫面重抓。"""
+    local_task_ids = {r["uid"]: r["id"] for r in w.conn.execute("SELECT id, uid FROM tasks")}
+    task_ids = {**local_task_ids, **w.maps["tasks"]}
+    skipped: list[str] = []
+    for rel in w.doc[RELATIONS_KEY]:
+        x, y = task_ids.get(rel["taskAUid"]), task_ids.get(rel["taskBUid"])
+        if x is None or y is None or x == y:
+            s["skipped"] += 1
+            missing = [u for u in (rel["taskAUid"], rel["taskBUid"]) if u not in task_ids]
+            skipped.append(
+                f"關聯 {rel['uid']}：找不到任務 {', '.join(missing)}" if missing else f"關聯 {rel['uid']}：兩端為同一任務"
+            )
+            continue
+        a, b = (x, y) if x < y else (y, x)
+        exists = w.conn.execute(
+            "SELECT 1 FROM task_relations WHERE (task_a_id = ? AND task_b_id = ? AND type = ?) OR uid = ?",
+            (a, b, rel["type"], rel["uid"]),
+        ).fetchone()
+        if exists:
+            s["unchanged"] += 1
+            continue
+        created_by = w.user_id.get(rel["createdByUsername"]) if rel["createdByUsername"] else None
+        created_at = rel["createdAt"] if rel["createdAt"] is not None else w.now
+        updated_at = rel["updatedAt"] if rel["updatedAt"] is not None else created_at
+        w.conn.execute(
+            "INSERT INTO task_relations (uid, task_a_id, task_b_id, type, created_by, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (rel["uid"], a, b, rel["type"], created_by, created_at, updated_at),
+        )
+        s["created"] += 1
+        for tid in (a, b):
+            record_change(w.conn, "task", tid, "update", w.actor, w.now)
+    return skipped[:50]
+
+
 def _apply_in_tx(
     conn: sqlite3.Connection, doc: dict[str, Any], opts: ApplyOptions, actor_id: int | None, now: int
 ) -> dict[str, Any]:
@@ -959,7 +1096,17 @@ def _apply_in_tx(
         s.key: {"key": s.key, "label": s.label, "created": 0, "updated": 0, "unchanged": 0, "skipped": 0, "deleted": 0}
         for s in SPECS
     }
+    rel_stats = {
+        "key": RELATIONS_KEY,
+        "label": RELATIONS_LABEL,
+        "created": 0,
+        "updated": 0,
+        "unchanged": 0,
+        "skipped": 0,
+        "deleted": 0,
+    }
     if opts.mode == "replace":
+        rel_stats["deleted"] = conn.execute("DELETE FROM task_relations").rowcount
         for key in _BUSINESS_DELETE_ORDER:
             spec = SPEC_BY_KEY[key]
             ids = [r[0] for r in conn.execute(f"SELECT id FROM {spec.table}")]
@@ -1001,10 +1148,13 @@ def _apply_in_tx(
         else:
             s["skipped"] += 1
 
+    skipped_relations = _apply_relations(w, rel_stats)
+
     return {
         "mode": opts.mode,
         "strategy": opts.strategy,
-        "categories": [stats[s.key] for s in SPECS],
+        "categories": [stats[s.key] for s in SPECS] + [rel_stats],
+        "skippedRelations": skipped_relations,
         "createdUsers": created_users,
         "missingUsersSkipped": [m["username"] for m in plan.missing_users] if opts.missing_users == "skip" else [],
     }

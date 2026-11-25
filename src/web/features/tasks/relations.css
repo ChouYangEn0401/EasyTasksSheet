@@ -1,0 +1,222 @@
+/* feat/task-relations：相關任務區、關聯搜尋選單、複製任務對話框、清單 / 看板連結圖示（docs/design/task-list.md §13）。只用 tokens.css 的變數。 */
+
+@layer theme, base, components, utilities;
+
+@layer components {
+  /* ── 清單列 / 看板卡片的連結圖示 ── */
+  .tr-badge {
+    display: inline-flex;
+    flex: none;
+    align-self: center;
+    align-items: center;
+    gap: 2px;
+    height: 18px;
+    padding: 0 5px;
+    margin-right: 6px;
+    border-radius: var(--radius-full);
+    background: var(--color-surface-active);
+    color: var(--color-text-secondary);
+    font-size: var(--text-xs);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .kanban-card-meta .tr-badge {
+    margin-right: 0;
+  }
+
+  /* ── 抽屜：由相關任務跳轉而來的「返回」 ── */
+  .tr-back {
+    flex: none;
+    max-width: 50%;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+  }
+
+  /* ── 抽屜：相關任務區 ── */
+  .tr-count {
+    margin-left: 6px;
+    color: var(--color-text-tertiary);
+    font-weight: var(--font-regular);
+    font-variant-numeric: tabular-nums;
+  }
+  .tr-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0 0 4px;
+    padding: 0;
+    list-style: none;
+  }
+  .tr-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 0 2px 0 8px;
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+  }
+  .tr-row:hover,
+  .tr-row:focus-within {
+    background: var(--color-surface-hover);
+  }
+  .tr-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--status-dot, var(--color-status-todo));
+  }
+  .tr-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-text);
+    font: inherit;
+    text-align: left;
+  }
+  .tr-title--link {
+    cursor: pointer;
+  }
+  .tr-title--link:hover .truncate {
+    color: var(--color-accent-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .tr-title--link:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+  .tr-title--deleted {
+    color: var(--color-text-tertiary);
+  }
+  .tr-title--deleted .truncate {
+    text-decoration: line-through;
+  }
+  .tr-deleted-tag {
+    flex: none;
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+  }
+  .tr-due {
+    flex: none;
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  .tr-remove {
+    flex: none;
+    opacity: 0;
+  }
+  .tr-row:hover .tr-remove,
+  .tr-row:focus-within .tr-remove {
+    opacity: 1;
+  }
+  @media (hover: none) {
+    .tr-remove {
+      opacity: 1;
+    }
+  }
+
+  /* ── 關聯搜尋選單 ── */
+  .tr-search-input {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--color-text-tertiary);
+  }
+  .tr-search-input .ui-input {
+    flex: 1;
+    min-width: 0;
+  }
+  .tr-search-state {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tr-option {
+    gap: 8px;
+  }
+  .tr-option-main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  }
+  .tr-option-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tr-option-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+  }
+  .tr-option .ui-status-badge {
+    flex: none;
+  }
+
+  /* ── 複製任務對話框 ── */
+  .tr-dup {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .tr-dup-fieldset {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+  .tr-dup-legend {
+    margin-bottom: 8px;
+    padding: 0;
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--color-text);
+  }
+  .tr-dup-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px 12px;
+  }
+  .tr-dup-hint {
+    margin: 8px 0 0;
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+  }
+  .tr-dup-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .tr-dup-kbd {
+    margin-right: auto;
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+  }
+
+  @media (max-width: 767px) {
+    .tr-dup-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .tr-dup-kbd {
+      display: none;
+    }
+    .tr-row {
+      min-height: 40px;
+    }
+  }
+}

@@ -101,6 +101,36 @@ class TaskCreateInput(TaskUpdateInput):
     title: Title
 
 
+TaskRelationType = Literal["related"]
+
+
+class TaskRelationCreateInput(_Input):
+    """POST /api/tasks/:id/relations"""
+
+    targetId: int
+    type: TaskRelationType = "related"
+
+
+class TaskDuplicateCopy(_Input):
+    """複製任務時要帶過去的內容（未送的項目預設 True）"""
+
+    description: bool = True
+    customFields: bool = True
+    dates: bool = True
+    assignee: bool = True
+    estimate: bool = True
+    priority: bool = True
+
+
+class TaskDuplicateInput(_Input):
+    """POST /api/tasks/:id/duplicate"""
+
+    title: Title = None  # type: ignore[assignment]
+    copy_: TaskDuplicateCopy = Field(default_factory=TaskDuplicateCopy, alias="copy")
+    statusId: int = None  # type: ignore[assignment]
+    relate: bool = True
+
+
 # ── properties ──
 class SelectOption(_Input):
     id: Annotated[str, StringConstraints(min_length=1)]

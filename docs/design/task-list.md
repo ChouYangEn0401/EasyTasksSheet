@@ -224,3 +224,60 @@
 - 只有「預設專案」時，FilterBar 專案旁以淡色小字提示「可以新增自己的專案」（需 `projects.create`）。
 - 預設專案不可刪除（沒有刪除專案的功能），只能改名 / 改色 / 封存。
 
+## 13. 相關任務與複製任務（feat/task-relations）
+
+### 13.1 資料與 API
+
+- 資料表 `task_relations`（migration `0013`）：`id`、`uid`（0005 同款 trigger 自動產生）、`task_a_id`、`task_b_id`、`type`（目前只有 `related`，保留欄位以便日後擴充如 `blocks`）、`created_by`、`created_at`、`updated_at`。
+- `related` 為對稱關係：寫入時以較小 id 在前正規化（DB `CHECK (task_a_id < task_b_id)`，同時禁止自己關聯自己）；`UNIQUE(task_a_id, task_b_id, type)`。
+- **軟刪除規則（擇簡）**：任務軟刪除時關聯保留。`GET /relations` 仍列出，對方任務帶 `deleted: true`，抽屜顯示為**灰字刪除線＋「已刪除」**，不可點開、仍可移除；清單 / 看板的 `relationCount` **不計入**已刪除的對方任務。任務還原（目前無 UI）後關聯自然恢復。
+- API（寫入需 `tasks.edit`，讀取登入即可）：
+  - `GET /api/tasks/:id/relations` → `[{ id, type, createdBy, createdAt, task: { id, title, statusId, assigneeId, projectId, dueDate, deleted } }]`（依建立時間排序；任務本身已刪除 → 404）。
+  - `POST /api/tasks/:id/relations` body `{ targetId, type: 'related' }` → 新建 201；已存在（任一方向）200 回傳既有；自己對自己 400；任一端不存在或已刪除 404。
+  - `DELETE /api/tasks/:id/relations/:relationId` → `{ ok: true }`；關聯不屬於該任務 404。
+  - `GET /api/tasks` 每筆多 `relationCount`（單一查詢以 CTE 聚合，無 N+1；既有欄位不變）。
+  - 關聯新增 / 移除會更新兩端（未刪除）任務的 `updated_at` / `updated_by`，並各寫一筆 `task` `update` 變更 → 兩端畫面經 SSE 即時更新（前端關聯查詢鍵在 `['tasks', 'relations', id]`，隨任務變更一起失效）。
+  - `POST /api/tasks/:id/duplicate` body `{ title?, copy?: { description, customFields, dates, assignee, estimate, priority }, statusId?, relate? }`：預設標題 = 原標題 +「（複製）」（超過 500 字截斷原標題）；`copy` 各項預設 true；專案一律沿用；狀態預設為第一個 `category=todo` 的狀態（狀態為全域共用，依 sortOrder），或指定 `statusId`（不存在 400；若為 done 類則 `completedAt` 為此刻）；`progress = 0`；不複製 `completedAt`、附件、個人釘選與關聯本身；`sortOrder` 為全域最大 + 1（亦即同狀態最後）；自訂欄位逐鍵複製；`relate` 預設 true（新任務與原任務建立 related）。單一 transaction，回傳新任務完整資料（含 `relationCount`）。
+- 匯出 / 匯入：`taskRelations` 類別（兩端以任務 uid 表示）。預覽統計與套用結果都有一列「任務關聯」；冪等、同一對不重複；對方任務不在匯入檔也不在本機時略過並列在 `skippedRelations`。取代模式先清空本機關聯。
+- **已知限制**：多台電腦同步（sync-push）目前不同步關聯（見 docs/sync.md）。
+
+### 13.2 抽屜：相關任務區
+
+位置：「自訂欄位」區與「描述」之間。
+
+```
+相關任務 2
+● ntu ranking new workflow                 01/10  (頭像)  ✕(hover)
+● ~~pyDMS related repo …~~ 已刪除                         ✕(hover)
+＋ 新增關聯
+```
+
+- 每列：狀態點（依狀態色）、標題（按鈕，點擊以 push 切換 `?task=`）、到期日、負責人頭像、移除鈕（hover / focus 顯示；觸控裝置常駐）。
+- 由相關任務跳轉後，抽屜標題列左側出現「← 返回 <來源標題>」（等同瀏覽器上一頁）。
+- 移除不需確認，成功後 toast「已移除相關任務」附「復原」（重新建立關聯）。
+- 空狀態：「還沒有相關任務，把相關的工作串起來吧」。載入中為兩行 Skeleton；錯誤為 ErrorState（重試）。
+- 「＋ 新增關聯」開啟 Popover（寬 340）：搜尋框（停頓 200ms 後以 `GET /api/tasks?q=` 查詢）、結果排除自己與已關聯者、最多 8 筆，每筆顯示標題、專案（色點＋名稱）與狀態膠囊；`↑` `↓` 移動、`Enter` 加入、`Esc` 關閉；狀態提示：未輸入／搜尋中／失敗（重試）／找不到。
+
+### 13.3 清單列與看板卡片
+
+- `relationCount > 0` 時顯示小膠囊「🔗 N」（feature 內自繪 LinkIcon，core Icon 無 link），Tooltip「N 個相關任務」。
+- 清單：在標題儲存格的標題文字右側、`flex: none`，標題以省略號截斷，不被擠壓到不可讀（hover 時的「開啟」列動作會疊在其上，與既有行為一致）。
+- 看板：放在卡片中繼列（負責人、到期日旁），避免干擾多行標題的換行。
+- 膠囊不可聚焦（不破壞 grid / 看板的 roving tabindex），以 `role="img"` + `aria-label` 提供名稱。
+
+### 13.4 複製任務對話框
+
+- 入口：抽屜「⋯」選單「複製任務（D）」；或 focus 在抽屜內（非輸入框、無其他對話框）時按 `D`。清單目前沒有列的右鍵選單，故不加。
+- 對話框（`md`）：標題輸入（預填並全選）、「複製內容」六個勾選（描述、自訂欄位、開始日與到期日、負責人、預估工時、優先度；預設全勾）與說明「專案一律沿用；進度歸零，不複製完成時間、附件、釘選與既有關聯。」、狀態下拉（預設第一個待辦類）、「並與原任務建立相關連結」（預設勾選）。
+- `Ctrl+Enter` 送出、`Esc` 取消；建立中按鈕 loading；失敗於對話框內顯示 Alert。
+- 成功：toast「已建立「…」」，抽屜以 push 切換到新任務並聚焦標題欄位（瀏覽器上一頁回到原任務）。
+- 768px：勾選改兩欄、隱藏 Ctrl+Enter 提示。
+
+### 13.5 快捷鍵（追加）
+
+| 按鍵 | 情境 | 作用 |
+|---|---|---|
+| `D` | focus 在任務抽屜內（非輸入框、無對話框） | 開啟複製任務對話框（與全域 N / / / G / [ 不衝突） |
+| `↑` `↓`、`Enter`、`Esc` | 關聯搜尋選單 | 移動、加入、關閉 |
+| `Ctrl+Enter`、`Esc` | 複製任務對話框 | 建立、取消 |
+

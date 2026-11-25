@@ -8,7 +8,7 @@ import { fxAttr, motionMs, prefersReducedMotion, useItemFx, type ItemFx } from '
 import { closeTask, readTaskParam } from '../../lib/openTask.ts';
 import { noticeText, useRemoteTaskChanges } from '../../lib/remoteNotice.ts';
 import { isEditableTarget } from '../../lib/shortcuts.ts';
-import { notifySuccess, quoteName } from '../../lib/toast.ts';
+import { notifySuccess, quoteName, truncate } from '../../lib/toast.ts';
 import { useTaskFilters } from '../../lib/useTaskFilters.ts';
 import {
   Alert,
@@ -26,6 +26,9 @@ import { PinButton } from '../personal/PinButton.tsx';
 import { TaskPresenceHint } from '../presence/TaskPresence.tsx';
 import { reportEditing } from '../../lib/presence.ts';
 import { useDeleteTaskOptimistic, useOptimisticUpdate } from './data.ts';
+import { backTargetFor, consumeTitleFocus, goBackFrom } from './drawerNav.ts';
+import { DuplicateDialog } from './DuplicateDialog.tsx';
+import { RelatedTasks } from './RelatedTasks.tsx';
 import { EditableField, type EditState } from './EditableField.tsx';
 import type { FieldCol } from './fields.tsx';
 import { applicableProperties, propertyColumn } from './model.ts';
@@ -75,6 +78,8 @@ function TaskDrawerPanel({ id, leaving = false }: { id: number; leaving?: boolea
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
+  const [backTo] = useState(() => backTargetFor(id));
   const del = useDeleteTaskOptimistic();
   const usersById = useUsersById();
   const properties = useProperties().data;
@@ -83,8 +88,33 @@ function TaskDrawerPanel({ id, leaving = false }: { id: number; leaving?: boolea
   const remote = useRemoteTaskChanges(id, query.data, { properties, nameOf });
 
   useEffect(() => {
+    // 複製任務後切換過來：聚焦標題（資料已預先放入快取）；否則聚焦關閉鈕
+    if (consumeTitleFocus(id)) {
+      const raf = requestAnimationFrame(() => {
+        const title = document.querySelector<HTMLElement>('.task-drawer .tl-drawer-title-field');
+        (title ?? closeRef.current)?.focus();
+      });
+      return () => cancelAnimationFrame(raf);
+    }
     closeRef.current?.focus();
-  }, []);
+  }, [id]);
+
+  const hasTask = !!query.data;
+  useEffect(() => {
+    if (leaving || !hasTask) return;
+    // D：在抽屜內（非輸入框、無對話框）開啟複製任務對話框
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'd' && e.key !== 'D') return;
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      if (isEditableTarget(e.target) || document.querySelector('dialog[open]')) return;
+      const panel = document.querySelector('.task-drawer:not([data-leaving])');
+      if (!panel?.contains(e.target as Node)) return;
+      e.preventDefault();
+      setDuplicating(true);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [leaving, hasTask]);
 
   useEffect(() => {
     if (leaving) return;
@@ -159,6 +189,18 @@ function TaskDrawerPanel({ id, leaving = false }: { id: number; leaving?: boolea
         style={{ outline: 'none' }}
       >
         <div className="task-drawer-head">
+          {backTo && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="tr-back"
+              onClick={() => goBackFrom(id)}
+              aria-label={`返回「${backTo.title}」`}
+              title={`返回「${backTo.title}」`}
+            >
+              ← 返回 {truncate(backTo.title, 8)}
+            </Button>
+          )}
           <span className="task-drawer-id">#{id}</span>
           {task && <PinButton taskId={task.id} size="sm" />}
           {task && (
@@ -170,6 +212,7 @@ function TaskDrawerPanel({ id, leaving = false }: { id: number; leaving?: boolea
                 <Button {...p} variant="ghost" size="sm" iconOnly icon="menu" aria-label="更多動作" />
               )}
               items={[
+                { key: 'duplicate', label: '複製任務（D）', onSelect: () => setDuplicating(true) },
                 {
                   key: 'copy',
                   label: '複製連結',
@@ -243,6 +286,7 @@ function TaskDrawerPanel({ id, leaving = false }: { id: number; leaving?: boolea
       >
         <p className="m-0">刪除後將從所有檢視中移除。</p>
       </Dialog>
+      {task && <DuplicateDialog task={task} open={duplicating} onClose={() => setDuplicating(false)} />}
     </>
   );
 }
@@ -319,6 +363,7 @@ function TaskDetail({ task, titleId }: { task: Task; titleId: string }) {
           </Popover>
         )}
       </div>
+      <RelatedTasks task={task} />
       <Description task={task} fx={fieldFx('description')} />
     </>
   );

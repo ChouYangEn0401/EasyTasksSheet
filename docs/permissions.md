@@ -87,6 +87,7 @@ root 在「權限設定」頁勾選 / 取消 manager 與 user 的各項權限，
 | `GET /api/statuses/usage`                                      | 全員；各狀態被任務使用的筆數（管理狀態對話框用）          |
 | `PUT /api/eng/github-links`                                    | `github.manage`                                           |
 | 寫入 `/api/tasks*`                                             | `tasks.edit`                                              |
+| `POST / DELETE /api/tasks/:id/relations*`、`POST /api/tasks/:id/duplicate` | 沿用 `tasks.edit`（同屬寫入 `/api/tasks*`，由寫入守門 middleware 檢查）；`GET /api/tasks/:id/relations` 登入即可 |
 | 寫入 `/api/feedback*`                                          | `feedback.edit`                                           |
 | 寫入 `/api/personal*`                                          | `personal.edit`                                           |
 | 寫入 `/api/eng/issues*`、`/api/eng/worktree-records*`、`/api/eng/worktrees/pending/*` | `eng.edit`                         |

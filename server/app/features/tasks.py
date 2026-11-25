@@ -20,6 +20,14 @@ from .properties import merge_custom_values
 
 router = APIRouter()
 
+#: 每個任務的相關任務數（雙向展開後 JOIN 對方任務排除已刪除者）；欄位 task_id、n
+RELATION_COUNT_CTE = (
+    "rc AS (SELECT x.task_id, count(*) AS n FROM ("
+    "SELECT task_a_id AS task_id, task_b_id AS other_id FROM task_relations "
+    "UNION ALL SELECT task_b_id, task_a_id FROM task_relations) x "
+    "JOIN tasks o ON o.id = x.other_id AND o.deleted_at IS NULL GROUP BY x.task_id)"
+)
+
 #: API 欄位 → DB 欄位（custom 另外處理）
 _COLUMNS = {
     "title": "title",
@@ -108,8 +116,11 @@ async def list_tasks(request: Request):
             conds.append("instr(lower(title), lower(?)) > 0")
             params.append(q)
 
+    # relationCount：每個任務的相關任務數（不含已刪除的對方任務），以單一查詢聚合（task_relations.py）
     rows = get_ctx(request).db.all(
-        f"SELECT * FROM tasks WHERE {' AND '.join(conds)} ORDER BY sort_order, id", tuple(params)
+        f"WITH {RELATION_COUNT_CTE} SELECT tasks.*, coalesce(rc.n, 0) AS relation_count FROM tasks "
+        f"LEFT JOIN rc ON rc.task_id = tasks.id WHERE {' AND '.join(conds)} ORDER BY tasks.sort_order, tasks.id",
+        tuple(params),
     )
     return rows_to_dicts(rows)
 

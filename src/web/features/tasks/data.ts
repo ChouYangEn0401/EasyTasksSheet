@@ -73,7 +73,8 @@ export function useOptimisticUpdate() {
     },
     onSuccess: (task) => {
       qc.setQueryData(queryKeys.tasks.detail(task.id), task);
-      updateLists(qc, (list) => list.map((t) => (t.id === task.id ? task : t)));
+      // 合併而非取代：PATCH 回應不含清單專用的 relationCount
+      updateLists(qc, (list) => list.map((t) => (t.id === task.id ? { ...t, ...task } : t)));
     },
     onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() }),
   });

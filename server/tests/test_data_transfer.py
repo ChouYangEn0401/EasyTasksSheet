@@ -294,7 +294,9 @@ def test_roundtrip_into_empty_db(tmp_path):
 
     b = Env(tmp_path, seed=False, name="b")
     pv = preview(b, doc)
-    assert {c["key"]: c["new"] for c in pv["categories"]} == {s.key: len(doc[s.key]) for s in dt.SPECS}
+    assert {c["key"]: c["new"] for c in pv["categories"] if c["key"] in dt.SPEC_BY_KEY} == {
+        s.key: len(doc[s.key]) for s in dt.SPECS
+    }
     assert pv["conflicts"] == []
     assert [m["username"] for m in pv["missingUsers"]] == ["admin-a"]
     result = apply(b, pv["token"], missingUsers="create")

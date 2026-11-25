@@ -40,6 +40,7 @@ import {
 import { Popover } from './Popover.tsx';
 import { EditOptionsForm, NewPropertyForm } from './PropertyPanel.tsx';
 import { QuickAdd } from './QuickAdd.tsx';
+import { RelationBadge } from './RelationBadge.tsx';
 import { useFieldCommit, type CommitResult } from './useFieldCommit.ts';
 
 const COLLAPSED_KEY = 'tasks.list.collapsed';
@@ -858,6 +859,7 @@ function TaskCell({
         className={col.kind === 'estimate' || col.kind === 'number' ? 'tl-right' : ''}
         {...cellProps(rowKey, colIndex)}
       />
+      {col.kind === 'title' && task.id > 0 && <RelationBadge count={task.relationCount} />}
       {col.kind === 'title' && task.id > 0 && <TaskPresenceDots taskId={task.id} />}
       {extra}
     </div>

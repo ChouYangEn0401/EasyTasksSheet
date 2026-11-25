@@ -7,6 +7,7 @@ import { fxAttr, motionEasing, motionMs, type ItemFx } from '../../lib/motion.ts
 import { Avatar, ColorDot, UpdatedAt } from '../../ui/index.ts';
 import { PinButton } from '../personal/PinButton.tsx';
 import { TaskPresenceDots } from '../presence/TaskPresence.tsx';
+import { RelationBadge } from '../tasks/RelationBadge.tsx';
 import { cardAriaLabel, dueDisplay, formatHours } from './kanbanModel.ts';
 
 /** 16px 線條圖示（core Icon 尚無日曆 / 時鐘，僅供卡片中繼列使用） */
@@ -75,6 +76,7 @@ export function KanbanCardContent({ task, project, showProject, isDone }: CardVi
             {due.text}
           </span>
         )}
+        <RelationBadge count={task.relationCount} />
         {task.estimateHours != null && (
           <span className="kanban-meta-item">
             <MetaIcon name="clock" />

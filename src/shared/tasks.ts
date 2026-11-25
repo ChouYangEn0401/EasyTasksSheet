@@ -28,6 +28,8 @@ export const task = z.object({
    * 選填以相容舊資料與既有測試資料。
    */
   completedAt: z.number().int().nullable().optional(),
+  /** 相關任務數（只在 GET /api/tasks 清單與複製回應中提供；不含已刪除的對方任務） */
+  relationCount: z.number().int().optional(),
   ...timestamps,
 });
 export type Task = z.infer<typeof task>;
