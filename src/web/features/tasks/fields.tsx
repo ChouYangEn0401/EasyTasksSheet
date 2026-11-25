@@ -15,11 +15,14 @@ import {
   useProjects,
   useStatuses,
   useStatusesById,
+  useUpdateTask,
   useUsers,
   useUsersById,
   useProjectsById,
 } from '../../lib/hooks.ts';
+import { useCan } from '../../lib/permissions.ts';
 import { Avatar, Badge, Button, Checkbox, ColorDot, Icon, StatusBadge, UpdatedAt } from '../../ui/index.ts';
+import { openAdminDialog } from './adminUi.ts';
 import {
   checkDateRange,
   formatShortDate,
@@ -489,13 +492,64 @@ function ChoiceEditor({
   const [multi, setMulti] = useState<string[]>(() => (Array.isArray(value) ? (value as string[]) : []));
   const selected = multiple ? multi : [value as string | number | null];
 
-  const footer =
-    col.kind === 'select' && value ? (
-      <button type="button" className="ui-option" onClick={() => api.submit(null)}>
+  const updateTask = useUpdateTask();
+  const canManageStatuses = useCan('statuses.manage');
+  const canCreateProject = useCan('projects.create');
+  const canManageProjects = useCan('projects.manage');
+  const openDialog = (d: Parameters<typeof openAdminDialog>[0]) => {
+    api.cancel(false);
+    openAdminDialog(d);
+  };
+  const footerItems: ReactNode[] = [];
+  if (col.kind === 'select' && value)
+    footerItems.push(
+      <button key="clear" type="button" className="ui-option" onClick={() => api.submit(null)}>
         <Icon name="x" />
         <span className="ui-option-label">清除</span>
-      </button>
-    ) : undefined;
+      </button>,
+    );
+  if (col.kind === 'status' && canManageStatuses)
+    footerItems.push(
+      <button
+        key="manage-statuses"
+        type="button"
+        className="ui-option"
+        onClick={() => openDialog({ kind: 'manage-statuses' })}
+      >
+        <Icon name="pencil" />
+        <span className="ui-option-label">管理狀態…</span>
+      </button>,
+    );
+  if (col.kind === 'project' && canCreateProject)
+    footerItems.push(
+      <button
+        key="add-project"
+        type="button"
+        className="ui-option"
+        onClick={() =>
+          openDialog({
+            kind: 'add-project',
+            onCreated: (p) => updateTask.mutate({ id: task.id, projectId: p.id }),
+          })
+        }
+      >
+        <Icon name="plus" />
+        <span className="ui-option-label">新增專案</span>
+      </button>,
+    );
+  if (col.kind === 'project' && canManageProjects)
+    footerItems.push(
+      <button
+        key="manage-projects"
+        type="button"
+        className="ui-option"
+        onClick={() => openDialog({ kind: 'manage-projects' })}
+      >
+        <Icon name="pencil" />
+        <span className="ui-option-label">管理專案…</span>
+      </button>,
+    );
+  const footer = footerItems.length ? <>{footerItems}</> : undefined;
 
   return (
     <Popover

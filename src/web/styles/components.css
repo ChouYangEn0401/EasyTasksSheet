@@ -409,6 +409,14 @@
     color: var(--color-text-tertiary);
     font-size: var(--text-sm);
   }
+  .ui-panel-footer {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--color-border-subtle);
+  }
+  .ui-panel-footer .ui-option {
+    color: var(--color-text-secondary);
+  }
   .ui-menu-separator {
     height: 1px;
     margin: 4px 0;

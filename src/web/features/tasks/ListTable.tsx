@@ -16,9 +16,11 @@ import type { Task } from '../../../shared/tasks.ts';
 import { useProjectsById, useStatuses, useStatusesById, useUsersById } from '../../lib/hooks.ts';
 import { fxAttr, isRecentRemote, taskFxKey, useFlip, useItemFx, type ItemFx } from '../../lib/motion.ts';
 import { openTask } from '../../lib/openTask.ts';
+import { useCan } from '../../lib/permissions.ts';
 import { readStorage, writeStorage } from '../../lib/storage.ts';
 import { Avatar, Badge, ColorDot, Button, Icon, Input, Spinner, StatusBadge } from '../../ui/index.ts';
 import { PinButton } from '../personal/PinButton.tsx';
+import { openAdminDialog } from './adminUi.ts';
 import { flashTask, useUpdateProperty } from './data.ts';
 import { EditableField, type EditState } from './EditableField.tsx';
 import { useValueText } from './fieldText.ts';
@@ -671,6 +673,7 @@ function GroupRow({
   const statuses = useStatusesById();
   const users = useUsersById();
   const projects = useProjectsById();
+  const canManageStatuses = useCan('statuses.manage');
   const name = groupName(group, {
     status: group.id != null ? statuses.get(group.id)?.name : undefined,
     user: group.id != null ? users.get(group.id)?.displayName : undefined,
@@ -689,6 +692,19 @@ function GroupRow({
         <GroupLabel group={group} />
         <Badge count>{group.tasks.length}</Badge>
       </div>
+      {group.mode === 'status' && canManageStatuses && (
+        <div role="gridcell" className="tl-group-add">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="plus"
+            tabIndex={-1}
+            onClick={() => openAdminDialog({ kind: 'add-status' })}
+          >
+            新增狀態
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

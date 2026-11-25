@@ -305,3 +305,26 @@
     }
   }
 }
+
+@layer components {
+  /* 看板最右側的「＋ 新增欄位」（新增狀態；statuses.manage） */
+  .kanban-add-col {
+    grid-row: 1;
+    align-self: start;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    height: 44px;
+    padding: 0 var(--space-3);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-lg);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    cursor: pointer;
+  }
+  .kanban-add-col:hover {
+    background: var(--color-surface-hover);
+    color: var(--color-text);
+  }
+}

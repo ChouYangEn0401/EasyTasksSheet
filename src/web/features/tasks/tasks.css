@@ -676,3 +676,174 @@
     }
   }
 }
+
+/* ── 狀態 / 專案管理對話框、群組列新增入口 ───────────────── */
+@layer components {
+  .adm-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3, 12px);
+  }
+  .adm-hint {
+    margin: 0 0 var(--space-3, 12px);
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+  }
+  .adm-colors {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .adm-swatch {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: 2px solid transparent;
+    border-radius: var(--radius-full);
+    color: #fff;
+    cursor: pointer;
+  }
+  .adm-swatch[data-selected] {
+    box-shadow:
+      0 0 0 2px var(--color-surface),
+      0 0 0 4px var(--color-border-strong, var(--color-text-secondary));
+  }
+  .adm-swatch:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  .adm-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 52vh;
+    overflow-y: auto;
+    padding: 2px;
+  }
+  .adm-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+  .adm-row[data-dragging] {
+    box-shadow: var(--shadow-md);
+    position: relative;
+    z-index: 1;
+  }
+  .adm-row[data-archived] {
+    opacity: 0.6;
+  }
+  .adm-grip {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 2px;
+    border: none;
+    background: transparent;
+    color: var(--color-text-tertiary);
+    cursor: grab;
+    touch-action: none;
+  }
+  .adm-row-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .adm-row-top,
+  .adm-row-bottom {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .adm-row-bottom {
+    justify-content: space-between;
+  }
+  .adm-row-top .ui-input-wrap {
+    flex: 1;
+    min-width: 0;
+  }
+  .adm-row-bottom .ui-popover-anchor {
+    width: 140px;
+  }
+  .adm-usage {
+    flex: none;
+    color: var(--color-text-tertiary);
+    font-size: var(--text-xs, 12px);
+    white-space: nowrap;
+  }
+  .adm-inline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--color-border-subtle);
+  }
+  .adm-inline .ui-input-wrap {
+    flex: 1 1 160px;
+  }
+  .adm-inline .ui-popover-anchor {
+    width: 120px;
+  }
+  .adm-delete {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .adm-delete p {
+    margin: 0;
+  }
+  .adm-delete-target {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .adm-delete-target .ui-popover-anchor {
+    width: 180px;
+  }
+  .adm-delete-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .adm-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+  .adm-faint {
+    color: var(--color-text-tertiary);
+    font-size: var(--text-xs, 12px);
+    white-space: nowrap;
+  }
+
+  /* 清單群組列（狀態分組）末端的「＋ 新增狀態」 */
+  .tl-row--group {
+    display: flex;
+    align-items: center;
+  }
+  .tl-group-add {
+    position: sticky;
+    right: 12px;
+    margin-left: auto;
+    margin-right: 12px;
+    opacity: 0.55;
+  }
+  .tl-row--group:hover .tl-group-add,
+  .tl-group-add:focus-visible {
+    opacity: 1;
+  }
+}

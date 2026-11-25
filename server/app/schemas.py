@@ -75,6 +75,12 @@ class StatusUpdateInput(_Input):
     sortOrder: float = None  # type: ignore[assignment]
 
 
+class StatusMigrateInput(_Input):
+    """POST /api/statuses/:id/migrate-and-delete：把使用此狀態的任務改移到 targetStatusId 後刪除"""
+
+    targetStatusId: int
+
+
 # ── tasks ──
 class TaskUpdateInput(_Input):
     title: Title = None  # type: ignore[assignment]

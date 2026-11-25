@@ -37,7 +37,9 @@ import {
 import { queryKeys } from '../../lib/queryClient.ts';
 import { suspendGlobalShortcuts } from '../../lib/shortcuts.ts';
 import { notifySuccess, truncate } from '../../lib/toast.ts';
-import { Alert, Button } from '../../ui/index.ts';
+import { useCan } from '../../lib/permissions.ts';
+import { Alert, Button, Icon } from '../../ui/index.ts';
+import { openAdminDialog } from '../tasks/adminUi.ts';
 import { KanbanCard, KanbanCardOverlay } from './KanbanCard.tsx';
 import { KanbanColumnFoot, KanbanColumnMain } from './KanbanColumn.tsx';
 import {
@@ -103,6 +105,7 @@ export function KanbanBoard({
   onClearFilters: () => void;
 }) {
   const qc = useQueryClient();
+  const canManageStatuses = useCan('statuses.manage');
   // 失敗由看板自己的提示列（含重試）呈現，不另發全域 toast
   const update = useUpdateTask({ silentError: true });
   const fx = useItemFx();
@@ -534,6 +537,17 @@ export function KanbanBoard({
               />
             );
           })}
+          {canManageStatuses && (
+            <button
+              type="button"
+              className="kanban-add-col"
+              style={{ gridColumn: statuses.length + 1 }}
+              onClick={() => openAdminDialog({ kind: 'add-status' })}
+            >
+              <Icon name="plus" />
+              新增欄位
+            </button>
+          )}
         </div>
         <DragOverlay
           dropAnimation={

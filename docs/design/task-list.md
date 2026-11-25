@@ -205,3 +205,22 @@
 - 「分組」使用 core `Select`（core 無 `sm` 尺寸，故為 `md` 32px）；型別圖示以單一字元表示（core `Icon` 無對應圖示，不改 `ui/`）。
 - 自建 Popover 以 portal + `position: fixed` 錨定，避免被表格水平捲動區塊裁切；本資料夾 CSS 為 `features/tasks/tasks.css`，檔首宣告與 Tailwind 相同的 layer 順序。
 - 鍵盤：表頭 `Enter` / `Space` 切換排序、`Alt+↓` / 右鍵 / chevron 開欄位選單；`F6` 在清單與 Drawer 間切換。
+
+## 12. 狀態管理與專案建立（feat/status-project）
+
+入口依 capability 顯示（`useCan`），沒有權限者完全看不到；後端 403 時由全域 toast 顯示「沒有權限執行此操作」。對話框集中掛在 `TaskAreaLayout`（`AdminDialogs.tsx`），以 `adminUi.ts` 的小型 store 開啟，每次開啟以新的 key 重新掛載（表單回到預設值）。
+
+**狀態（`statuses.manage`）**
+- 清單依狀態分組時，每個群組標頭列末端有「＋ 新增狀態」（淡色、hover 加深）。
+- 點狀態欄位下拉（清單與 Drawer 共用）底部有「管理狀態…」。
+- 看板最右側有「＋ 新增欄位」（即新增狀態）。
+- 新增狀態對話框：名稱（Enter 送出）、八色（`TAG_COLORS`）、類別（待處理 / 進行中 / 已完成，說明「類別決定統計與看板歸類」）。新增後狀態查詢失效重抓，清單、看板、篩選與任務預設狀態立即更新。
+- 管理狀態對話框：拖曳（或上移 / 下移鈕）排序、行內改名（blur / Enter 儲存、Esc 還原）、改色、改類別、刪除；顯示各狀態使用的任務數（含已刪除任務）。
+- 刪除：沒有任務使用 → 直接刪除；有任務使用 → 展開「改移任務到…」下拉（預設同類別），確認後呼叫 `POST /api/statuses/:id/migrate-and-delete`；至少保留一個狀態。純函式見 `statusAdmin.ts`（排序、顏色、改移目標）。
+
+**專案（`projects.create` / `projects.manage`）**
+- FilterBar「專案」下拉底部：「＋ 新增專案」（對話框輸入名稱＋選色，Enter 建立；建立後自動成為目前的專案篩選並顯示 toast）、「管理專案…」（`projects.manage`：改名 / 改色 / 封存）、「顯示已封存」切換（有封存專案時才出現）。封存的專案預設不出現在下拉。
+- 任務的「專案」欄位下拉（清單 / Drawer）底部同樣有「＋ 新增專案」，建立後把該任務改到新專案。
+- 只有「預設專案」時，FilterBar 專案旁以淡色小字提示「可以新增自己的專案」（需 `projects.create`）。
+- 預設專案不可刪除（沒有刪除專案的功能），只能改名 / 改色 / 封存。
+

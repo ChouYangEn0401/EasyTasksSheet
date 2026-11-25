@@ -49,9 +49,23 @@ type ListboxProps<T> = {
   multiple?: boolean;
   label?: string;
   align?: 'start' | 'end';
+  footer?: PanelFooter;
 };
 
-function Listbox<T>({ id, options, isSelected, onPick, onClose, multiple, label, align }: ListboxProps<T>) {
+/** 面板底部的額外動作（如「＋ 新增專案」）；收到關閉面板的函式 */
+export type PanelFooter = (close: () => void) => ReactNode;
+
+function Listbox<T>({
+  id,
+  options,
+  isSelected,
+  onPick,
+  onClose,
+  multiple,
+  label,
+  align,
+  footer,
+}: ListboxProps<T>) {
   const [query, setQuery] = useState('');
   const searchable = options.length > SEARCH_THRESHOLD;
   const shown = useMemo(() => {
@@ -186,6 +200,17 @@ function Listbox<T>({ id, options, isSelected, onPick, onClose, multiple, label,
           );
         })}
       </div>
+      {footer && (
+        <div
+          className="ui-panel-footer"
+          onKeyDown={(e) => {
+            // 底部按鈕自行處理 Enter / Space / 方向鍵；Esc 仍交給面板關閉
+            if (e.key !== 'Escape') e.stopPropagation();
+          }}
+        >
+          {footer(() => onClose(false))}
+        </div>
+      )}
     </div>
   );
 }
@@ -200,6 +225,8 @@ type TriggerProps = {
   'aria-label'?: string;
   'aria-describedby'?: string;
   align?: 'start' | 'end';
+  /** 面板底部的額外動作 */
+  footer?: PanelFooter;
 };
 
 function usePopoverState() {
@@ -289,6 +316,7 @@ export function Select<T extends string | number>({
           onClose={close}
           label={trigger['aria-label']}
           align={trigger.align}
+          footer={trigger.footer}
         />
       )}
     </span>
@@ -348,6 +376,7 @@ export function MultiSelect<T extends string | number>({
           onClose={close}
           label={label}
           align={trigger.align}
+          footer={trigger.footer}
         />
       )}
     </span>
@@ -394,9 +423,7 @@ export function Menu({
 }) {
   const { open, setOpen, anchorRef, triggerRef, close } = usePopoverState();
   // 可移動到的項目（含停用項目，讓鍵盤使用者也能得知停用原因）
-  const actionable = items.filter(
-    (i): i is Extract<MenuItem, { onSelect: () => void }> => 'onSelect' in i,
-  );
+  const actionable = items.filter((i): i is Extract<MenuItem, { onSelect: () => void }> => 'onSelect' in i);
   const [active, setActive] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
@@ -405,7 +432,13 @@ export function Menu({
     if (open) menuRef.current?.focus();
   }, [open]);
   const openMenu = (v: boolean) => {
-    if (v) setActive(Math.max(0, actionable.findIndex((i) => !i.disabled)));
+    if (v)
+      setActive(
+        Math.max(
+          0,
+          actionable.findIndex((i) => !i.disabled),
+        ),
+      );
     setOpen(v);
   };
 

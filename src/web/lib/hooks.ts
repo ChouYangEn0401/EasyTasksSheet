@@ -1,6 +1,13 @@
 import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Project, Status } from '../../shared/projects.ts';
+import type {
+  Project,
+  ProjectCreateInput,
+  ProjectUpdateInput,
+  Status,
+  StatusCreateInput,
+  StatusUpdateInput,
+} from '../../shared/projects.ts';
 import type { PropertyDef } from '../../shared/properties.ts';
 import type { Task, TaskCreateInput, TaskUpdateInput } from '../../shared/tasks.ts';
 import type { PublicUser } from '../../shared/users.ts';
@@ -105,6 +112,68 @@ export function useProperties() {
     queryKey: queryKeys.properties,
     queryFn: ({ signal }) => api.get<PropertyDef[]>('/properties', { signal }),
     refetchInterval: listPollInterval,
+  });
+}
+
+/** 各狀態被任務使用的筆數（含已刪除任務；statusId 字串 → 筆數）。管理狀態對話框用 */
+export function useStatusUsage(enabled = true) {
+  return useQuery({
+    queryKey: [...queryKeys.statuses, 'usage'] as const,
+    queryFn: ({ signal }) => api.get<Record<string, number>>('/statuses/usage', { signal }),
+    enabled,
+  });
+}
+
+/** 建立專案（projects.create）。成功後重抓專案清單 */
+export function useCreateProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ProjectCreateInput) => api.post<Project>('/projects', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.projects }),
+  });
+}
+
+/** 專案改名 / 改色 / 封存（projects.manage） */
+export function useUpdateProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...patch }: ProjectUpdateInput & { id: number }) =>
+      api.patch<Project>(`/projects/${id}`, patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.projects }),
+  });
+}
+
+/** 狀態新增 / 修改 / 刪除（statuses.manage）；成功後重抓狀態（含使用數）與任務清單 */
+export function useCreateStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: StatusCreateInput) => api.post<Status>('/statuses', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.statuses }),
+  });
+}
+
+export function useUpdateStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...patch }: StatusUpdateInput & { id: number }) =>
+      api.patch<Status>(`/statuses/${id}`, patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.statuses }),
+  });
+}
+
+/** 刪除狀態；有任務使用且給了 targetStatusId 時，先把任務改移到目標狀態再刪除（單一 transaction） */
+export function useDeleteStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, targetStatusId }: { id: number; targetStatusId?: number }) =>
+      targetStatusId != null
+        ? api.post<{ ok: true; moved: number }>(`/statuses/${id}/migrate-and-delete`, { targetStatusId })
+        : api.delete<{ ok: true }>(`/statuses/${id}`),
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: queryKeys.statuses }),
+        qc.invalidateQueries({ queryKey: queryKeys.tasks.all }),
+      ]),
   });
 }
 

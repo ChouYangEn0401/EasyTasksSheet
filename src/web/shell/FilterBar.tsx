@@ -1,11 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ColorDot } from '../ui/Badge.tsx';
 import { hasActiveFilters, type AssigneeFilter } from '../lib/filters.ts';
+import { openAdminDialog } from '../features/tasks/adminUi.ts';
 import { useProjects, useStatuses, useTasks, useUsers } from '../lib/hooks.ts';
+import { useCan } from '../lib/permissions.ts';
 import { statusStyle, statusTone } from '../lib/colors.ts';
 import { FILTER_SEARCH_ATTR } from '../lib/shortcuts.ts';
 import { useTaskFilters } from '../lib/useTaskFilters.ts';
-import { Avatar, Button, EmptyState, Input, MultiSelect, Skeleton, type SelectOption } from '../ui/index.ts';
+import {
+  Avatar,
+  Button,
+  EmptyState,
+  Icon,
+  Input,
+  MultiSelect,
+  Skeleton,
+  type SelectOption,
+} from '../ui/index.ts';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -35,6 +46,9 @@ export function FilterBar() {
   const projects = useProjects();
   const users = useUsers();
   const statuses = useStatuses();
+  const canCreateProject = useCan('projects.create');
+  const canManageProjects = useCan('projects.manage');
+  const [showArchived, setShowArchived] = useState(false);
 
   const [q, setQ] = useState(filters.q);
   const [urlQ, setUrlQ] = useState(filters.q);
@@ -52,9 +66,13 @@ export function FilterBar() {
   const projectOptions = useMemo<SelectOption<number>[]>(
     () =>
       (projects.data ?? [])
-        .filter((p) => !p.isArchived || filters.project.includes(p.id))
-        .map((p) => ({ value: p.id, label: p.name, leading: <ColorDot color={p.color} size="md" /> })),
-    [projects.data, filters.project],
+        .filter((p) => showArchived || !p.isArchived || filters.project.includes(p.id))
+        .map((p) => ({
+          value: p.id,
+          label: p.isArchived ? `${p.name}（已封存）` : p.name,
+          leading: <ColorDot color={p.color} size="md" />,
+        })),
+    [projects.data, filters.project, showArchived],
   );
   const assigneeOptions = useMemo<SelectOption<AssigneeFilter>[]>(
     () => [
@@ -84,6 +102,8 @@ export function FilterBar() {
     [statuses.data],
   );
 
+  const hasArchived = (projects.data ?? []).some((p) => p.isArchived);
+  const onlyDefaultProject = !!projects.data && projects.data.filter((p) => !p.isArchived).length <= 1;
   const active = hasActiveFilters(filters);
   return (
     <div className="filter-bar" role="search" aria-label="篩選任務">
@@ -121,7 +141,59 @@ export function FilterBar() {
         options={projectOptions}
         value={filters.project}
         onChange={(project) => setFilters({ project })}
+        footer={
+          canCreateProject || canManageProjects || hasArchived
+            ? (close) => (
+                <>
+                  {canCreateProject && (
+                    <button
+                      type="button"
+                      className="ui-option"
+                      onClick={() => {
+                        close();
+                        // 建立後自動套用成為目前的專案篩選
+                        openAdminDialog({
+                          kind: 'add-project',
+                          onCreated: (p) => {
+                            setShowArchived(false);
+                            setFilters({ project: [p.id] });
+                          },
+                        });
+                      }}
+                    >
+                      <Icon name="plus" />
+                      <span className="ui-option-label">新增專案</span>
+                    </button>
+                  )}
+                  {canManageProjects && (
+                    <button
+                      type="button"
+                      className="ui-option"
+                      onClick={() => {
+                        close();
+                        openAdminDialog({ kind: 'manage-projects' });
+                      }}
+                    >
+                      <Icon name="pencil" />
+                      <span className="ui-option-label">管理專案…</span>
+                    </button>
+                  )}
+                  {hasArchived && (
+                    <button type="button" className="ui-option" onClick={() => setShowArchived((v) => !v)}>
+                      <Icon name={showArchived ? 'eyeOff' : 'eye'} />
+                      <span className="ui-option-label">{showArchived ? '隱藏已封存' : '顯示已封存'}</span>
+                    </button>
+                  )}
+                </>
+              )
+            : undefined
+        }
       />
+      {canCreateProject && onlyDefaultProject && (
+        <span className="adm-faint" data-testid="project-hint">
+          可以新增自己的專案
+        </span>
+      )}
       <MultiSelect
         label="負責人"
         options={assigneeOptions}

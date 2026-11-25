@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router';
 import { readStorage, writeStorage } from '../lib/storage.ts';
+import { AdminDialogs } from '../features/tasks/AdminDialogs.tsx';
 import { FilterBar } from './FilterBar.tsx';
 import { LAST_TASK_VIEW_KEY, TASK_VIEWS, type TaskView } from './nav.ts';
 import { ViewTabs } from './ViewTabs.tsx';
@@ -25,6 +26,7 @@ export function TaskAreaLayout() {
       <div className="page">
         <Outlet />
       </div>
+      <AdminDialogs />
     </ViewTabsActionsContext.Provider>
   );
 }

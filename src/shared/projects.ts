@@ -56,3 +56,7 @@ export type StatusCreateInput = z.infer<typeof statusCreateInput>;
 /** PATCH /api/statuses/:id；DELETE 時仍有任務（含已刪除任務）使用則 409 */
 export const statusUpdateInput = statusCreateInput.partial();
 export type StatusUpdateInput = z.infer<typeof statusUpdateInput>;
+
+/** POST /api/statuses/:id/migrate-and-delete（statuses.manage）：把使用此狀態的任務改移到目標狀態後刪除 */
+export const statusMigrateInput = z.object({ targetStatusId: z.number().int() });
+export type StatusMigrateInput = z.infer<typeof statusMigrateInput>;
