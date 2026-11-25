@@ -22,6 +22,17 @@ python main.py                             # 啟動，開啟 http://localhost:30
 - 開發時用 `python main.py --reload`（後端自動重載）；管理指令（新增帳號、備份、還原）用 `python -m server.cli --help`。
 - 後端程式碼在 [`server/app/`](server/app)：`main.py` 組裝應用、`app.py` 掛路由、`features/` 每個功能一個檔案、`migrations/` 放資料表 SQL。
 
+## 文件導覽
+
+| 文件                                                    | 內容                                                   |
+| ------------------------------------------------------- | ------------------------------------------------------ |
+| [docs/HANDOFF.md](docs/HANDOFF.md)                      | 交接總覽：現況、程式地圖、已知問題、待決策、如何擴充   |
+| [docs/MOVE-TO-SERVER.md](docs/MOVE-TO-SERVER.md)        | 把本機資料搬到 server 的逐步教學（整包搬 / JSON / 同步） |
+| [docs/permissions.md](docs/permissions.md)              | 角色與權限矩陣                                         |
+| [docs/multi-user.md](docs/multi-user.md)                | 多人同時使用、在線感知、限制                           |
+| [docs/sync.md](docs/sync.md)                            | 多台電腦同步（sync-push）                              |
+| [docs/product-principles.md](docs/product-principles.md) | 產品原則                                               |
+
 ## 功能簡介
 
 - **任務檢視**：List（就地編輯、快速新增、自訂欄位、任務詳情抽屜）、Kanban（拖曳改狀態與排序）、Gantt 與總覽主畫面、月曆排程。
