@@ -15,7 +15,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
-from .. import audit
+from .. import audit, audit_revert
 from ..context import Ctx
 from ..errors import HttpError, not_found, validation_error
 from ..permissions import can, require
@@ -96,7 +96,7 @@ async def get_audit(id: str, ctx: Ctx = Depends(require("audit.view"))) -> dict[
             raise not_found("找不到這筆稽核紀錄")
         lab = audit.Labeler(conn)
         out = audit.entry_to_dict(lab, row)
-        out["revertPreview"] = audit.plan_revert(conn, row, lab).to_dict()
+        out["revertPreview"] = audit_revert.plan_revert(conn, row, lab).to_dict()
     return out
 
 
@@ -111,10 +111,10 @@ async def revert(request: Request, id: str, ctx: Ctx = Depends(require("audit.re
     raw = await request.body()
     data = await read_json(request, RevertInput) if raw.strip() else RevertInput()
     try:
-        return audit.revert_action(
+        return audit_revert.revert_action(
             ctx.db, aid, ctx.user, data.force, now=ctx.now(), can=lambda cap: can(ctx.user, cap, ctx.db)
         )
-    except audit.RevertError as e:
+    except audit_revert.RevertError as e:
         if e.details is None:
             raise HttpError(e.status, e.code, e.message) from None
         raise HttpError(e.status, e.code, e.message, e.details) from None
