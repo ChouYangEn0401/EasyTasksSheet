@@ -643,14 +643,16 @@
   }
 
   /* ── 響應式 ───────────────────────────── */
+  /* 抽屜開啟時的右側讓位：預設 --drawer-width，實際值由 useDrawerInset 量測「被蓋住的寬度」覆寫於 .tl-scroll */
   @media (min-width: 1280px) {
     .tl-page[data-drawer='true'] {
       --tl-extra: var(--drawer-width);
     }
   }
-  @media (max-width: 1279px) {
+  /* 標題欄最小寬：1280 寬（側欄展開）時預設欄位剛好放得下，不出現水平捲軸 */
+  @media (max-width: 1439px) {
     .tl-page {
-      --tl-title-min: 240px;
+      --tl-title-min: 220px;
     }
   }
   @media (max-width: 1023px) {

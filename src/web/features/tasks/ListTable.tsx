@@ -24,6 +24,8 @@ import { openAdminDialog } from './adminUi.ts';
 import { TaskPresenceDots } from '../presence/TaskPresence.tsx';
 import { flashTask, useUpdateProperty } from './data.ts';
 import { EditableField, type EditState } from './EditableField.tsx';
+import { ListGroupDnd, ListInsertDnd, ListRowDnd } from './ListDnd.tsx';
+import { useListDndHandles } from './listDndContext.ts';
 import { useValueText } from './fieldText.ts';
 import {
   checkPropertyName,
@@ -114,6 +116,8 @@ export function ListTable(props: ListTableProps) {
   });
   const statuses = useStatuses().data ?? [];
   const nCols = columns.length;
+  // 清單拖曳：任務列最左多一格「拖曳把手」（第 -1 欄）
+  const firstTaskCol = useListDndHandles() ? -1 : 0;
 
   useEffect(() => {
     if (!headerError) return;
@@ -137,7 +141,7 @@ export function ListTable(props: ListTableProps) {
   const cur: Active = rowIndex.has(active.row) ? active : { row: 'header', col: 1 };
 
   const colRange = (r: NavRow): [number, number] =>
-    r.kind === 'header' ? [1, nCols + 1] : r.kind === 'task' ? [0, nCols] : [0, 0];
+    r.kind === 'header' ? [1, nCols + 1] : r.kind === 'task' ? [firstTaskCol, nCols] : [0, 0];
 
   const focusCell = (row: string, col: number) => {
     const r = rows[rowIndex.get(row) ?? -1];
@@ -307,6 +311,7 @@ export function ListTable(props: ListTableProps) {
           if (r.kind === 'insert')
             return (
               <div key={r.key} role="row" className="tl-row tl-row--insert">
+                <ListInsertDnd groupKey={r.group.key} />
                 <div role="gridcell" className="tl-insert-cell" {...cellProps(r.key, 0)}>
                   <QuickAdd
                     fullWidth
@@ -323,6 +328,7 @@ export function ListTable(props: ListTableProps) {
               key={r.key}
               rowKey={r.key}
               task={r.task}
+              groupKey={r.group.key}
               columns={columns}
               statuses={statuses}
               selected={selectedId === r.task.id}
@@ -683,6 +689,7 @@ function GroupRow({
   });
   return (
     <div role="row" className="tl-row tl-row--group" aria-expanded={!collapsed}>
+      <ListGroupDnd group={group} collapsed={collapsed} onExpand={onToggle} />
       <div
         role="gridcell"
         className="tl-group-cell"
@@ -714,6 +721,7 @@ function GroupRow({
 function TaskRow({
   rowKey,
   task,
+  groupKey,
   columns,
   statuses,
   selected,
@@ -725,6 +733,7 @@ function TaskRow({
 }: {
   rowKey: string;
   task: Task;
+  groupKey: string;
   columns: ColumnDef[];
   statuses: Status[];
   selected: boolean;
@@ -761,6 +770,7 @@ function TaskRow({
       data-task-id={task.id}
     >
       <div role="gridcell" className="tl-cell tl-cell--check tl-sticky-0">
+        <ListRowDnd task={task} groupKey={groupKey} navProps={cellProps(rowKey, -1)} />
         <button
           type="button"
           className="tl-done"

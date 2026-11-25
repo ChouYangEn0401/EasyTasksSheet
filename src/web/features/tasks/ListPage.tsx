@@ -16,6 +16,7 @@ import { useTaskFilters } from '../../lib/useTaskFilters.ts';
 import { NoFilterResults } from '../../shell/FilterBar.tsx';
 import { ViewTabsActions } from '../../shell/ViewTabs.tsx';
 import { EmptyState, ErrorState, Skeleton } from '../../ui/index.ts';
+import { ListDnd } from './ListDnd.tsx';
 import { ListTable } from './ListTable.tsx';
 import { ListToolbar } from './ListToolbar.tsx';
 import {
@@ -31,6 +32,7 @@ import {
 } from './model.ts';
 import { DeletePropertyDialog } from './PropertyPanel.tsx';
 import { QuickAdd } from './QuickAdd.tsx';
+import { useDrawerInset } from './useDrawerInset.ts';
 import type { CommitResult } from './useFieldCommit.ts';
 import './tasks.css';
 
@@ -112,6 +114,8 @@ export function ListPage() {
 
   const scopeProjectId = filters.project.length === 1 ? filters.project[0]! : null;
   const count = tasks.data?.length ?? 0;
+  const showTable = !tasks.isPending && !(tasks.isError && !tasks.data) && count > 0;
+  useDrawerInset(scrollRef, showTable && selectedId != null);
 
   let body;
   if (tasks.isPending) body = <ListSkeleton />;
@@ -140,23 +144,27 @@ export function ListPage() {
     );
   else
     body = (
-      <div className="tl-block">
-        <ListTable
-          groups={groups}
-          mode={group}
-          columns={shown}
-          allTasks={tasks.data ?? []}
-          sort={sort}
-          onSort={(key, dir) => setParam({ sort: dir ? key : null, dir })}
-          onHide={(key) => toggleColumn(key, false)}
-          onDeleteProperty={setDeleting}
-          onPropertyCreated={onPropertyCreated}
-          scopeProjectId={scopeProjectId}
-          selectedId={selectedId}
-          onSaved={onSaved}
-          scrollRef={scrollRef}
-        />
-      </div>
+      <ListDnd groups={groups} mode={group} sort={sort} scrollRef={scrollRef}>
+        {(view) => (
+          <div className="tl-block">
+            <ListTable
+              groups={view}
+              mode={group}
+              columns={shown}
+              allTasks={tasks.data ?? []}
+              sort={sort}
+              onSort={(key, dir) => setParam({ sort: dir ? key : null, dir })}
+              onHide={(key) => toggleColumn(key, false)}
+              onDeleteProperty={setDeleting}
+              onPropertyCreated={onPropertyCreated}
+              scopeProjectId={scopeProjectId}
+              selectedId={selectedId}
+              onSaved={onSaved}
+              scrollRef={scrollRef}
+            />
+          </div>
+        )}
+      </ListDnd>
     );
 
   return (
