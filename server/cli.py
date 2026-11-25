@@ -9,6 +9,11 @@
       在暫存目錄演練 備份 → 保留份數 → 還原 → 驗證一致。
   python -m server.cli restore <備份檔> [--db 資料庫] --yes
       以備份檔還原（必須先停止服務）；原資料庫保留為 <db>.before-restore-<時間>。
+  python -m server.cli export <檔.json> [--db 資料庫]
+      匯出可攜 JSON（業務資料，不含密碼雜湊 / session）。
+  python -m server.cli import <檔.json> [--strategy keep_newer|keep_local|use_import] [--dry-run]
+                             [--create-missing-users] [--replace --yes] [--db 資料庫] [--out 備份目錄]
+      匯入（與網頁「資料管理」同一份邏輯：server/app/data_transfer.py）；寫入前自動備份到 BACKUP_DIR。
 """
 
 from __future__ import annotations
@@ -26,7 +31,10 @@ USAGE = (
     "      建立一般帳號（--admin 為管理員）；未給 --password 則隨機產生，首次登入須改密碼\n"
     "  python -m server.cli backup [--db 資料庫] [--out 備份目錄] [--keep 保留份數]\n"
     "  python -m server.cli backup --self-test\n"
-    "  python -m server.cli restore <備份檔> [--db 資料庫] --yes"
+    "  python -m server.cli restore <備份檔> [--db 資料庫] --yes\n"
+    "  python -m server.cli export <檔.json> [--db 資料庫]\n"
+    "  python -m server.cli import <檔.json> [--strategy keep_newer|keep_local|use_import] [--dry-run]\n"
+    "      [--create-missing-users] [--replace --yes] [--db 資料庫] [--out 備份目錄]"
 )
 
 
@@ -151,7 +159,110 @@ def restore_cmd(argv: list[str]) -> int:
     return 0
 
 
-COMMANDS = {"user-add": user_add, "backup": backup_cmd, "restore": restore_cmd}
+def export_cmd(argv: list[str]) -> int:
+    import json
+
+    from .app import data_transfer as dt
+    from .app.db import create_db, now_ms, run_migrations
+
+    p = argparse.ArgumentParser(prog="python -m server.cli export", description="匯出業務資料為可攜 JSON（不含密碼雜湊）")
+    p.add_argument("file", help="輸出檔（.json）")
+    p.add_argument("--db", help="資料庫檔（預設 DATABASE_PATH）")
+    args = p.parse_args(argv)
+    db = create_db(args.db or config.DATABASE_PATH)
+    try:
+        run_migrations(db)
+        doc = dt.export_document(db, now_ms())
+    finally:
+        db.close()
+    with open(args.file, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, ensure_ascii=False, indent=1)
+    counts = "、".join(f"{s.label} {len(doc[s.key])}" for s in dt.SPECS)
+    print(f"[export] 已匯出到 {args.file}（成員 {len(doc['users'])}、{counts}）")
+    return 0
+
+
+def import_cmd(argv: list[str]) -> int:
+    from .app import data_transfer as dt
+    from .app.db import create_db, now_ms, run_migrations
+
+    p = argparse.ArgumentParser(prog="python -m server.cli import", description="匯入 export 產生的 JSON（預設合併）")
+    p.add_argument("file", help="匯出檔（.json）")
+    p.add_argument("--db", help="資料庫檔（預設 DATABASE_PATH）")
+    p.add_argument("--strategy", choices=dt.STRATEGIES, default="keep_newer", help="衝突處理（預設 keep_newer）")
+    p.add_argument("--create-missing-users", action="store_true", help="自動建立缺少的成員（預設略過指派）")
+    p.add_argument("--replace", action="store_true", help="取代模式：先刪除本機全部業務資料（成員保留）")
+    p.add_argument("--yes", action="store_true", help="取代模式的確認")
+    p.add_argument("--out", help="匯入前自動備份的目錄（預設 BACKUP_DIR，否則 backups）")
+    p.add_argument("--dry-run", action="store_true", help="只預覽，不寫入")
+    args = p.parse_args(argv)
+
+    try:
+        with open(args.file, "rb") as fh:
+            doc = dt.parse_document(fh.read())
+    except OSError as e:
+        print(f"[import] 錯誤：無法讀取 {args.file}：{e}", file=sys.stderr)
+        return 1
+    except dt.TransferError as e:
+        print(f"[import] 錯誤：{e.message}", file=sys.stderr)
+        for d in e.details or []:
+            print(f"  - {d}", file=sys.stderr)
+        return 1
+
+    db = create_db(args.db or config.DATABASE_PATH)
+    try:
+        run_migrations(db)
+        with db.tx() as conn:
+            summary = dt.preview_summary(dt.plan_import(conn, doc), doc)
+        print("[import] 預覽（新增 / 相同 / 衝突）：")
+        for c in summary["categories"]:
+            print(f"  {c['label']}：{c['new']} / {c['same']} / {c['conflict']}")
+        for c in summary["conflicts"]:
+            fields = "、".join(f["label"] for f in c["fields"])
+            print(f"  衝突 {c['categoryLabel']}「{c['title']}」：{fields}（較新：{c['newer']}）")
+        if summary["missingUsers"]:
+            names = "、".join(m["username"] for m in summary["missingUsers"])
+            print(f"  缺少成員：{names}")
+        if args.dry_run:
+            print("[import] --dry-run：未寫入任何資料")
+            return 0
+        if args.replace and not args.yes:
+            print("[import] 取代模式會刪除本機全部業務資料，確認後加上 --yes 再執行。", file=sys.stderr)
+            return 1
+        opts = dt.ApplyOptions(
+            strategy=args.strategy,
+            missing_users="create" if args.create_missing_users else "skip",
+            mode="replace" if args.replace else "merge",
+            confirm=dt.REPLACE_CONFIRM if args.replace else None,
+        )
+        try:
+            result = dt.apply_import(
+                db, doc, opts, actor_id=None, now=now_ms(), backup_dir=args.out or _env("BACKUP_DIR") or "backups"
+            )
+        except dt.TransferError as e:
+            print(f"[import] 錯誤：{e.message}（未寫入任何資料）", file=sys.stderr)
+            return 1
+    finally:
+        db.close()
+    print(f"[import] 匯入前備份：{result['backupPath']}")
+    for c in result["categories"]:
+        print(
+            f"  {c['label']}：新增 {c['created']}、更新 {c['updated']}、未變更 {c['unchanged']}、"
+            f"略過 {c['skipped']}、刪除 {c['deleted']}"
+        )
+    for u in result["createdUsers"]:
+        print(f"  已建立成員 {u['username']}，臨時密碼：{u['tempPassword']}（只顯示這一次）")
+    print("[import] 完成")
+    return 0
+
+
+COMMANDS = {
+    "user-add": user_add,
+    "backup": backup_cmd,
+    "restore": restore_cmd,
+    "export": export_cmd,
+    "import": import_cmd,
+}
 
 
 def main(argv: list[str]) -> int:

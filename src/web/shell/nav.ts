@@ -9,7 +9,7 @@ export type NavEntry = {
   children?: { key: string; label: string; to: string }[];
 };
 
-/** 側邊導覽：所有頁面入口（成員管理僅 role=admin 顯示） */
+/** 側邊導覽：所有頁面入口（成員管理、資料管理僅 role=admin 顯示） */
 export const NAV_ENTRIES: NavEntry[] = [
   { key: 'overview', label: '總覽', to: '/', icon: 'dashboard' },
   {
@@ -27,6 +27,7 @@ export const NAV_ENTRIES: NavEntry[] = [
   { key: 'me', label: '個人清單', to: '/me', icon: 'user' },
   { key: 'eng', label: '工程追蹤', to: '/eng', icon: 'branch' },
   { key: 'admin', label: '成員管理', to: '/admin/users', icon: 'usersCog', adminOnly: true },
+  { key: 'admin-data', label: '資料管理', to: '/admin/data', icon: 'inbox', adminOnly: true },
 ];
 
 export const TASK_VIEWS = ['list', 'kanban', 'gantt'] as const;

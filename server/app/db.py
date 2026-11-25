@@ -176,6 +176,8 @@ _BOOL_COLUMNS = {
     "is_merged",
 }
 _JSON_COLUMNS = {"custom", "options", "labels"}
+#: 只供匯出 / 匯入對應用的內部欄位，不出現在 API 回應（0005_uid）
+_INTERNAL_COLUMNS = {"uid"}
 
 
 def camel(name: str) -> str:
@@ -186,7 +188,7 @@ def camel(name: str) -> str:
 def row_to_dict(row: sqlite3.Row | None, exclude: Iterable[str] = ()) -> dict[str, Any] | None:
     if row is None:
         return None
-    skip = set(exclude)
+    skip = set(exclude) | _INTERNAL_COLUMNS
     out: dict[str, Any] = {}
     for key in row.keys():
         if key in skip:

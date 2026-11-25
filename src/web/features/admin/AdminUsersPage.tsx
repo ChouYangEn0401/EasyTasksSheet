@@ -46,7 +46,7 @@ type Notice = { tone: 'success' | 'danger'; message: string; key: number };
 
 const NOTICE_MS = 4000;
 
-function NoPermission() {
+export function NoPermission() {
   const navigate = useNavigate();
   return (
     <EmptyState

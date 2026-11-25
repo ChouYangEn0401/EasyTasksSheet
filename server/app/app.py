@@ -15,7 +15,7 @@ from .errors import HttpError, error_body, error_response, install_error_handler
 from .security import csrf_check, require_session
 from .settings import auth_settings_from
 from .stub import ALL_METHODS
-from .features import admin, auth, eng, feedback, overview, personal, projects, properties, sync, tasks, users
+from .features import admin, auth, data_admin, eng, feedback, overview, personal, projects, properties, sync, tasks, users
 
 #: 不需登入的路由。/api/eng/worktrees/report 由端點自行以 WORKTREE_REPORT_TOKEN 驗證（仍受 CSRF 檢查約束）
 PUBLIC_PATHS = {
@@ -73,6 +73,8 @@ def create_app(
     app.include_router(feedback.router, prefix="/api/feedback")
     app.include_router(personal.router, prefix="/api/personal")
     app.include_router(eng.router, prefix="/api/eng")
+    # 須在 admin.router 之前：admin 有 /api/admin/* 的 fallback
+    app.include_router(data_admin.router, prefix="/api/admin/data")
     app.include_router(admin.router, prefix="/api/admin")
     app.include_router(sync.changes_router, prefix="/api/changes")
     app.include_router(sync.events_router, prefix="/api/events")

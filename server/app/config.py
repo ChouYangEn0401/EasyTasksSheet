@@ -43,6 +43,10 @@ class Config:
     ADMIN_PASSWORD: str = "password"
 
     CHANGES_RETENTION_DAYS: float = 30
+    #: 備份目錄（CLI backup 與匯入前自動備份共用）
+    BACKUP_DIR: str = "backups"
+    #: 資料匯入檔大小上限（MB）
+    DATA_IMPORT_MAX_MB: float = 50
 
     GITHUB_TOKEN: str | None = None
     GITHUB_API_URL: str = "https://api.github.com"
@@ -69,6 +73,7 @@ _POSITIVE_FLOAT = {
     "LOGIN_WINDOW_MINUTES",
     "LOGIN_LOCK_MINUTES",
     "CHANGES_RETENTION_DAYS",
+    "DATA_IMPORT_MAX_MB",
     "ISSUE_CACHE_MINUTES",
     "GITHUB_SYNC_MINUTES",
     "WORKTREE_STALE_DAYS",

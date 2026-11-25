@@ -97,6 +97,7 @@ npm run dev                   # 後端 uvicorn :3000（自動重載）+ Vite :51
 | `WORKTREE_REPORT_TOKEN`    | （空）          | 各人電腦回報 worktree 用的 token；空白 = 停用回報端點（一律 403）                                   |
 | `BACKUP_DIR`               | `backups`       | 備份目錄（`python -m server.cli backup` 使用；建議放在不同磁碟）                                    |
 | `BACKUP_KEEP`              | `14`            | 保留最近幾份備份                                                                                    |
+| `DATA_IMPORT_MAX_MB`       | `50`            | 「資料管理」匯入檔大小上限（MB）                                                                    |
 
 ## 從零部署（Linux + systemd + Caddy）
 
@@ -285,6 +286,30 @@ docker compose -f deploy/docker-compose.yml exec app python -m server.cli backup
 7. 重新啟動、登入，`GET /api/projects` 與步驟 3 的結果**完全相同**（4 個，備份後新增的那筆不在）。
 
 另外 `python -m server.cli backup --self-test` 會在暫存目錄模擬「連線開著、資料仍在 WAL 中」的運行狀態，驗證備份內容一致、保留份數清除、還原後資料一致且可繼續寫入、損毀備份檔會被拒絕；`server/tests/test_backup.py` 以真實 schema 涵蓋相同情境與 CLI 行為。
+
+## 資料匯出與匯入
+
+管理員在側邊導覽「資料管理」（`/admin/data`）可以：
+
+- **下載 JSON 匯出檔**：全部業務資料（任務含軟刪除、專案、狀態、自訂欄位、問題回饋、個人清單、工程問題、worktree 紀錄、GitHub 連動設定、成員基本資料），**不含**密碼雜湊、登入 session、登入紀錄與變更流水。關聯以穩定識別碼 uid（成員以帳號）表示，可匯入另一套系統。
+- **下載完整備份（.db）**：資料庫原樣快照（`VACUUM INTO`）。**含密碼雜湊與 session，屬敏感檔**，下載前會再確認；還原仍用上節的 `python -m server.cli restore <檔> --yes`。
+- **匯入**：選擇 JSON 匯出檔 → 預覽（不改資料）各類別「新增 / 相同（略過）/ 衝突」與缺少成員 → 選擇處理方式 → 套用。
+  - 衝突 = 兩邊都有同一筆（同 uid；狀態與專案也會以相同名稱對應）但內容不同。全域策略：**以較新者為準**（預設，比較 updatedAt，同時間保留本機）/ 保留本機 / 使用匯入檔，並可逐筆覆寫。
+  - 缺少成員（匯入檔的帳號在本系統不存在）：略過指派（欄位留空；該成員的個人清單略過）或自動建立（一般成員、隨機臨時密碼只在結果畫面顯示一次、首次登入須改密碼）。
+  - 套用前自動備份到 `BACKUP_DIR`（`<資料庫名>-pre-import-<時間>.db`），整個套用在單一 transaction，任何錯誤全數回滾。
+  - **取代全部資料**：先刪除本機全部業務資料（成員保留）再匯入，需輸入確認字樣「取代全部資料」。
+  - 匯入檔上限 `DATA_IMPORT_MAX_MB`（預設 50 MB）；較新版本系統匯出的檔案（schemaVersion 較大）會被拒絕。
+
+不開網頁也能用指令搬資料（與網頁同一份邏輯 `server/app/data_transfer.py`）：
+
+```bash
+.venv/bin/python -m server.cli export export.json [--db data/app.db]
+.venv/bin/python -m server.cli import export.json --dry-run                 # 只預覽
+.venv/bin/python -m server.cli import export.json [--strategy keep_newer|keep_local|use_import] \
+    [--create-missing-users] [--replace --yes] [--out backups]
+```
+
+細節見 `docs/design/data-export.md`。
 
 ## 升級流程
 
