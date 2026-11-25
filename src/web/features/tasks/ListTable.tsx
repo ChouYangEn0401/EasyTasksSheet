@@ -21,6 +21,7 @@ import { readStorage, writeStorage } from '../../lib/storage.ts';
 import { Avatar, Badge, ColorDot, Button, Icon, Input, Spinner, StatusBadge } from '../../ui/index.ts';
 import { PinButton } from '../personal/PinButton.tsx';
 import { openAdminDialog } from './adminUi.ts';
+import { TaskPresenceDots } from '../presence/TaskPresence.tsx';
 import { flashTask, useUpdateProperty } from './data.ts';
 import { EditableField, type EditState } from './EditableField.tsx';
 import { useValueText } from './fieldText.ts';
@@ -857,6 +858,7 @@ function TaskCell({
         className={col.kind === 'estimate' || col.kind === 'number' ? 'tl-right' : ''}
         {...cellProps(rowKey, colIndex)}
       />
+      {col.kind === 'title' && task.id > 0 && <TaskPresenceDots taskId={task.id} />}
       {extra}
     </div>
   );

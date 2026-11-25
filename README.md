@@ -96,6 +96,8 @@ npm run dev                   # 後端 uvicorn :3000（自動重載）+ Vite :51
 | `ADMIN_USERNAME`           | `admin`         | 首次啟動（尚無帳號時）建立的預設管理員帳號；可選覆寫，首次登入強制重設帳號與密碼                    |
 | `ADMIN_PASSWORD`           | `password`      | 預設管理員的初始密碼；可選覆寫（留空即 `password`）                                                 |
 | `CHANGES_RETENTION_DAYS`   | `30`            | 變更流水保留天數（即時同步用）                                                                      |
+| `PRESENCE_ONLINE_SECONDS`  | `45`            | 在線感知：最後一次回報在幾秒內算「在線」                                                            |
+| `PRESENCE_IDLE_SECONDS`    | `300`           | 在線感知：幾秒內算「閒置」，超過即「離線」                                                          |
 | `WORKTREE_REPORT_TOKEN`    | （空）          | 各人電腦回報 worktree 用的 token；空白 = 停用回報端點（一律 403）                                   |
 | `BACKUP_DIR`               | `backups`       | 備份目錄（`python -m server.cli backup` 使用；建議放在不同磁碟）                                    |
 | `BACKUP_KEEP`              | `14`            | 保留最近幾份備份                                                                                    |
@@ -328,6 +330,15 @@ docker compose -f deploy/docker-compose.yml exec app python -m server.cli backup
 - 邊界由你決定：例如授予成員「管理成員」等於允許成員把自己升為管理者；取消某角色的「編輯任務」後，該角色仍可瀏覽但不能修改。
 
 預設矩陣、受保護項目與限制見 [docs/permissions.md](docs/permissions.md)。
+
+## 多人同時使用與在線感知
+
+- 多人可同時編輯同一個專案：寫入以欄位為單位（兩人改同一任務的不同欄位都會保留，同一欄位後寫者勝），變更透過 SSE 在 2 秒內推送給所有人。
+- 頂欄右側的「雲朵」頭像堆疊顯示誰在線上（綠點）或暫時離開（黃點）；滑過頭像可看到對方正在看的頁面或任務，點雲朵可看全部成員與「最後上線」。任務抽屜、清單列與看板卡片也會顯示「誰也在看 / 正在編輯」。
+- 不想讓別人看到自己在看什麼：在線面板底部勾「隱藏我的動態」（存在瀏覽器，別人只會看到你在線上）。
+- 在線回報**不會延長登入**：閒置逾時仍只看點擊、鍵盤等實際操作。
+- 門檻可用 `PRESENCE_ONLINE_SECONDS`（預設 45）與 `PRESENCE_IDLE_SECONDS`（預設 300）調整。
+- 架構、限制、建議規模與併發測試結果見 `docs/multi-user.md`；介面規格見 `docs/design/presence.md`。
 
 ## 升級流程
 

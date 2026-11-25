@@ -35,6 +35,8 @@ export type RealtimeDeps = {
   onResync: () => void;
   /** 伺服器告知 session 已失效 */
   onExpired: () => void;
+  /** 在線狀態變化（SSE `presence` 事件的原始 data；lib/presence.ts） */
+  onPresence?: (data: string) => void;
   now?: () => number;
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
@@ -159,6 +161,12 @@ export function createRealtimeClient(deps: RealtimeDeps) {
       if (lastId != null && change.id <= lastId) return;
       lastId = change.id;
       deps.onChanges([change]);
+    });
+
+    es.addEventListener('presence', (e) => {
+      if (source !== es) return;
+      armWatchdog(es);
+      deps.onPresence?.(e.data);
     });
 
     es.addEventListener('expired', () => {

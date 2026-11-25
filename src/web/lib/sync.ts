@@ -3,6 +3,7 @@ import type { Query, QueryClient, QueryKey } from '@tanstack/react-query';
 import type { Change, EntityType } from '../../shared/sync.ts';
 import { api } from './api.ts';
 import { enterItem, flashItem, leaveItem, markRemote, taskFxKey } from './motion.ts';
+import { applyPresenceEvent } from './presence.ts';
 import { LIST_POLL_MS, queryKeys } from './queryClient.ts';
 import { createRealtimeClient, type ChangesResponse, type RealtimeClient } from './realtime.ts';
 
@@ -183,6 +184,7 @@ export function useRealtimeSync(qc: QueryClient, meId: number | null, onExpired:
       onChanges: (changes) => applier.apply(changes),
       onResync: () => applier.resync(),
       onExpired,
+      onPresence: (data) => applyPresenceEvent(qc, data),
     });
     client = c;
     unsubscribeClient = c.subscribe(() => statusListeners.forEach((fn) => fn()));

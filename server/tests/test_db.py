@@ -28,6 +28,7 @@ ALL_TABLES = [
     "sessions",
     "statuses",
     "tasks",
+    "user_presence",
     "users",
     "worktree_plans",
     "worktree_records",
@@ -62,6 +63,9 @@ def test_fresh_db_full_schema_and_idempotent(tmp_path):
     assert db2.scalar("SELECT count(*) FROM projects") == 1
     assert db2.scalar("PRAGMA journal_mode") == "wal"
     assert db2.scalar("PRAGMA foreign_keys") == 1
+    # 多人併發（docs/multi-user.md）：WAL 下 synchronous=NORMAL（1）安全且較快；鎖等待 5 秒
+    assert db2.scalar("PRAGMA synchronous") == 1
+    assert db2.scalar("PRAGMA busy_timeout") == 5000
     # TS 版（drizzle）也能辨識已套用的 migration
     assert db2.scalar('SELECT max(created_at) FROM "__drizzle_migrations"') == 1795533617781
     db2.close()

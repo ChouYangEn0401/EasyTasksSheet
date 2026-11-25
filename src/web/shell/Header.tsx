@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
+import { PresenceStack } from '../features/presence/PresenceStack.tsx';
 import { QuickAdd } from '../features/tasks/QuickAdd.tsx';
 import { logout, useCurrentUser } from '../lib/auth.ts';
 import { ROLE_BADGE_TONES, ROLE_LABELS } from '../lib/permissions.ts';
@@ -33,6 +34,7 @@ export function Header({
       <div className="header-quickadd">
         <QuickAdd global fullWidth />
       </div>
+      {user && <PresenceStack title={title} />}
       {user && (
         <Menu
           align="end"

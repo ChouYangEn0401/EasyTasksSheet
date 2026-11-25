@@ -6,6 +6,7 @@
   - 連線時送 `ready`（data: { latestId, reset }，retry: 3000）；若帶 ?since= 或 Last-Event-ID，先重播其後的流水
     （無法完整重播時 reset = true，前端應全部重抓）
   - 每筆變更送 `change`（id = change id，data = Change JSON）
+  - 在線狀態變化送 `presence`（data = { members: [...] }，見 features/presence.py；無 id、不參與重播）
   - 每 heartbeat_ms 送 `ping` 心跳，並重新檢查 session；失效時送 `expired` 後關閉
   - 本連線屬 GET，不刷新閒置計時（require_session 只對非 GET 刷新）
 """
@@ -27,6 +28,7 @@ from starlette.types import Receive, Scope, Send
 from ..context import get_ctx
 from ..db import Database
 from ..errors import validation_error
+from ..presence import PresenceEvent, registry_for
 from ..sync_hub import Change, changes_since, first_change_id, hub_for, latest_change_id, sync_options
 
 changes_router = APIRouter()
@@ -156,9 +158,18 @@ async def events(request: Request) -> SSEResponse:
     db, now, idle_ms, session_id = ctx.db, ctx.now, ctx.settings.idle_timeout_ms, ctx.session.id
 
     async def stream() -> AsyncIterator[bytes]:
-        queue: asyncio.Queue[list[Change]] = asyncio.Queue()
+        queue: asyncio.Queue[list[Change] | PresenceEvent] = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+        # presence 變化（features/presence.py）可能由其他執行緒觸發 → 以 call_soon_threadsafe 放入同一佇列
+        unsubscribe_presence = registry_for(db).subscribe(
+            lambda members: loop.call_soon_threadsafe(queue.put_nowait, PresenceEvent(members)), now
+        )
         # 先訂閱再重播（hub 起點在 subscribe 回傳前已確定，不會漏；以 sent 過濾重複）
-        unsubscribe = await hub_for(db).subscribe(queue.put_nowait)
+        try:
+            unsubscribe = await hub_for(db).subscribe(queue.put_nowait)
+        except BaseException:
+            unsubscribe_presence()
+            raise
         try:
             latest_id = await to_thread.run_sync(latest_change_id, db)
             replay = await to_thread.run_sync(read_changes, db, since) if since is not None else None
@@ -170,7 +181,6 @@ async def events(request: Request) -> SSEResponse:
             assert sent is not None
             pending: list[Change] = replay["changes"] if complete and replay else []
 
-            loop = asyncio.get_running_loop()
             deadline = loop.time() + sync_options.heartbeat_ms / 1000
             while True:
                 for row in pending:
@@ -179,7 +189,11 @@ async def events(request: Request) -> SSEResponse:
                         yield sse_event("change", _json(row), id=row["id"])
                 pending = []
                 try:
-                    pending = await asyncio.wait_for(queue.get(), max(0.0, deadline - loop.time()))
+                    item = await asyncio.wait_for(queue.get(), max(0.0, deadline - loop.time()))
+                    if isinstance(item, PresenceEvent):
+                        yield sse_event("presence", _json({"members": item.members}))
+                    else:
+                        pending = item
                     continue
                 except asyncio.TimeoutError:
                     pass
@@ -191,5 +205,6 @@ async def events(request: Request) -> SSEResponse:
                 yield sse_event("ping", "")
         finally:
             unsubscribe()
+            unsubscribe_presence()
 
     return SSEResponse(stream(), media_type="text/event-stream", headers=SSE_HEADERS)

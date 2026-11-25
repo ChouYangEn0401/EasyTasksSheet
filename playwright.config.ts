@@ -34,6 +34,9 @@ export default defineConfig({
       PYTHONUTF8: '1',
       // 預設管理員帳號改用 E2E 專用的 bootstrap（tests/helpers/e2eUsers.ts），不影響固定的 admin 帳號
       ADMIN_USERNAME: 'bootstrap',
+      // 在線感知：縮短在線 / 閒置門檻，讓「關閉後轉離線」可在測試內驗證（預設 45 / 300 秒）
+      PRESENCE_ONLINE_SECONDS: '10',
+      PRESENCE_IDLE_SECONDS: '25',
     },
   },
 });

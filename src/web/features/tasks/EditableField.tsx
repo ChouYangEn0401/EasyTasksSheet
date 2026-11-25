@@ -9,6 +9,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import type { Task } from '../../../shared/tasks.ts';
+import { reportEditing } from '../../lib/presence.ts';
 import { Spinner } from '../../ui/index.ts';
 import { FieldDisplay, FieldEditor, type EditorApi } from './fields.tsx';
 import { TEXT_KINDS, TOGGLE_KINDS, type FieldCol, type FieldMode } from './fieldText.ts';
@@ -110,6 +111,8 @@ export const EditableField = forwardRef<EditableFieldHandle, Props>(function Edi
 
   const readOnly = disabled || READ_ONLY.has(col.kind) || task.id < 0;
   const editing = !!edit && !readOnly;
+  // 在線感知：就地編輯中回報 mode=editing，結束即回 viewing
+  useEffect(() => (editing ? reportEditing(task.id) : undefined), [editing, task.id]);
 
   const start = (initialText?: string) => {
     if (readOnly) return;

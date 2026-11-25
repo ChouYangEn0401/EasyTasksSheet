@@ -48,8 +48,11 @@ export const idleTracker = createIdleTracker({
   },
 });
 
+/** 成功後不代表「伺服器已刷新閒置計時」的寫入（/presence：在線回報，伺服器端也不刷新） */
+const NOT_ACTIVITY_WRITES = new Set(['/auth/logout', '/auth/login', '/presence']);
+
 onApiEvent('write', (path) => {
-  if (path !== '/auth/logout' && path !== '/auth/login') idleTracker.noteWrite();
+  if (!NOT_ACTIVITY_WRITES.has(path)) idleTracker.noteWrite();
 });
 
 async function fetchMe(signal?: AbortSignal): Promise<MeResponse | null> {

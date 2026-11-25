@@ -23,6 +23,8 @@ E2E_USERS = {
     "newbie": {"username": "newbie", "password": "e2e-newbie-pass", "display_name": "新成員"},
     # 模擬首次啟動的預設管理員：E2E 伺服器以 ADMIN_USERNAME=bootstrap 啟動（見 playwright.config.ts）
     "bootstrap": {"username": "bootstrap", "password": "password", "display_name": "首次啟動"},
+    # 多人在線感知（presence spec）的第三位使用者
+    "peer": {"username": "peer", "password": "e2e-peer-pass", "display_name": "晴恩"},
 }
 
 
@@ -47,6 +49,7 @@ def main() -> int:
     create_user(db, **E2E_USERS["member"], role="user", must_change_password=False)
     create_user(db, **E2E_USERS["manager"], role="manager", must_change_password=False)
     create_user(db, **E2E_USERS["newbie"], role="user", must_change_password=True)
+    create_user(db, **E2E_USERS["peer"], role="user", must_change_password=False)
     # 角色設為 user：admin-users spec 依賴「admin 為唯一 root」；重設帳號流程只看帳號與 must_change_password
     create_user(db, **E2E_USERS["bootstrap"], role="user", must_change_password=True)
     db.close()

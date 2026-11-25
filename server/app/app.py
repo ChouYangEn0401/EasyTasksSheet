@@ -19,6 +19,7 @@ from .stub import ALL_METHODS
 from .features import admin, auth, data_admin, eng, feedback, overview, personal, profile, projects, properties, sync, tasks, users
 from .features import permissions_admin
 from .features import eng_attach
+from .features import presence
 
 #: 不需登入的路由。/api/eng/worktrees/report 由端點自行以 WORKTREE_REPORT_TOKEN 驗證（仍受 CSRF 檢查約束）
 PUBLIC_PATHS = {
@@ -89,6 +90,7 @@ def create_app(
     app.include_router(admin.router, prefix="/api/admin")
     app.include_router(sync.changes_router, prefix="/api/changes")
     app.include_router(sync.events_router, prefix="/api/events")
+    app.include_router(presence.router, prefix="/api/presence")
 
     # 未知的 /api/* 一律回 JSON 404（放在所有 API 之後、SPA fallback 之前）
     async def api_not_found() -> JSONResponse:

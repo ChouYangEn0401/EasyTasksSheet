@@ -41,6 +41,8 @@ class Database:
         self.conn.execute("PRAGMA journal_mode = WAL")
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.execute("PRAGMA busy_timeout = 5000")
+        # WAL 模式下 NORMAL 不會損毀資料（最多遺失斷電前最後一筆 commit），寫入延遲明顯低於 FULL
+        self.conn.execute("PRAGMA synchronous = NORMAL")
         self.lock = threading.RLock()
 
     @contextmanager

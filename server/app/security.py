@@ -23,6 +23,8 @@ from .settings import AuthSettings
 
 SESSION_COOKIE = "sid"
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+#: 非 GET 但「不算使用者操作」、不刷新閒置計時的路徑（presence 回報；見 features/presence.py）
+IDLE_EXEMPT_PATHS = frozenset({"/api/presence"})
 
 # ── 密碼（argon2id；參數同 @node-rs/argon2 預設：m=19456 KiB, t=2, p=1，可驗證既有雜湊）──
 _hasher = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1, hash_len=32, salt_len=16)
@@ -113,7 +115,8 @@ def session_info(session: SessionRow, settings: AuthSettings) -> dict[str, Any]:
 
 
 def require_session(db: Database, settings: AuthSettings, request: Request, t: int) -> tuple[sqlite3.Row, SessionRow]:
-    """需要有效 session。絕對期限與閒置逾時皆在此判斷；只有非 GET 請求刷新 last_active_at。"""
+    """需要有效 session。絕對期限與閒置逾時皆在此判斷；只有非 GET 請求刷新 last_active_at
+    （IDLE_EXEMPT_PATHS 例外：presence 回報不算操作）。"""
     token = request.cookies.get(SESSION_COOKIE)
     if not token:
         raise unauthorized()
@@ -132,7 +135,7 @@ def require_session(db: Database, settings: AuthSettings, request: Request, t: i
                 raise_after = unauthorized()
             else:
                 session = SessionRow(s["id"], s["user_id"], s["created_at"], s["expires_at"], s["last_active_at"])
-                if request.method not in SAFE_METHODS:
+                if request.method not in SAFE_METHODS and request.url.path not in IDLE_EXEMPT_PATHS:
                     conn.execute("UPDATE sessions SET last_active_at = ? WHERE id = ?", (t, sid))
                     session.last_active_at = t
                 return user, session

@@ -23,6 +23,8 @@ import {
   UpdatedAt,
 } from '../../ui/index.ts';
 import { PinButton } from '../personal/PinButton.tsx';
+import { TaskPresenceHint } from '../presence/TaskPresence.tsx';
+import { reportEditing } from '../../lib/presence.ts';
 import { useDeleteTaskOptimistic, useOptimisticUpdate } from './data.ts';
 import { EditableField, type EditState } from './EditableField.tsx';
 import type { FieldCol } from './fields.tsx';
@@ -201,6 +203,7 @@ function TaskDrawerPanel({ id, leaving = false }: { id: number; leaving?: boolea
             </Alert>
           </div>
         )}
+        {task && !leaving && <TaskPresenceHint taskId={task.id} />}
         <div className="task-drawer-body">{body}</div>
         {task && (
           <div className="task-drawer-foot tl-drawer-foot">
@@ -358,6 +361,9 @@ function Description({ task, fx }: { task: Task; fx?: ItemFx }) {
       },
     );
   };
+
+  // 在線感知：描述輸入中回報 editing，失焦即回 viewing
+  useEffect(() => (focused ? reportEditing(task.id) : undefined), [focused, task.id]);
 
   // 卸載（關閉 Drawer / 切換任務）時送出未存內容
   const mutate = update.mutate;

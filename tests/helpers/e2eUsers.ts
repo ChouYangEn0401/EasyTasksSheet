@@ -15,4 +15,6 @@ export const E2E_USERS = {
   manager: { username: 'manager', password: 'e2e-manager-pass', displayName: '管理者' },
   newbie: { username: 'newbie', password: 'e2e-newbie-pass', displayName: '新成員' },
   bootstrap: { username: 'bootstrap', password: 'password', displayName: '首次啟動' },
+  /** 多人在線感知（presence spec）的第三位使用者 */
+  peer: { username: 'peer', password: 'e2e-peer-pass', displayName: '晴恩' },
 } as const;

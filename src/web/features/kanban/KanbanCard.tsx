@@ -6,6 +6,7 @@ import type { Task } from '../../../shared/tasks.ts';
 import { fxAttr, motionEasing, motionMs, type ItemFx } from '../../lib/motion.ts';
 import { Avatar, ColorDot, UpdatedAt } from '../../ui/index.ts';
 import { PinButton } from '../personal/PinButton.tsx';
+import { TaskPresenceDots } from '../presence/TaskPresence.tsx';
 import { cardAriaLabel, dueDisplay, formatHours } from './kanbanModel.ts';
 
 /** 16px 線條圖示（core Icon 尚無日曆 / 時鐘，僅供卡片中繼列使用） */
@@ -63,6 +64,7 @@ export function KanbanCardContent({ task, project, showProject, isDone }: CardVi
         <PinButton taskId={task.id} size="sm" />
       </span>
       <div className="kanban-card-title">{task.title}</div>
+      {task.id > 0 && <TaskPresenceDots taskId={task.id} />}
       <div className="kanban-card-meta">
         <Avatar userId={task.assigneeId} size="sm" />
         {due && (
