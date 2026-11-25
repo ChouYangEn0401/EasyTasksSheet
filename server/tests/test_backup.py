@@ -139,6 +139,7 @@ def test_cli_backup_and_restore(live, tmp_path, monkeypatch, capsys):
     out = tmp_path / "bk"
     monkeypatch.setenv("BACKUP_DIR", str(out))
     monkeypatch.setenv("BACKUP_KEEP", "2")
+    monkeypatch.setenv("ATTACHMENTS_DIR", str(tmp_path / "attachments"))
     for _ in range(3):
         assert cli.main(["backup", "--db", str(db_path)]) == 0
     files = bk.list_backups(db_path, out)

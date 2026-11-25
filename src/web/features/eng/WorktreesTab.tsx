@@ -481,7 +481,7 @@ function MachineSection({
           )}
         </span>
       </header>
-      <div className="eng-scroll">
+      <div>
         <table className="eng-table eng-table--wt">
           <thead>
             <tr>
@@ -529,7 +529,7 @@ export function WorktreesTab({
   const machines = data?.machines ?? [];
 
   return (
-    <section className="eng-section" aria-label="Worktree">
+    <section className="eng-section" aria-label="工作樹">
       <NameList id={machineListId} names={machines.map((m) => m.machine)} />
       <AddRecordForm machineListId={machineListId} />
 

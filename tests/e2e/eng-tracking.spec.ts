@@ -137,7 +137,7 @@ test('Worktree：手動新增紀錄、回報快照依電腦分組、未登記與
   }
 
   await loginViaUi(page, E2E_USERS.member, '/eng?tab=worktrees');
-  await expect(tab(page, /Worktree/)).toHaveAttribute('aria-current', 'page');
+  await expect(tab(page, /工作樹/)).toHaveAttribute('aria-current', 'page');
 
   // 手動新增兩筆紀錄（電腦名稱會記住，第二筆不用再填）
   const form = page.getByRole('form', { name: '新增 worktree 紀錄' });
@@ -167,7 +167,7 @@ test('Worktree：手動新增紀錄、回報快照依電腦分組、未登記與
   await expect(wtRow(section, WT.gone.branch).getByText('可能遺失')).toBeVisible();
   const spike = wtRow(section, WT.spike.branch);
   await expect(spike.getByText('未登記')).toBeVisible();
-  await expect(tab(page, /Worktree/).getByLabel('2 個提示')).toBeVisible();
+  await expect(tab(page, /工作樹/).getByLabel('2 個提示')).toBeVisible();
   // 每列都有更新時間
   const rows = await section.locator('tr.eng-wt-row').count();
   expect(rows).toBe(3);

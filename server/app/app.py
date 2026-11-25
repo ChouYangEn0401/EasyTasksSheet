@@ -18,6 +18,7 @@ from .settings import auth_settings_from
 from .stub import ALL_METHODS
 from .features import admin, auth, data_admin, eng, feedback, overview, personal, profile, projects, properties, sync, tasks, users
 from .features import permissions_admin
+from .features import eng_attach
 
 #: 不需登入的路由。/api/eng/worktrees/report 由端點自行以 WORKTREE_REPORT_TOKEN 驗證（仍受 CSRF 檢查約束）
 PUBLIC_PATHS = {
@@ -80,6 +81,8 @@ def create_app(
     app.include_router(feedback.router, prefix="/api/feedback")
     app.include_router(personal.router, prefix="/api/personal")
     app.include_router(eng.router, prefix="/api/eng")
+    app.include_router(eng_attach.router, prefix="/api/eng")
+    app.include_router(eng_attach.files_router, prefix="/api/attachments")
     # 須在 admin.router 之前：admin 有 /api/admin/* 的 fallback
     app.include_router(data_admin.router, prefix="/api/admin/data")
     app.include_router(permissions_admin.router, prefix="/api/admin/permissions")

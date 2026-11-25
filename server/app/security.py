@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import math
+import re
 import secrets
 import sqlite3
 from dataclasses import dataclass
@@ -142,16 +143,29 @@ def require_session(db: Database, settings: AuthSettings, request: Request, t: i
 # ── CSRF ──
 
 
+#: 允許 multipart/form-data 的上傳端點（只限 POST）。multipart 是跨站表單也能送出的「簡單請求」，
+#: 因此這些端點「必須」帶 Origin 且同源（不像 JSON 端點只在有帶時檢查）
+MULTIPART_UPLOAD_PATHS = re.compile(r"^/api/eng/issues/[0-9]+/attachments$")
+
+
 def csrf_check(request: Request, settings: AuthSettings) -> None:
-    """修改類請求若帶 Origin 必須同源；POST / PUT / PATCH 必須是 application/json。"""
+    """修改類請求若帶 Origin 必須同源；POST / PUT / PATCH 必須是 application/json
+    （例外：MULTIPART_UPLOAD_PATHS 的 POST 可用 multipart/form-data，但必須帶同源 Origin）。"""
     if request.method in SAFE_METHODS:
         return
     origin = request.headers.get("origin")
     if origin and not _is_allowed_origin(origin, request, settings):
         raise forbidden("來源不被允許")
-    if request.method != "DELETE" and not request.headers.get("content-type", "").lower().startswith(
-        "application/json"
+    content_type = request.headers.get("content-type", "").lower()
+    if (
+        request.method == "POST"
+        and content_type.startswith("multipart/form-data")
+        and MULTIPART_UPLOAD_PATHS.match(request.url.path)
     ):
+        if not origin:
+            raise forbidden("上傳檔案須帶同源的 Origin 標頭")
+        return
+    if request.method != "DELETE" and not content_type.startswith("application/json"):
         raise forbidden("Content-Type 須為 application/json")
 
 

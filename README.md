@@ -100,6 +100,12 @@ npm run dev                   # 後端 uvicorn :3000（自動重載）+ Vite :51
 | `BACKUP_DIR`               | `backups`       | 備份目錄（`python -m server.cli backup` 使用；建議放在不同磁碟）                                    |
 | `BACKUP_KEEP`              | `14`            | 保留最近幾份備份                                                                                    |
 | `DATA_IMPORT_MAX_MB`       | `50`            | 「資料管理」匯入檔大小上限（MB）                                                                    |
+| `ATTACHMENTS_DIR`          | `data/attachments` | 問題附件的存放目錄（見「附件與連結預覽」）                                                        |
+| `ATTACHMENT_MAX_MB`        | `25`            | 附件單檔上限（MB）                                                                                  |
+| `ATTACHMENT_VIDEO_MAX_MB`  | `200`           | 影片附件單檔上限（MB）；反向代理的請求大小上限也要放寬                                             |
+| `ATTACHMENT_MAX_PER_ITEM`  | `10`            | 每筆問題最多幾個附件                                                                                |
+| `LINK_PREVIEW_ENABLED`     | `true`          | 問題連結的網頁 metadata 預覽；`false` = 不連網                                                      |
+| `LINK_PREVIEW_ALLOW_PRIVATE` | `false`       | 允許預覽抓取內網 / 本機位址（**SSRF 風險**，只建議測試用）                                          |
 
 ## 從零部署（Linux + systemd + Caddy）
 
@@ -367,6 +373,34 @@ sudo journalctl -u tasks-sheets -n 50                                  # 6. 確�
 | `GITHUB_SYNC_MINUTES` | `5`                      | 開啟問題列表時，距上次同步超過幾分鐘就自動同步一次     |
 
 token 權限：fine-grained token 選定相關 repo，**Issues：Read-only** 即可同步與匯入；要「在 GitHub 建立」則需 **Issues：Read and write**。classic token 用 `repo` 範圍（公開 repo 可用 `public_repo`）。
+
+### 附件與連結預覽
+
+**附件**：問題列點 ▸ 展開後有附件區，可拖放檔案、點選選擇、或直接在說明欄 / 附件區 Ctrl+V 貼上截圖；新增問題時也可先附檔，建立後自動上傳。
+
+- 支援：圖片（png / jpg / gif / webp）、影片（mp4 / webm / mov，可直接播放、拖曳進度條）、音訊（mp3 / wav / m4a）、pdf、文字（txt / md / csv / json / log）、zip、Office 文件。SVG 與其他類型不接受。伺服器會以檔案內容驗證類型（改副檔名無效）。
+- 上限：一般檔案 `ATTACHMENT_MAX_MB`（預設 25 MB）、影片 `ATTACHMENT_VIDEO_MAX_MB`（預設 200 MB）、每筆問題 `ATTACHMENT_MAX_PER_ITEM`（預設 10 個）。
+- 檔案存在 `ATTACHMENTS_DIR`（預設 `data/attachments`，檔名為隨機 id）。systemd 部署時 `ReadWritePaths` 已包含 `data/`；Docker 映像預設 `/data/attachments`（同一個 volume）。
+- **反向代理要放寬上傳大小與逾時**：Caddy 見 `deploy/Caddyfile` 的附件上傳區塊（`request_body { max_size 210MB }`、讀寫逾時 10 分鐘）；nginx：
+
+  ```nginx
+  location ~ ^/api/eng/issues/[0-9]+/attachments$ {
+      client_max_body_size 210m;      # 大於 ATTACHMENT_VIDEO_MAX_MB
+      proxy_request_buffering off;    # 直接串流給後端
+      proxy_read_timeout 600s;
+      proxy_send_timeout 600s;
+      proxy_pass http://127.0.0.1:3000;
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+  }
+  ```
+
+- **備份**：`python -m server.cli backup` 會把附件檔一併備份到 `backups/<備份檔>.attachments/`（同磁碟用硬連結，不額外佔空間），`restore` 同步還原；`--no-attachments` 只備份資料庫。**JSON 匯出（資料管理）只含附件清單，不含檔案本體，附件檔案請用完整備份帶走。** 匯入「取代模式」後若留下沒有對應問題的檔案，可用 `python -m server.cli attachments-prune` 清除。
+
+**連結預覽**：問題的「連結」存檔後，伺服器會在背景抓取該網頁的標題、說明、縮圖（og:image）、favicon、網站名稱與前 300 字摘要，在展開列顯示預覽卡片；可按「重新取得預覽」。**目前提供 metadata 預覽，不含整頁截圖**（整頁截圖需要伺服器端無頭瀏覽器）。GitHub issue 連結沿用 GitHub 同步，不另抓預覽。
+
+- 安全：只抓 http / https；拒絕本機與內網位址（含 `169.254.169.254` 雲端 metadata、各種 IP 寫法與 IPv6），每次重新導向都重新檢查，連線時固定使用驗證過的 IP；逾時 10 秒、最多讀 1 MB、不帶 cookie、不執行 JavaScript。
+- `LINK_PREVIEW_ENABLED=false` 可完全停用（不連網）；`LINK_PREVIEW_ALLOW_PRIVATE=true` 允許抓內網位址，**有 SSRF 風險，預設關閉**，只建議用於測試或完全隔離的內網。
 
 ## 常見問題
 

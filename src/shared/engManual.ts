@@ -45,6 +45,50 @@ export type IssuesResponse = {
   syncMinutes: number;
   links: GithubLink[];
   issues: ManualIssue[];
+  /** 各問題的附件（鍵為問題 id 字串；沒有附件的問題不出現） */
+  attachments?: Record<string, Attachment[]>;
+  /** 各問題連結的網頁預覽（鍵為問題 id 字串） */
+  previews?: Record<string, LinkPreview>;
+  attachmentLimits?: AttachmentLimits;
+  linkPreviewEnabled?: boolean;
+};
+
+// ── 附件與連結預覽 ─────────────────────────────────────────
+
+export type AttachmentKind = 'image' | 'video' | 'audio' | 'pdf' | 'text' | 'archive' | 'document' | 'file';
+
+export type Attachment = {
+  id: number;
+  entityType: string;
+  entityId: number;
+  /** 原始檔名（只供顯示） */
+  name: string;
+  mime: string;
+  kind: AttachmentKind;
+  size: number;
+  uploadedBy: number | null;
+  createdAt: number;
+  /** /api/attachments/:id（圖片 / 影片 / 音訊 / PDF inline，其他下載；?download=1 強制下載） */
+  url: string;
+  /** 只有圖片有縮圖 */
+  thumbUrl: string | null;
+};
+
+export type AttachmentLimits = { maxBytes: number; videoMaxBytes: number; maxFiles: number };
+
+/** 網頁 metadata 預覽（不含整頁截圖） */
+export type LinkPreview = {
+  url: string;
+  status: 'ok' | 'error';
+  title: string | null;
+  description: string | null;
+  imageUrl: string | null;
+  faviconUrl: string | null;
+  siteName: string | null;
+  summary: string | null;
+  contentType: string | null;
+  error: string | null;
+  fetchedAt: number;
 };
 
 /** POST /api/eng/issues/sync（body：{} 或 { id }） */

@@ -76,6 +76,11 @@ function ExportSection({ canBackup }: { canBackup: boolean }) {
           ，請妥善保管（僅超級管理員可下載）。
         </p>
       )}
+      <p className="dat-desc">
+        附件（問題的圖片、影片、檔案）：JSON 與下方 .db
+        只含附件清單，不含檔案本體。附件檔案請用完整備份帶走——在伺服器執行{' '}
+        <code>python -m server.cli backup</code>，會把附件目錄一併備份。
+      </p>
       <div className="dat-actions">
         <Button variant="primary" icon="inbox" onClick={() => startDownload(DATA_EXPORT_URL)}>
           下載 JSON 匯出檔

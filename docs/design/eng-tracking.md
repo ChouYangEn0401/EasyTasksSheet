@@ -10,10 +10,10 @@
 
 頁面兩個分頁（URL `?tab=worktrees`，預設為「問題」）：
 
-| 分頁     | 計數       | 附註                                               |
-| -------- | ---------- | -------------------------------------------------- |
-| 問題     | 未結案筆數 |                                                    |
-| Worktree | 紀錄筆數   | 有「可能遺失 / 未登記」提示時顯示 warning 計數膠囊 |
+| 分頁                     | 計數       | 附註                                               |
+| ------------------------ | ---------- | -------------------------------------------------- |
+| 問題                     | 未結案筆數 | 每列可展開：說明全文、連結預覽、附件區（§8、§9）   |
+| 工作樹（git worktree）   | 紀錄筆數   | 有「可能遺失 / 未登記」提示時顯示 warning 計數膠囊 |
 
 每列顯示 `UpdatedAt`（hover 顯示更新者）。
 
@@ -32,7 +32,9 @@
 
 - **新增表單放最上面**：填標題即可按 Enter 送出；送出後標題清空，專案與負責人保留，方便連續登錄。
 - 清單：未結案在前、依更新時間新到舊；預設隱藏已結案，勾「顯示已結案（N）」才列出。
-- 列上直接以下拉改狀態（一步完成）；「⋯」選單：編輯（對話框）、結案 / 重新開啟、刪除（確認）。
+- 列上直接以下拉改狀態（一步完成）；「⋯」選單：編輯（對話框）、結案 / 重新開啟、刪除（確認，附件一併刪除）。
+- 列首的 ▸ 展開按鈕（或點標題）展開詳細列：說明全文、連結預覽卡片（§9）、附件區（§8）。收合時標題旁以「迴紋針 N」小標記顯示附件數（上傳中另標 +N）。
+- 列表容器**不設 overflow**（否則「⋯」選單與狀態下拉會被裁切、出現小捲軸）；窄螢幕改為卡片式排版而非水平捲動。
 
 ## 2. Worktree 紀錄
 
@@ -73,14 +75,20 @@
 | `GET /worktrees`                                    | `{ reportEnabled, machines: [{ machine, reportedAt, records(+hint), reports(+registered) }] }` |
 | `POST /worktree-records`、`PATCH …/:id`、`DELETE …` | 紀錄 CRUD                                                                              |
 | `POST /worktrees/report`                            | 回報（見 §3）                                                                          |
+| `POST /issues/:id/attachments`                      | 上傳附件（multipart/form-data，可多檔；見 §8）                                         |
+| `POST /issues/:id/preview`                          | 重新取得連結預覽（見 §9）                                                              |
+| `GET /api/attachments/:id`、`GET …/:id/thumb`、`DELETE …/:id` | 附件下載（支援 Range）/ 圖片縮圖 / 刪除（路徑在 `/api/attachments`，非 `/api/eng`） |
 
-資料表（`server/migrations/0002_eng_manual.sql`、`0004_eng_github.sql`）：`manual_issues`（含 `github_*` 欄位）、`worktree_records`、`worktree_reports`、`eng_github_links`。
+`GET /issues` 另回傳 `attachments`（問題 id → 附件清單）、`previews`（問題 id → 預覽）、`attachmentLimits`、`linkPreviewEnabled`。
+
+資料表（`server/migrations/0002_eng_manual.sql`、`0004_eng_github.sql`、`0008_attachments.sql`）：`manual_issues`（含 `github_*` 欄位）、`worktree_records`、`worktree_reports`、`eng_github_links`、`attachments`、`link_previews`。
 即時同步沿用既有實體類型：問題與回報記為 `repo`、紀錄記為 `worktree_plan`（前端皆對應 `['eng']`）。
 型別：`src/shared/engManual.ts`。
 
 ## 5. 響應式
 
-`< 1024px`：新增表單改兩欄（標題 / 路徑佔滿一列），負責人只顯示頭像；表格可橫向捲動。
+`< 1024px`：新增表單改兩欄（標題 / 路徑佔滿一列），負責人只顯示頭像；表格改為**卡片式**（每列換行排列：展開鈕 + 標題 + ⋯ 一行，其餘欄位下一行），不水平捲動，選單不會被裁切。
+`< 640px`：新增表單單欄；附件縮圖格縮小。分頁列可左右捲動，不會被切掉。
 
 ## 6. GitHub 連動（選配）
 
@@ -99,5 +107,42 @@
 
 ## 7. 未實作
 
+- **整頁網頁截圖**：連結預覽目前只提供 metadata（標題、說明、og:image、favicon、網站名稱、前 300 字摘要），**不含整頁截圖**（需要伺服器端無頭瀏覽器，風險與資源成本高）。
+- 影片轉檔與伺服器端影片縮圖：不做（縮圖格用 `<video preload="metadata">` 的第一幀）。
 - 伺服器端 git 偵測（舊版模式 A）：不移植。
 - GitHub Enterprise 的 issue 網址解析（API 位址可用 `GITHUB_API_URL` 指定，但網址解析只認 github.com）。
+
+## 8. 附件（圖片、影片、音訊、檔案）
+
+通用機制（`attachments` 表：`entity_type` + `entity_id`），目前接到工程問題（`manual_issue`），之後可擴到任務。後端：`server/app/attachments.py`（白名單、驗證、串流接收）、`server/app/features/eng_attach.py`（API）。
+
+- **權限**：登入成員即可上傳 / 下載 / 刪除。
+- **存放**：`ATTACHMENTS_DIR`（預設 `data/attachments`），檔名為隨機 32 碼 hex，**不使用使用者檔名**；使用者檔名只當顯示文字（去除路徑與控制字元，`../evil.png` → `evil.png`），下載時路徑必須在目錄內。
+- **白名單**（依副檔名，並以內容魔術數字驗證；回應 Content-Type 取自白名單，不信任瀏覽器送的值）：
+  圖片 png / jpg / gif / webp；影片 mp4 / webm / mov（ISO BMFF `ftyp`、EBML + `webm` doctype）；音訊 mp3 / wav / m4a；pdf（`%PDF-`）；文字 txt / md / csv / json / log（不得含 NUL）；zip；Office docx / xlsx / pptx / odt / ods / odp（zip 容器）、doc / xls / ppt（OLE）。**SVG 不允許**（可能含 script）；就算資料庫中有，下載也一律 `attachment`。
+- **上限**：一般檔案 `ATTACHMENT_MAX_MB`（預設 25）、影片 `ATTACHMENT_VIDEO_MAX_MB`（預設 200）、每筆 `ATTACHMENT_MAX_PER_ITEM`（預設 10）。超限 413 / 400 中文訊息。
+- **串流寫入**：python-multipart 串流 parser 逐塊寫入同目錄 `.tmp-*`，邊寫邊算 SHA-256；超過上限立即中止並刪除暫存檔；一批中任一檔不合格則整批不寫入。`Content-Length` 明顯超過上限時直接 413。
+- **CSRF**：只有 `POST /api/eng/issues/:id/attachments` 可用 `multipart/form-data`（`security.MULTIPART_UPLOAD_PATHS`），且**必須**帶同源 `Origin`（其他端點仍只收 JSON）。
+- **下載**：`X-Content-Type-Options: nosniff`、`Content-Security-Policy … sandbox`（PDF 除外，瀏覽器 PDF 檢視器在 sandbox 下無法顯示）；圖片 / 影片 / 音訊 / PDF `inline`，其餘 `attachment`（`?download=1` 一律下載）。支援 **HTTP Range**（206 / `Accept-Ranges` / `Content-Range`，含 suffix range；非法或超出檔尾的範圍 416），影片可拖曳進度條。
+- **縮圖**：`/thumb` 只給圖片；安裝 Pillow 時產生 480px WebP，否則回傳原圖由 CSS 縮放（不強制新增相依）。
+- **刪除**：`DELETE /api/attachments/:id`（確認對話框）；刪除問題時 trigger 一併刪除資料列，API 刪除檔案。匯入「取代模式」刪除問題後殘留的檔案可用 `python -m server.cli attachments-prune` 清除。
+- 變更紀錄：上傳 / 刪除附件記為該問題的 `repo` update（其他人畫面即時更新）。
+- **前端**（`Attachments.tsx`、`uploads.ts`）：
+  - 附件區頂部是虛線拖放區（圖示 +「拖放檔案到這裡，或點此選擇；也可以直接貼上圖片」+ 上限說明），可 Tab 聚焦、Enter / Space 開啟檔案選擇器；已有附件時縮為一行。
+  - 縮圖格：圖片縮圖、影片第一幀 + 播放圖示 + 時長、其他依類型圖示（PDF / 文件 / 壓縮檔 / 文字 / 音訊）與副檔名標籤；檔名過長中間省略；大小 · 上傳者 · 時間。hover / focus 顯示下載與刪除（觸控裝置常駐）。
+  - 上傳：每個檔案一個請求，佔位卡片顯示進度條與取消鈕；失敗卡片顯示原因與「重試」/「移除」；多檔同時上傳；上傳中離開頁面會提示。前端先檢查類型 / 大小 / 數量。
+  - 說明欄（新增表單、編輯對話框）可直接 Ctrl+V 貼上圖片：編輯時立即上傳；新增表單先列為待上傳，建立後自動上傳並展開該列。
+  - 燈箱（原生 `<dialog>`）：圖片、`<video controls preload="metadata" playsinline>`、`<audio controls>`、PDF 內嵌，其他提供下載；← → 切換同一問題的附件，Esc 關閉（暫停播放）。
+- **備份**：`python -m server.cli backup` 依備份當下的資料庫快照，把附件檔一併備份到 `<備份檔>.attachments/`（同磁碟以硬連結節省空間），保留份數同步清理；`restore` 同步還原附件目錄（原目錄保留為 `.before-restore-*`）。JSON 匯出只含附件清單元資料（`attachments`），不含檔案本體——附件檔案請用完整備份帶走。
+
+## 9. 連結預覽（網頁 metadata）
+
+「連結」存入 / 變更時（回應送出後於 threadpool 背景抓取，失敗不影響問題的儲存），或按「重新取得預覽」（`POST /issues/:id/preview`）時，後端抓取網頁的 title、description、og:image、favicon、site name 與前 300 字純文字摘要，存在 `link_previews`（含 `fetched_at`）。GitHub issue 連結沿用 GitHub 同步，不抓預覽。**不含整頁截圖。**
+
+- 展開列中顯示預覽卡片：縮圖、標題、說明（兩行）、網站 / 網域與 favicon；點擊開新分頁（`rel="noopener noreferrer"`）；外部圖片以 `referrerPolicy="no-referrer"` 載入，失敗即隱藏。失敗時顯示「無法取得預覽（原因）」與重試按鈕。
+- **SSRF 防護**（`server/app/link_preview.py`）：
+  - 只允許 http / https，網址不得含帳密；主機名解析後**所有** IP 都必須是公開位址：拒絕 127/8、10/8、172.16/12、192.168/16、169.254/16（含雲端 metadata）、100.64/10、0/8、保留 / 文件 / 多播段、`::1`、`::`、`fc00::/7`、`fe80::/10`、IPv4-mapped / NAT64 / 6to4 / Teredo 內嵌的私有 IPv4；十進位（`2130706433`）、十六進位（`0x7f000001`）、八進位（`0177.0.0.1`）、簡寫（`127.1`）一律以 inet_aton 規則解析後檢查；`localhost` / `*.localhost` 直接拒絕。
+  - 連線時直接連到**已驗證的 IP**（HTTP 帶原 Host、HTTPS 以 SNI 與憑證驗證原主機名），避免 DNS rebinding。
+  - 重新導向最多 3 次，**每次重新驗證**；逾時：連線 5 秒、整體 10 秒；回應最多讀 1 MB；只解析 `text/html`（其他類型只記錄 content-type 與網域）；不帶 cookie / 認證、`Accept-Encoding: identity`、明確的 User-Agent；不執行 JS；以標準庫 `html.parser` 解析，輸出一律純文字（前端以文字節點顯示）。
+- 設定：`LINK_PREVIEW_ENABLED`（預設 true）；`LINK_PREVIEW_ALLOW_PRIVATE`（預設 false，**開啟後可抓內網位址，有 SSRF 風險**，只建議用於 E2E 測試或完全隔離的內網部署）。
+- 測試可注入：`app.state.link_fetcher`（假抓取器）、`SafeFetcher(resolver=…, transport=…, clock=…)`。

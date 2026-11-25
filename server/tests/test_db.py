@@ -12,10 +12,12 @@ from .helpers import create_test_db, create_test_user
 ALL_MIGRATIONS = [f.stem for f in sorted(MIGRATIONS_DIR.glob("*.sql"))]
 
 ALL_TABLES = [
+    "attachments",
     "changes",
     "eng_github_links",
     "feedback_items",
     "git_issues_cache",
+    "link_previews",
     "login_attempts",
     "manual_issues",
     "personal_items",

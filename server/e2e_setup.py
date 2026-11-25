@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import sys
 
 from .app.config import config
@@ -35,6 +36,9 @@ def main() -> int:
             os.remove(path + suffix)
         except FileNotFoundError:
             pass
+    # E2E 專用的附件目錄一併清空（名稱必須含 e2e，避免誤刪正式資料）
+    if re.search("e2e", config.ATTACHMENTS_DIR):
+        shutil.rmtree(config.ATTACHMENTS_DIR, ignore_errors=True)
 
     db = create_db(path)
     run_migrations(db)

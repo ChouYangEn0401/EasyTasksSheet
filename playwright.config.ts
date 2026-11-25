@@ -26,6 +26,9 @@ export default defineConfig({
       NODE_ENV: 'production',
       PORT: String(port),
       DATABASE_PATH: 'data/e2e.db',
+      ATTACHMENTS_DIR: 'data/e2e-attachments',
+      // 僅限 E2E：連結預覽測試要抓本機的測試頁（127.0.0.1）。正式環境預設為 false，請勿開啟
+      LINK_PREVIEW_ALLOW_PRIVATE: 'true',
       COOKIE_SECURE: 'false',
       APP_ORIGIN: `http://localhost:${port}`,
       PYTHONUTF8: '1',

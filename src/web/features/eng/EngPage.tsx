@@ -18,7 +18,7 @@ import './eng.css';
 
 /**
  * 工程追蹤（簡化版，docs/design/eng-tracking.md）：紀錄工具，手動輸入優先。
- * 兩個分頁「問題」「Worktree」，由 URL ?tab= 驅動。
+ * 兩個分頁「問題」「工作樹」（git worktree），由 URL ?tab= 驅動。
  */
 export function EngPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -63,7 +63,7 @@ export function EngPage() {
           {tabLink('issues', '問題', issues.data ? openIssueCount(issues.data.issues) : undefined)}
           {tabLink(
             'worktrees',
-            'Worktree',
+            '工作樹',
             worktrees.data ? recordCount(worktrees.data.machines) : undefined,
             hints > 0 && (
               <span aria-label={`${hints} 個提示`}>

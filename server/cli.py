@@ -5,6 +5,7 @@
       未給則產生隨機密碼並顯示一次；兩種情況首次登入都必須改密碼。帳號已存在時 exit code 1。
   python -m server.cli backup [--db 資料庫] [--out 備份目錄] [--keep 保留份數]
       線上備份（服務運行中可執行）；預設取 DATABASE_PATH / BACKUP_DIR（backups）/ BACKUP_KEEP（14）。
+      附件檔案（ATTACHMENTS_DIR）一併備份到 <備份檔>.attachments/；restore 時同步還原。
   python -m server.cli backup --self-test
       在暫存目錄演練 備份 → 保留份數 → 還原 → 驗證一致。
   python -m server.cli restore <備份檔> [--db 資料庫] --yes
@@ -29,7 +30,7 @@ USAGE = (
     "用法：\n"
     "  python -m server.cli user-add <帳號> [--name 顯示名稱] [--role root|manager|user] [--password 密碼] [--db 資料庫]\n"
     "      建立帳號（預設 user；--admin 等同 --role root）；未給 --password 則隨機產生，首次登入須改密碼\n"
-    "  python -m server.cli backup [--db 資料庫] [--out 備份目錄] [--keep 保留份數]\n"
+    "  python -m server.cli backup [--db 資料庫] [--out 備份目錄] [--keep 保留份數] [--attachments 附件目錄 | --no-attachments]\n"
     "  python -m server.cli backup --self-test\n"
     "  python -m server.cli restore <備份檔> [--db 資料庫] --yes\n"
     "  python -m server.cli export <檔.json> [--db 資料庫]\n"
@@ -131,6 +132,8 @@ def backup_cmd(argv: list[str]) -> int:
     p.add_argument("--db", help="資料庫檔（預設 DATABASE_PATH）")
     p.add_argument("--out", help="備份目錄（預設 BACKUP_DIR，否則 backups）")
     p.add_argument("--keep", help="保留份數（預設 BACKUP_KEEP，否則 14）")
+    p.add_argument("--attachments", help="附件目錄（預設 ATTACHMENTS_DIR，否則 data/attachments）")
+    p.add_argument("--no-attachments", action="store_true", help="只備份資料庫，不備份附件檔案")
     p.add_argument("--self-test", action="store_true", help="在暫存目錄演練備份與還原")
     args = p.parse_args(argv)
 
@@ -144,8 +147,13 @@ def backup_cmd(argv: list[str]) -> int:
         keep = int(keep_raw)
     except ValueError:
         raise bk.BackupError(f"保留份數必須是正整數：{keep_raw}") from None
-    result = bk.backup(db_path, out_dir, keep=keep)
+    att_dir = None if args.no_attachments else (args.attachments or _env("ATTACHMENTS_DIR") or config.ATTACHMENTS_DIR)
+    result = bk.backup(db_path, out_dir, keep=keep, attachments_dir=att_dir)
     print(f"[backup] {db_path} → {result.file}")
+    if result.attachments is not None:
+        print(f"[backup] 附件 {att_dir} → {result.attachments}")
+    for name in result.missing_attachments:
+        print(f"[backup] 警告：資料庫有紀錄但找不到附件檔 {name}", file=sys.stderr)
     for f in result.removed:
         print(f"[backup] 已刪除超過保留份數的舊備份：{f}")
     return 0
@@ -158,6 +166,7 @@ def restore_cmd(argv: list[str]) -> int:
     p.add_argument("backup_file", help="備份檔")
     p.add_argument("--db", help="資料庫檔（預設 DATABASE_PATH）")
     p.add_argument("--yes", action="store_true", help="確認覆蓋資料庫（必須先停止服務）")
+    p.add_argument("--attachments", help="附件目錄（預設 ATTACHMENTS_DIR，否則 data/attachments）")
     args = p.parse_args(argv)
 
     db_path = args.db or config.DATABASE_PATH
@@ -168,6 +177,14 @@ def restore_cmd(argv: list[str]) -> int:
     print(f"[restore] 已用 {args.backup_file} 還原 {db_path}")
     if previous:
         print(f"[restore] 原資料庫保留為 {previous}（確認無誤後可刪除）")
+    att_dir = args.attachments or _env("ATTACHMENTS_DIR") or config.ATTACHMENTS_DIR
+    if bk.attachments_backup_dir(args.backup_file).is_dir():
+        prev_att = bk.restore_attachments(args.backup_file, att_dir)
+        print(f"[restore] 已還原附件目錄 {att_dir}")
+        if prev_att:
+            print(f"[restore] 原附件目錄保留為 {prev_att}（確認無誤後可刪除）")
+    else:
+        print(f"[restore] 此備份沒有附件資料夾，附件目錄 {att_dir} 維持不變")
     return 0
 
 
@@ -268,7 +285,30 @@ def import_cmd(argv: list[str]) -> int:
     return 0
 
 
+def attachments_prune_cmd(argv: list[str]) -> int:
+    from .app.attachments import prune_orphans
+    from .app.db import create_db, run_migrations
+
+    p = argparse.ArgumentParser(
+        prog="python -m server.cli attachments-prune",
+        description="刪除附件目錄中沒有資料庫紀錄的檔案（例如匯入取代模式刪除問題後留下的檔案）",
+    )
+    p.add_argument("--db", help="資料庫檔（預設 DATABASE_PATH）")
+    p.add_argument("--attachments", help="附件目錄（預設 ATTACHMENTS_DIR）")
+    args = p.parse_args(argv)
+    db = create_db(args.db or config.DATABASE_PATH)
+    try:
+        run_migrations(db)
+        with db.tx() as conn:
+            removed = prune_orphans(conn, args.attachments or config.ATTACHMENTS_DIR)
+    finally:
+        db.close()
+    print(f"[attachments-prune] 已刪除 {len(removed)} 個孤兒檔案")
+    return 0
+
+
 COMMANDS = {
+    "attachments-prune": attachments_prune_cmd,
     "user-add": user_add,
     "backup": backup_cmd,
     "restore": restore_cmd,

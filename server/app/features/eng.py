@@ -21,7 +21,7 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 from starlette.concurrency import run_in_threadpool
@@ -33,6 +33,7 @@ from ..errors import HttpError, bad_request, forbidden, not_found
 from ..github import GitHubClient, GitHubClientProtocol, GitHubError, normalize_repo, parse_issue_url
 from ..permissions import require
 from ..validate import parse_id, present, read_json
+from . import eng_attach
 
 router = APIRouter()
 
@@ -235,11 +236,12 @@ async def list_issues(request: Request):
         "syncMinutes": config.GITHUB_SYNC_MINUTES,
         "links": [_link(r) for r in links],
         "issues": [_issue(r) for r in rows],
+        **eng_attach.issue_extras(request),
     }
 
 
 @router.post("/issues")
-async def create_issue(request: Request):
+async def create_issue(request: Request, background: BackgroundTasks):
     ctx = get_ctx(request)
     fields = present(await read_json(request, IssueCreateInput))
     uid = ctx.user["id"]
@@ -256,11 +258,13 @@ async def create_issue(request: Request):
         iid = int(cur.lastrowid)  # type: ignore[arg-type]
         record_change(conn, "repo", iid, "create", uid, t)
         row = conn.execute("SELECT * FROM manual_issues WHERE id = ?", (iid,)).fetchone()
+    if row["url"]:
+        eng_attach.schedule_preview(request, background, iid, row["url"])
     return JSONResponse(_issue(row), status_code=201)
 
 
 @router.patch("/issues/{id}")
-async def update_issue(request: Request, id: str):
+async def update_issue(request: Request, id: str, background: BackgroundTasks):
     ctx = get_ctx(request)
     iid = parse_id(id)
     fields = present(await read_json(request, IssueUpdateInput))
@@ -281,6 +285,8 @@ async def update_issue(request: Request, id: str):
         )
         record_change(conn, "repo", iid, "update", uid, t)
         row = conn.execute("SELECT * FROM manual_issues WHERE id = ?", (iid,)).fetchone()
+    if "url" in fields and (fields["url"] or None) != current["url"]:
+        eng_attach.schedule_preview(request, background, iid, row["url"])
     return _issue(row)
 
 
@@ -289,9 +295,12 @@ async def delete_issue(request: Request, id: str):
     ctx = get_ctx(request)
     iid = parse_id(id)
     with ctx.db.tx() as conn:
+        stored = eng_attach.issue_stored_names(conn, iid)
+        # 附件與預覽的資料列由 trigger（0008）一併刪除
         if conn.execute("DELETE FROM manual_issues WHERE id = ?", (iid,)).rowcount == 0:
             raise not_found(_ISSUE_NOT_FOUND)
         record_change(conn, "repo", iid, "delete", ctx.user["id"], ctx.now())
+    eng_attach.remove_stored(request, stored)
     return {"ok": True}
 
 

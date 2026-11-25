@@ -57,6 +57,15 @@ class Config:
     WORKTREE_REPORT_TOKEN: str | None = None
     GIT_TIMEOUT_MS: int = 10_000
 
+    #: 附件（工程問題等）：檔案存放目錄（檔名為隨機 id）、單檔上限、影片單檔上限、每筆項目的檔案數上限
+    ATTACHMENTS_DIR: str = "data/attachments"
+    ATTACHMENT_MAX_MB: float = 25
+    ATTACHMENT_VIDEO_MAX_MB: float = 200
+    ATTACHMENT_MAX_PER_ITEM: int = 10
+    #: 連結預覽（抓取網頁 metadata）；ALLOW_PRIVATE 允許抓取內網位址（有 SSRF 風險，預設關）
+    LINK_PREVIEW_ENABLED: bool = True
+    LINK_PREVIEW_ALLOW_PRIVATE: bool = False
+
     @property
     def is_production(self) -> bool:
         return self.NODE_ENV == "production"
@@ -66,8 +75,18 @@ class Config:
         return self.is_production if self.COOKIE_SECURE is None else self.COOKIE_SECURE
 
 
-_INT = {"PORT", "WEB_PORT", "LOGIN_MAX_FAILS_PER_USER", "LOGIN_MAX_FAILS_PER_IP", "GIT_TIMEOUT_MS"}
+_INT = {
+    "PORT",
+    "WEB_PORT",
+    "LOGIN_MAX_FAILS_PER_USER",
+    "LOGIN_MAX_FAILS_PER_IP",
+    "GIT_TIMEOUT_MS",
+    "ATTACHMENT_MAX_PER_ITEM",
+}
+_BOOL = {"COOKIE_SECURE", "TRUSTED_PROXY", "LINK_PREVIEW_ENABLED", "LINK_PREVIEW_ALLOW_PRIVATE"}
 _POSITIVE_FLOAT = {
+    "ATTACHMENT_MAX_MB",
+    "ATTACHMENT_VIDEO_MAX_MB",
     "SESSION_MAX_HOURS",
     "SESSION_IDLE_MINUTES",
     "LOGIN_WINDOW_MINUTES",
@@ -78,7 +97,7 @@ _POSITIVE_FLOAT = {
     "GITHUB_SYNC_MINUTES",
     "WORKTREE_STALE_DAYS",
 }
-_POSITIVE_INT = {"LOGIN_MAX_FAILS_PER_USER", "LOGIN_MAX_FAILS_PER_IP", "GIT_TIMEOUT_MS"}
+_POSITIVE_INT = {"LOGIN_MAX_FAILS_PER_USER", "LOGIN_MAX_FAILS_PER_IP", "GIT_TIMEOUT_MS", "ATTACHMENT_MAX_PER_ITEM"}
 
 
 def load_config(env: Mapping[str, str] | None = None) -> Config:
@@ -94,7 +113,7 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
                 if raw not in ("development", "production", "test"):
                     raise ValueError(raw)
                 values[name] = raw
-            elif name in ("COOKIE_SECURE", "TRUSTED_PROXY"):
+            elif name in _BOOL:
                 if raw not in ("true", "false"):
                     raise ValueError(raw)
                 values[name] = raw == "true"

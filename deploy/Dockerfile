@@ -17,6 +17,7 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3000 \
     DATABASE_PATH=/data/app.db \
+    ATTACHMENTS_DIR=/data/attachments \
     BACKUP_DIR=/backups \
     STATIC_DIR=dist/web \
     TZ=Asia/Taipei \

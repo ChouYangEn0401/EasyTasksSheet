@@ -4,6 +4,7 @@ import type {
   GithubLinksResponse,
   ImportResult,
   IssuesResponse,
+  LinkPreview,
   ManualIssue,
   SyncResult,
   ManualIssueInput,
@@ -91,6 +92,26 @@ export function useDeleteIssue() {
     meta: { errorToast: false },
     mutationFn: (id: number) => api.delete<{ ok: true }>(`/eng/issues/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.issues() }),
+  });
+}
+
+// ── 附件與連結預覽（上傳見 uploads.ts） ──
+
+export function useDeleteAttachment() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { errorToast: false },
+    mutationFn: (id: number) => api.delete<{ ok: true }>(`/attachments/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.issues() }),
+  });
+}
+
+export function useRefreshPreview() {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { errorToast: false },
+    mutationFn: (issueId: number) => api.post<{ preview: LinkPreview }>(`/eng/issues/${issueId}/preview`, {}),
+    onSettled: () => qc.invalidateQueries({ queryKey: engKeys.issues() }),
   });
 }
 

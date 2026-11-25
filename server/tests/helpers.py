@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import tempfile
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -11,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from server.app.app import create_app
 from server.app.db import Database, create_db, run_migrations, run_seed
+from server.app.link_preview import PreviewError
 from server.app.security import hash_password
 
 TEST_PASSWORD = "test-password-123"
@@ -46,12 +48,23 @@ class FakeClock:
         self.t = ms
 
 
+class OfflineFetcher:
+    """測試用：不連網的連結預覽抓取器"""
+
+    def fetch(self, url: str):
+        raise PreviewError("測試環境不連網")
+
+
 class TestApp:
     __test__ = False
 
     def __init__(self, now=None, settings: dict[str, Any] | None = None, db: Database | None = None):
         self.db = db or create_test_db()
         self.app = create_app(self.db, now=now, settings=settings)
+        # 附件寫到暫存目錄；連結預覽預設停用且不連網（個別測試可開啟並覆寫 app.state.link_fetcher）
+        self.app.state.attachments_dir = tempfile.mkdtemp(prefix="ts-attach-")
+        self.app.state.link_preview_enabled = False
+        self.app.state.link_fetcher = OfflineFetcher()
         self.http = TestClient(self.app, base_url="http://localhost", raise_server_exceptions=False)
 
 

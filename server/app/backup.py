@@ -77,6 +77,54 @@ def integrity_check(file: str | Path, *, to_single_file: bool = False) -> None:
 class BackupResult:
     file: Path
     removed: list[Path] = field(default_factory=list)
+    #: 附件備份資料夾（<備份檔>.attachments；未指定附件目錄時為 None）
+    attachments: Path | None = None
+    #: 資料庫有紀錄但附件目錄中找不到的檔案
+    missing_attachments: list[str] = field(default_factory=list)
+
+
+def attachments_backup_dir(backup_file: str | Path) -> Path:
+    """備份檔對應的附件資料夾：app-20260101-030000.db → app-20260101-030000.db.attachments"""
+    p = Path(backup_file)
+    return p.with_name(p.name + ".attachments")
+
+
+_STORED_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+def _link_or_copy(src: Path, dst: Path) -> None:
+    """附件檔建立後不會被修改，同一磁碟上以硬連結節省空間；跨磁碟則複製"""
+    try:
+        os.link(src, dst)
+    except OSError:
+        shutil.copy2(src, dst)
+
+
+def _backup_attachments(snapshot: Path, attachments_dir: Path, dest: Path) -> list[str]:
+    """依「備份當下的資料庫快照」列出的附件複製檔案，確保備份的資料庫與檔案一致；回傳缺少的檔名"""
+    with closing(_connect(snapshot)) as db:
+        has_table = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'attachments'"
+        ).fetchone()
+        names = [r[0] for r in db.execute("SELECT stored_name FROM attachments")] if has_table else []
+    partial = dest.with_name(dest.name + ".partial")
+    shutil.rmtree(partial, ignore_errors=True)
+    partial.mkdir(parents=True)
+    missing: list[str] = []
+    try:
+        for name in names:
+            if not _STORED_RE.fullmatch(name or ""):
+                continue
+            src = attachments_dir / name
+            if src.is_file():
+                _link_or_copy(src, partial / name)
+            else:
+                missing.append(name)
+    except BaseException:
+        shutil.rmtree(partial, ignore_errors=True)
+        raise
+    os.replace(partial, dest)
+    return missing
 
 
 def backup(
@@ -84,8 +132,10 @@ def backup(
     out_dir: str | Path,
     keep: int = DEFAULT_KEEP,
     now: datetime | None = None,
+    attachments_dir: str | Path | None = None,
 ) -> BackupResult:
-    """產生一份一致的備份並依保留份數清除舊檔。服務運行中可執行。"""
+    """產生一份一致的備份並依保留份數清除舊檔。服務運行中可執行。
+    attachments_dir：同時備份附件檔案到 <備份檔>.attachments/（依備份快照中的附件清單）。"""
     db_path, out_dir = Path(db_path), Path(out_dir)
     if not db_path.is_file():
         raise BackupError(f"找不到資料庫：{db_path}")
@@ -113,11 +163,49 @@ def backup(
         raise
     os.replace(partial, file)
 
+    att_dir: Path | None = None
+    missing: list[str] = []
+    if attachments_dir is not None:
+        att_dir = attachments_backup_dir(file)
+        try:
+            missing = _backup_attachments(file, Path(attachments_dir), att_dir)
+        except BaseException:
+            file.unlink(missing_ok=True)
+            raise
+
     all_files = list_backups(db_path, out_dir)
     removed = all_files[: max(0, len(all_files) - keep)]
     for f in removed:
         f.unlink(missing_ok=True)
-    return BackupResult(file=file, removed=removed)
+        shutil.rmtree(attachments_backup_dir(f), ignore_errors=True)
+    return BackupResult(file=file, removed=removed, attachments=att_dir, missing_attachments=missing)
+
+
+def restore_attachments(backup_file: str | Path, attachments_dir: str | Path, now: datetime | None = None) -> Path | None:
+    """以 <備份檔>.attachments 取代附件目錄；原目錄改名為 <目錄>.before-restore-<時間> 保留。
+    備份沒有附件資料夾時不動附件目錄並丟出 BackupError。回傳保留的舊目錄（原本不存在為 None）。"""
+    src = attachments_backup_dir(backup_file)
+    if not src.is_dir():
+        raise BackupError(f"此備份沒有附件資料夾：{src}")
+    target = Path(attachments_dir)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(target.name + ".restoring")
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir()
+    for f in src.iterdir():
+        if f.is_file() and _STORED_RE.fullmatch(f.name):
+            _link_or_copy(f, tmp / f.name)
+    previous: Path | None = None
+    if target.exists():
+        ts = timestamp(now)
+        previous = target.with_name(f"{target.name}.before-restore-{ts}")
+        i = 2
+        while previous.exists():
+            previous = target.with_name(f"{target.name}.before-restore-{ts}-{i}")
+            i += 1
+        os.replace(target, previous)
+    os.replace(tmp, target)
+    return previous
 
 
 def restore(backup_file: str | Path, db_path: str | Path, now: datetime | None = None) -> Path | None:
@@ -125,6 +213,7 @@ def restore(backup_file: str | Path, db_path: str | Path, now: datetime | None =
 
     原資料庫先 checkpoint 再改名為 <db>.before-restore-<時間> 保留（可手動回退），
     並刪除殘留的 -wal / -shm / -journal。回傳保留下來的舊檔路徑（原本不存在則為 None）。
+    附件目錄請另外呼叫 restore_attachments()（CLI restore 會一併處理）。
     """
     backup_file, db_path = Path(backup_file), Path(db_path)
     if not backup_file.is_file():

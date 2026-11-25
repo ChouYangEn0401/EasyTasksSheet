@@ -394,6 +394,8 @@ ExportDoc = create_model(
     exportedAt=(_Int, ...),
     users=_list_of(UserItem),
     **{s.key: _list_of(_item_model(s)) for s in SPECS},
+    #: 附件清單（只有元資料，不含檔案本體；匯入時忽略——附件檔案請用完整備份帶走）
+    attachments=(Annotated[list[dict[str, Any]], Field(max_length=MAX_ITEMS)], []),
 )
 
 
@@ -566,7 +568,30 @@ def export_document(db: Database, now: int) -> dict[str, Any]:
         }
         for spec in SPECS:
             doc[spec.key] = [_export_row(spec, r, idx) for r in idx.rows[spec.key]]
+        doc["attachments"] = _export_attachments(conn, idx)
     return doc
+
+
+def _export_attachments(conn: sqlite3.Connection, idx: LocalIndex) -> list[dict[str, Any]]:
+    """附件元資料（不含檔案本體）：所屬項目以 uid 表示"""
+    owners = {"manual_issue": idx.uid_by_id["manualIssues"]}
+    out = []
+    for r in conn.execute("SELECT * FROM attachments ORDER BY id"):
+        owner = owners.get(r["entity_type"], {}).get(r["entity_id"])
+        out.append(
+            {
+                "uid": r["uid"],
+                "entityType": r["entity_type"],
+                "entityUid": owner,
+                "name": r["original_name"],
+                "mime": r["mime"],
+                "size": r["size"],
+                "sha256": r["sha256"],
+                "uploadedByUsername": idx.user_by_id.get(r["uploaded_by"]) if r["uploaded_by"] else None,
+                "createdAt": r["created_at"],
+            }
+        )
+    return out
 
 
 def export_filename(prefix: str, ext: str, d: datetime | None = None) -> str:
