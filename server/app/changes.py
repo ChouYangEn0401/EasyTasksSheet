@@ -7,7 +7,10 @@ from typing import Literal
 
 from .db import now_ms
 
-EntityType = Literal["user", "project", "status", "task", "property", "feedback", "personal", "repo", "worktree_plan"]
+#: permission：權限設定（entity_id 固定為 0；前端收到後重抓 /api/auth/me）
+EntityType = Literal[
+    "user", "project", "status", "task", "property", "feedback", "personal", "repo", "worktree_plan", "permission"
+]
 ChangeAction = Literal["create", "update", "delete"]
 
 

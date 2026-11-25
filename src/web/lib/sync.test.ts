@@ -2,7 +2,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import type { Change } from '../../shared/sync.ts';
 import { queryKeys } from './queryClient.ts';
-import { createChangeApplier, isTaskDetailOf } from './sync.ts';
+import { createChangeApplier, isTaskDetailOf, keysForChanges } from './sync.ts';
+
+describe('keysForChanges', () => {
+  it('權限設定變更：重抓 me 與權限設定頁', () => {
+    const keys = keysForChanges([change({ entityType: 'permission', entityId: 0, actorId: 99 })], 1);
+    expect(keys).toContainEqual(queryKeys.me);
+    expect(keys).toContainEqual(['admin', 'permissions']);
+  });
+});
 
 const change = (over: Partial<Change>): Change => ({
   id: 1,

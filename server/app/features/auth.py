@@ -60,7 +60,8 @@ def me(ctx: Ctx, user: Any, session: SessionRow) -> dict[str, Any]:
     return {
         "user": to_public_user(user),
         # 前端依此顯示 / 隱藏功能（後端仍逐一以 permissions.require 強制）
-        "capabilities": capabilities_of(user),
+        # 有效矩陣（預設 + 權限設定的覆寫）
+        "capabilities": capabilities_of(user, ctx.db),
         "session": session_info(session, ctx.settings),
         "mustChangeUsername": must_change_username(ctx, user),
     }

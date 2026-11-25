@@ -36,6 +36,13 @@ export const NAV_ENTRIES: NavEntry[] = [
     icon: 'inbox',
     capability: 'data.export_json',
   },
+  {
+    key: 'admin-permissions',
+    label: '權限設定',
+    to: '/admin/permissions',
+    icon: 'key',
+    capability: 'permissions.configure',
+  },
 ];
 
 export const TASK_VIEWS = ['list', 'kanban', 'gantt'] as const;

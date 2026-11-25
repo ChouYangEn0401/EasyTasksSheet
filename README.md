@@ -30,8 +30,8 @@ python main.py                             # 啟動，開啟 http://localhost:30
 - **個人頁**：我的任務、釘選項目。
 - **工程追蹤**：手動記錄問題與 worktree 狀態；可選擇讓各人電腦自動回報 worktree（見「工程追蹤的使用方式」）。
 - **成員管理**：管理者以上新增成員（臨時密碼、首次登入強制改密碼）、停用 / 啟用、重設密碼、調整角色、解除登入鎖定。
-- **角色與權限**：三層 `root`（超級管理員）> `manager`（管理者）> `user`（成員）；成員管理、狀態 / 專案設定、GitHub 連動、JSON 匯出與合併匯入需 manager 以上，完整 .db 備份下載、匯入「取代全部」與指派 root 僅限 root。完整對照表見 [docs/permissions.md](docs/permissions.md)。
 - **個人設定**：每位使用者可在「使用者選單 → 個人設定」自行修改顯示名稱、帳號（需輸入目前密碼）與密碼（成功後其他裝置登出）；規格見 `docs/design/settings.md`。
+- **角色與權限**：三層 `root`（超級管理員）> `manager`（管理者）> `user`（成員）；成員管理、狀態 / 專案設定、GitHub 連動、JSON 匯出與合併匯入需 manager 以上，完整 .db 備份下載、匯入「取代全部」與指派 root 僅限 root；以上為預設，root 可在「權限設定」頁調整管理者與成員的權限。完整對照表見 [docs/permissions.md](docs/permissions.md)。
 - **安全**：Argon2 密碼雜湊、session 絕對期限與閒置逾時、登入失敗鎖定、CSRF（Origin 檢查 + SameSite cookie）。
 
 技術：後端 Python 3.11+（FastAPI、uvicorn、標準庫 `sqlite3`，WAL 模式）；前端 React + Vite（TypeScript）。
@@ -312,6 +312,16 @@ docker compose -f deploy/docker-compose.yml exec app python -m server.cli backup
 ```
 
 細節見 `docs/design/data-export.md`。
+
+## 權限設定
+
+超級管理員在側邊導覽「權限設定」（`/admin/permissions`）可以調整「管理者」「成員」各自能做哪些操作：勾選後按底部的「儲存」即生效，在線成員不需重新整理，畫面入口會即時出現 / 消失；「還原為預設」可一鍵回到系統預設。
+
+- 超級管理員永遠擁有全部權限，不能被調整（避免把自己鎖在外面）。
+- 受保護項目（指派超級管理員、完整備份下載、匯入取代全部、權限設定本身）只限超級管理員，無法授予其他角色。
+- 邊界由你決定：例如授予成員「管理成員」等於允許成員把自己升為管理者；取消某角色的「編輯任務」後，該角色仍可瀏覽但不能修改。
+
+預設矩陣、受保護項目與限制見 [docs/permissions.md](docs/permissions.md)。
 
 ## 升級流程
 

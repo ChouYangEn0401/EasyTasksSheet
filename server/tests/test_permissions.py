@@ -42,6 +42,7 @@ PROBES = {
         "/api/admin/users",
         {"username": _uniq("new-root"), "displayName": "R", "role": "root"},
     ),
+    "permissions.configure": lambda: ("GET", "/api/admin/permissions", None),
 }
 
 
@@ -87,7 +88,12 @@ def test_matrix_shape():
         "data.export_json",
         "data.import_merge",
     }
-    assert by_role["root"] - by_role["manager"] == {"data.backup_db", "data.import_replace", "roles.assign_root"}
+    assert by_role["root"] - by_role["manager"] == {
+        "data.backup_db",
+        "data.import_replace",
+        "roles.assign_root",
+        "permissions.configure",
+    }
     assert capabilities_of(None) == [] and capabilities_of({"role": "admin"}) == []
     assert not can(None, "tasks.edit")
     with pytest.raises(KeyError):

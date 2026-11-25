@@ -411,6 +411,152 @@
     width: 280px;
   }
 
+  /* ── 權限設定（/admin/permissions，docs/design/permissions-config.md） ── */
+  .prm-page {
+    gap: var(--space-4);
+  }
+  .prm-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+  .prm-intro {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+  .prm-intro svg {
+    flex: none;
+    color: var(--color-text-tertiary);
+  }
+  .prm-table {
+    table-layout: fixed;
+  }
+  .prm-caption {
+    caption-side: top;
+    padding: var(--space-3) var(--space-4) var(--space-2);
+    text-align: left;
+    font-size: var(--text-base);
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+  }
+  .prm-table thead th:first-child,
+  .prm-table th.prm-cap {
+    padding-left: var(--space-4);
+  }
+  .prm-table th.prm-cap {
+    height: auto;
+    padding-top: var(--space-2);
+    padding-bottom: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: var(--font-regular);
+    color: var(--color-text);
+    white-space: normal;
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .prm-table tbody tr:last-child th {
+    border-bottom: none;
+  }
+  .prm-table tbody tr:hover th {
+    background: var(--color-surface-hover);
+  }
+  .prm-table td {
+    height: 52px;
+  }
+  .prm-col {
+    width: 112px;
+    text-align: center;
+  }
+  .adm-table th.prm-col {
+    text-align: center;
+  }
+  /* 超級管理員欄：固定打勾（停用但仍清楚可辨） */
+  .prm-table .ui-checkbox:checked:disabled {
+    background: var(--color-text-tertiary);
+    border-color: var(--color-text-tertiary);
+  }
+  .prm-table td[data-dirty] {
+    background: var(--color-accent-soft);
+  }
+  .prm-cap-name {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-weight: var(--font-medium);
+  }
+  .prm-cap-desc {
+    margin-top: 2px;
+    font-size: var(--text-xs);
+    line-height: 16px;
+    color: var(--color-text-tertiary);
+  }
+  .prm-lock {
+    display: inline-flex;
+    align-items: center;
+    color: var(--color-text-tertiary);
+    border-radius: var(--radius-sm);
+  }
+  .prm-lock:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+
+  /* 未儲存變更：固定在內容區底部 */
+  .prm-bar {
+    position: sticky;
+    bottom: var(--space-4);
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+  }
+  .prm-bar-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+    font-size: var(--text-sm);
+    color: var(--color-text);
+  }
+  .prm-bar-summary {
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .prm-bar-actions {
+    display: flex;
+    gap: var(--space-2);
+    flex: none;
+  }
+
+  @media (max-width: 1023px) {
+    .prm-col {
+      width: 84px;
+    }
+    .prm-bar {
+      flex-wrap: wrap;
+    }
+    .prm-bar-summary {
+      white-space: normal;
+    }
+    .prm-bar-actions {
+      margin-left: auto;
+    }
+  }
+
   /* ── 響應式：768–1023px 隱藏「更新」欄，改接在帳號之後 ── */
   @media (max-width: 1023px) {
     .adm-search {

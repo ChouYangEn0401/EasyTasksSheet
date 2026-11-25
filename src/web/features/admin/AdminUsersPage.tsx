@@ -53,13 +53,13 @@ type Notice = { tone: 'success' | 'danger'; message: string; key: number };
 
 const NOTICE_MS = 4000;
 
-export function NoPermission() {
+export function NoPermission({ description = '此頁面僅限管理者以上使用' }: { description?: string }) {
   const navigate = useNavigate();
   return (
     <EmptyState
       icon="lock"
       title="沒有權限"
-      description="此頁面僅限管理者以上使用"
+      description={description}
       action={
         <Button variant="primary" onClick={() => navigate('/')}>
           回到總覽

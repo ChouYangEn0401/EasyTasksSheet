@@ -1,6 +1,7 @@
 import { createBrowserRouter, type RouteObject } from 'react-router';
 import { AdminUsersPage } from './features/admin/AdminUsersPage.tsx';
 import { DataPage } from './features/admin/DataPage.tsx';
+import { PermissionsPage } from './features/admin/PermissionsPage.tsx';
 import { LoginPage } from './features/auth/LoginPage.tsx';
 import { EngPage } from './features/eng/EngPage.tsx';
 import { FeedbackPage } from './features/feedback/FeedbackPage.tsx';
@@ -37,6 +38,7 @@ export const routes: RouteObject[] = [
           { path: 'eng', element: <EngPage />, handle: h('工程追蹤') },
           { path: 'admin/users', element: <AdminUsersPage />, handle: h('成員管理') },
           { path: 'admin/data', element: <DataPage />, handle: h('資料管理') },
+          { path: 'admin/permissions', element: <PermissionsPage />, handle: h('權限設定') },
           { path: '*', element: <NotFoundPage />, handle: h('找不到頁面') },
         ],
       },

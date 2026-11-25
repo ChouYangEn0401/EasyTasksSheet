@@ -1,6 +1,6 @@
 # 角色與權限
 
-三層角色，高層擁有低層的全部權限：**root > manager > user**。
+三層角色：**root > manager > user**。下表為**預設**矩陣；root 可在「權限設定」頁（`/admin/permissions`）調整 manager 與 user 的權限（見〈自訂權限〉）。
 
 | 角色值    | 顯示名稱   | 定位                                                  |
 | --------- | ---------- | ----------------------------------------------------- |
@@ -8,39 +8,66 @@
 | `manager` | 管理者     | danger-command：影響全體成員的設定與管理              |
 | `user`    | 成員       | 日常協作                                              |
 
-- 唯一來源：後端 `server/app/permissions.py`（`CAPABILITIES`、`can(user, capability)`、FastAPI dependency `require(capability)`）；前端名稱表 `src/shared/permissions.ts`（pytest 比對兩邊一致）。
-- 後端強制：不具權限一律 **403** `{"code": "FORBIDDEN", "message": "沒有權限執行此操作"}`。
-- 前端只做顯示：`/api/auth/me` 與登入回應帶 `capabilities`（字串陣列），以 `useCan(capability)`（`src/web/lib/permissions.ts`）決定顯示 / 隱藏，不再以角色字串判斷。
+- 唯一來源：後端 `server/app/permissions.py`（`CAPABILITIES` 預設矩陣、`CAPABILITY_INFO` 中文名稱 / 說明 / 分組、`PROTECTED_CAPABILITIES`、`can(user, capability, db)`、FastAPI dependency `require(capability)`）；前端名稱表 `src/shared/permissions.ts`（pytest 比對兩邊一致）。
+- 後端強制：不具權限一律 **403** `{"code": "FORBIDDEN", "message": "沒有權限執行此操作"}`。一律依**有效矩陣**（預設 + 覆寫）判斷。
+- 前端只做顯示：`/api/auth/me` 與登入回應帶 `capabilities`（有效矩陣下的字串陣列），以 `useCan(capability)`（`src/web/lib/permissions.ts`）決定顯示 / 隱藏，不再以角色字串判斷。
 - 顯示名稱表：`ROLE_LABELS`（`src/shared/users.ts`）。
 
-## 權限矩陣
+## 預設矩陣
 
-| capability            | 內容                                                         | user | manager | root |
-| --------------------- | ------------------------------------------------------------ | :--: | :-----: | :--: |
-| `tasks.edit`          | 任務新增 / 編輯 / 軟刪除（全員可互改）                       |  ✓   |    ✓    |  ✓   |
-| `feedback.edit`       | 問題回饋                                                     |  ✓   |    ✓    |  ✓   |
-| `personal.edit`       | 個人清單                                                     |  ✓   |    ✓    |  ✓   |
-| `eng.edit`            | 工程追蹤的問題與 worktree 紀錄（含 GitHub 同步 / 匯入 / 建立 issue） |  ✓   |    ✓    |  ✓   |
-| `projects.create`     | 建立專案（FilterBar / 欄位下拉的「＋ 新增專案」）            |  ✓   |    ✓    |  ✓   |
-| `properties.edit`     | 自訂欄位（property）                                         |  ✓   |    ✓    |  ✓   |
-| `profile.edit`        | 自己的個人資料與密碼                                         |  ✓   |    ✓    |  ✓   |
-| `members.manage`      | 成員新增 / 停用 / 啟用 / 重設密碼 / 解鎖 / 編輯；角色限 user ↔ manager |      |    ✓    |  ✓   |
-| `statuses.manage`     | 狀態新增 / 改名 / 改色 / 排序 / 刪除                         |      |    ✓    |  ✓   |
-| `projects.manage`     | 專案改名 / 改色 / 排序 / 封存                                |      |    ✓    |  ✓   |
-| `github.manage`       | GitHub 連動（專案 ↔ repo 設定）                              |      |    ✓    |  ✓   |
-| `data.export_json`    | JSON 匯出                                                    |      |    ✓    |  ✓   |
-| `data.import_merge`   | 匯入（合併模式的預覽與套用）                                 |      |    ✓    |  ✓   |
-| `data.backup_db`      | 完整資料庫 .db 備份下載（含密碼雜湊與 session）              |      |         |  ✓   |
-| `data.import_replace` | 匯入「取代全部」模式                                         |      |         |  ✓   |
-| `roles.assign_root`   | 指派 / 撤銷 root；管理 root 帳號（編輯、停用、重設密碼、解鎖） |      |         |  ✓   |
+| capability              | 內容                                                         | user | manager | root |
+| ----------------------- | ------------------------------------------------------------ | :--: | :-----: | :--: |
+| `tasks.edit`            | 任務新增 / 編輯 / 軟刪除（全員可互改）                       |  ✓   |    ✓    |  ✓   |
+| `feedback.edit`         | 問題回饋                                                     |  ✓   |    ✓    |  ✓   |
+| `personal.edit`         | 個人清單                                                     |  ✓   |    ✓    |  ✓   |
+| `eng.edit`              | 工程追蹤的問題與 worktree 紀錄（含 GitHub 同步 / 匯入 / 建立 issue） |  ✓   |    ✓    |  ✓   |
+| `projects.create`       | 建立專案                                                     |  ✓   |    ✓    |  ✓   |
+| `properties.edit`       | 自訂欄位（property）                                         |  ✓   |    ✓    |  ✓   |
+| `profile.edit`          | 自己的個人資料與密碼                                         |  ✓   |    ✓    |  ✓   |
+| `members.manage`        | 成員新增 / 停用 / 啟用 / 重設密碼 / 解鎖 / 編輯；角色限 user ↔ manager |      |    ✓    |  ✓   |
+| `statuses.manage`       | 狀態新增 / 改名 / 改色 / 排序 / 刪除                         |      |    ✓    |  ✓   |
+| `projects.manage`       | 專案改名 / 改色 / 排序 / 封存                                |      |    ✓    |  ✓   |
+| `github.manage`         | GitHub 連動（專案 ↔ repo 設定）                              |      |    ✓    |  ✓   |
+| `data.export_json`      | JSON 匯出                                                    |      |    ✓    |  ✓   |
+| `data.import_merge`     | 匯入（合併模式的預覽與套用）                                 |      |    ✓    |  ✓   |
+| `data.backup_db` 🔒      | 完整資料庫 .db 備份下載（含密碼雜湊與 session）              |      |         |  ✓   |
+| `data.import_replace` 🔒 | 匯入「取代全部」模式                                         |      |         |  ✓   |
+| `roles.assign_root` 🔒   | 指派 / 撤銷 root；管理 root 帳號（編輯、停用、重設密碼、解鎖） |      |         |  ✓   |
+| `permissions.configure` 🔒 | 權限設定（調整 manager / user 的權限）                     |      |         |  ✓   |
 
-CLI（`python -m server.cli ...`，含 `restore`、`import --replace`）屬伺服器本機操作，不受此表限制。
+🔒 = 受保護項目（見下）。CLI（`python -m server.cli ...`，含 `restore`、`import --replace`）屬伺服器本機操作，不受此表限制。
+
+## 自訂權限
+
+root 在「權限設定」頁勾選 / 取消 manager 與 user 的各項權限，按「儲存」後立即生效；「還原為預設」移除所有自訂。
+
+- **儲存方式**：`role_permissions` 表（migration `0010_role_permissions`）只存與預設不同的格子（`role`、`capability`、`allowed`、`updated_at`、`updated_by`）。沒有覆寫的格子採預設；改回預設值即刪除該列。之後版本新增的 capability 自動採預設，不需 migration；已移除的 capability 的覆寫列會被忽略。
+- **API**（皆需 `permissions.configure`）：
+  - `GET /api/admin/permissions`：每個 capability 的中文名稱、說明、分組、是否受保護、各角色預設值 / 有效值、是否已覆寫；以及最後修改時間與修改者。
+  - `PUT /api/admin/permissions` `{"changes": [{"role": "user", "capability": "statuses.manage", "allowed": true}, ...]}`：批次設定（單一 transaction；任一筆不合法則全部不寫入，400）；回傳新矩陣。
+  - `POST /api/admin/permissions/reset` `{"role"?: "manager" | "user"}`：還原為預設（省略 role = 全部）；回傳新矩陣。
+- **即時更新**：每次寫入記一筆變更流水 `entity_type = permission`（`entity_id = 0`），既有 SSE 推送後，前端（`src/web/lib/sync.ts`）重抓 `/api/auth/me`，在線使用者的導覽與按鈕即時顯示 / 隱藏。
+- **快取**：覆寫在記憶體中依資料庫快取，寫入後立即失效，下一個請求就套用新設定。系統為**單一 worker（單一行程）**；若日後改為多行程，需另行處理快取同步（例如每次請求檢查 changes 流水）。直接以 SQL 修改 `role_permissions` 需重新啟動服務才會生效。
+
+### 保護規則
+
+- **root 恆擁有全部權限**，不可被覆寫（API 拒絕 `role: "root"`；資料表 CHECK 只允許 manager / user），避免把自己鎖在外面。
+- **受保護項目**（`roles.assign_root`、`data.backup_db`、`data.import_replace`、`permissions.configure`）只允許 root：API 拒絕授予（400「「X」僅限超級管理員，無法授予…」），即使資料表中有此類覆寫也會被忽略；前端勾選框鎖定並以鎖頭提示。
+- **被要求改密碼的帳號**（`must_change_password`）即使沒有 `profile.edit` 仍可改密碼，避免無法完成首次登入。
+
+### 限制與注意
+
+- 自訂後不再保證「高層擁有低層的全部權限」：例如可以讓 user 有 `statuses.manage` 而 manager 沒有。邊界由 root 決定。
+- 授予 user `members.manage` 等於允許成員新增成員並在 user ↔ manager 間調整角色（含把自己升為 manager）。
+- 一般協作權限（`tasks.edit`、`feedback.edit`、`personal.edit`、`eng.edit`、`projects.create`、`properties.edit`、`profile.edit`）只限制**寫入**（POST / PUT / PATCH / DELETE），讀取不受影響；由全域 middleware 依路徑檢查（`permissions.WRITE_GUARDS`）。前端目前未依這些權限隱藏編輯控制項，收回後操作時會顯示「沒有權限執行此操作」。
+- 權限設定不在 JSON 匯出 / 匯入範圍內（完整 .db 備份會包含）。
 
 ## 端點對照
 
 | 端點                                                           | 權限                                                      |
 | -------------------------------------------------------------- | --------------------------------------------------------- |
 | `/api/admin/users*`（含未知的 `/api/admin/*`）                 | `members.manage`；目標或新角色為 root 時另需 `roles.assign_root` |
+| `GET / PUT /api/admin/permissions`、`POST /api/admin/permissions/reset` | `permissions.configure`                          |
 | `GET /api/admin/data/export`                                   | `data.export_json`                                        |
 | `POST /api/admin/data/import/preview`、`/import/apply`（merge） | `data.import_merge`                                       |
 | `POST /api/admin/data/import/apply`（`mode: "replace"`）        | 另需 `data.import_replace`                                |
@@ -51,7 +78,13 @@ CLI（`python -m server.cli ...`，含 `restore`、`import --replace`）屬伺�
 | `POST /api/statuses/:id/migrate-and-delete`                    | `statuses.manage`；body `{ targetStatusId }`，單一 transaction 把任務（含已刪除）改移到目標狀態後刪除，並為每筆任務寫入變更流水；仍至少保留一個狀態 |
 | `GET /api/statuses/usage`                                      | 全員；各狀態被任務使用的筆數（管理狀態對話框用）          |
 | `PUT /api/eng/github-links`                                    | `github.manage`                                           |
-| 其餘 API                                                       | 全員（登入即可）                                          |
+| 寫入 `/api/tasks*`                                             | `tasks.edit`                                              |
+| 寫入 `/api/feedback*`                                          | `feedback.edit`                                           |
+| 寫入 `/api/personal*`                                          | `personal.edit`                                           |
+| 寫入 `/api/eng/issues*`、`/api/eng/worktree-records*`          | `eng.edit`                                                |
+| 寫入 `/api/properties*`                                        | `properties.edit`                                         |
+| `POST /api/auth/password`                                      | `profile.edit`（被要求改密碼時不檢查）                    |
+| 其餘 API（含所有讀取）                                         | 全員（登入即可）                                          |
 
 ## 規則
 

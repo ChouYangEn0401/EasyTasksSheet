@@ -22,6 +22,7 @@ ALL_TABLES = [
     "projects",
     "property_defs",
     "repos",
+    "role_permissions",
     "sessions",
     "statuses",
     "tasks",

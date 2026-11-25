@@ -12,10 +12,12 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from .config import config
 from .db import Database
 from .errors import HttpError, error_body, error_response, install_error_handlers
+from .permissions import guard_write
 from .security import csrf_check, require_session
 from .settings import auth_settings_from
 from .stub import ALL_METHODS
 from .features import admin, auth, data_admin, eng, feedback, overview, personal, profile, projects, properties, sync, tasks, users
+from .features import permissions_admin
 
 #: 不需登入的路由。/api/eng/worktrees/report 由端點自行以 WORKTREE_REPORT_TOKEN 驗證（仍受 CSRF 檢查約束）
 PUBLIC_PATHS = {
@@ -55,6 +57,10 @@ def create_app(
                     user, session = require_session(st.db, st.settings, request, st.now())
                     request.state.user = user
                     request.state.session = session
+                    # 一般協作權限（任務、回饋…）依權限設定的有效矩陣檢查（server/app/permissions.py）
+                    denied = guard_write(user, request.method, path, st.db)
+                    if denied is not None:
+                        raise denied
             except HttpError as err:
                 return error_response(err)
         return await call_next(request)
@@ -76,6 +82,7 @@ def create_app(
     app.include_router(eng.router, prefix="/api/eng")
     # 須在 admin.router 之前：admin 有 /api/admin/* 的 fallback
     app.include_router(data_admin.router, prefix="/api/admin/data")
+    app.include_router(permissions_admin.router, prefix="/api/admin/permissions")
     app.include_router(admin.router, prefix="/api/admin")
     app.include_router(sync.changes_router, prefix="/api/changes")
     app.include_router(sync.events_router, prefix="/api/events")

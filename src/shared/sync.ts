@@ -11,6 +11,8 @@ export const ENTITY_TYPES = [
   'personal',
   'repo',
   'worktree_plan',
+  // 權限設定（entityId 固定為 0）：前端重抓 /api/auth/me 更新 capabilities
+  'permission',
 ] as const;
 export const entityType = z.enum(ENTITY_TYPES);
 export type EntityType = z.infer<typeof entityType>;

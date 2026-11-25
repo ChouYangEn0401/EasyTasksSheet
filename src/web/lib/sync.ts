@@ -26,6 +26,8 @@ export const ENTITY_QUERY_KEYS: Record<EntityType, QueryKey[]> = {
   personal: [['personal']],
   repo: [['eng']],
   worktree_plan: [['eng']],
+  // 權限設定變更：在線使用者重抓 me（capabilities），畫面即時顯示 / 隱藏功能
+  permission: [queryKeys.me, ['admin', 'permissions']],
 };
 
 /** 一批變更需要 invalidate 的查詢鍵（去重；meId 被修改時一併重抓 me） */
