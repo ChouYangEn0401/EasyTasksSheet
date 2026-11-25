@@ -120,20 +120,16 @@ function AdminUsersView({ meId, query }: { meId: number; query: ReturnType<typeo
   /** 立即執行的動作（解除鎖定、啟用）：該列 ⋯ 換為 Spinner */
   const runInline = (u: AdminUser, action: 'unlock' | 'enable') => {
     setPendingId(u.id);
-    const common = {
-      onSettled: () => setPendingId(null),
-      onError: (err: unknown) => notify('danger', failText(err)),
-    };
-    if (action === 'unlock')
-      unlock.mutate(u.id, {
-        ...common,
-        onSuccess: (r) => notify('success', `已解除「${r.displayName}」的登入鎖定`),
-      });
-    else
-      update.mutate(
-        { id: u.id, isActive: true },
-        { ...common, onSuccess: (r) => notify('success', `已啟用「${r.displayName}」`) },
-      );
+    // mutateAsync：快速對多位成員操作時，每一筆的結果都會提示（mutate 的呼叫層回呼只保留最後一次）
+    const run =
+      action === 'unlock'
+        ? unlock.mutateAsync(u.id).then((r) => notify('success', `已解除「${r.displayName}」的登入鎖定`))
+        : update
+            .mutateAsync({ id: u.id, isActive: true })
+            .then((r) => notify('success', `已啟用「${r.displayName}」`));
+    void run
+      .catch((err: unknown) => notify('danger', failText(err)))
+      .finally(() => setPendingId((id) => (id === u.id ? null : id)));
   };
 
   const menuItems = (u: AdminUser): MenuItem[] => {

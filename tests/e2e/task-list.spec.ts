@@ -226,6 +226,8 @@ test('List 檢視：快速新增、就地編輯、狀態、排序、自訂欄位
   await expect(drawerA).toHaveCount(0);
   await expect(rowA2).toHaveCount(0);
   await expect(rows).toHaveCount(1);
+  // 等 SSE 的刪除事件套用完（抽屜離場中不可重抓已刪除任務的子資源而得到 404）
+  await page.waitForTimeout(500);
 
   // 登入前的 /api/auth/me 探測回 401 屬預期
   expect(errors.filter((e) => !/status of 401/.test(e))).toEqual([]);

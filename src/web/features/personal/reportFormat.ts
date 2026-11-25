@@ -449,10 +449,10 @@ export function formatReport(model: ReportModel, format: ReportFormat, flags: Fo
 
 /* ── CSV ─────────────────────── */
 
-/** RFC 4180 跳脫；開頭為 = + @ 的文字加前綴避免 Excel 當成公式 */
+/** RFC 4180 跳脫；開頭為 = + @ 的文字，或 - 開頭但不是純數字（例如 -1+2、-A1）加前綴避免 Excel 當成公式 */
 export function csvCell(value: string | number | null | undefined): string {
   let s = value == null ? '' : String(value);
-  if (/^[=+@\t\r]/.test(s)) s = `'${s}`;
+  if (/^[=+@\t\r]/.test(s) || (s.startsWith('-') && !/^-\d+(\.\d+)?$/.test(s))) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

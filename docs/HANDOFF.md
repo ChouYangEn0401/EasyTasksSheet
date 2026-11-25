@@ -22,15 +22,13 @@ TasksSheets 是給實驗室內部用的多人任務 / 專案管理網站。本�
 
 ## 1. 專案現況與功能清單
 
-功能全部完成並合併到 `main`，等使用者驗收。後端為 Python（FastAPI + uvicorn + SQLite），前端為 React + Vite。2026-11-25 交接時實測：pytest 479 通過、vitest 227 通過（見[第 10 節](#10-測試如何跑)）。
+功能全部完成並合併到 `main`，等使用者驗收。後端為 Python（FastAPI + uvicorn + SQLite），前端為 React + Vite。測試數量以 `npm run check` 實跑結果為準（見[第 10 節](#10-測試如何跑)）。
 
 | 頁面（路由）                          | 功能                                                                                                                 |
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | 總覽 `/`                              | 每位成員的進行中任務卡、近三週完成 / 處理件數；語氣中性、不排名（[product-principles.md](product-principles.md)）   |
-| 任務 `/tasks/list` `kanban` `gantt`   | 清單（就地編輯、快速新增、自訂欄位、詳情抽屜）、看板（拖曳改狀態與排序）、甘特圖；可直接管理狀態與專案；抽屜內可建立相關任務（`task_relations`，0013）與複製任務（`features/task_relations.py`，規格見 [design/task-list.md §13](design/task-list.md)） |
-| 任務 `/tasks/list` `kanban` `gantt`   | 清單（就地編輯、快速新增、自訂欄位、詳情抽屜含待辦清單 checklist（`task_checklist_items` 0014，列表 / 看板顯示 ☑ 3/5 徽章，[design/task-list.md §16](design/task-list.md)）、拖曳列換群組 / 排序）、看板（拖曳改狀態與排序）、甘特圖；可直接管理狀態與專案。詳情抽屜下方有討論區（討論串、@提及、未讀徽章）與描述鎖定（[task-discussion.md](design/task-discussion.md)） |
+| 任務 `/tasks/list` `kanban` `gantt`   | 清單（就地編輯、快速新增、自訂欄位、拖曳列換群組 / 排序；標題旁徽章放不下時收成「+N」）、看板（拖曳改狀態與排序）、甘特圖；可直接管理狀態與專案。詳情抽屜：相關任務（`task_relations`，0013）與複製任務（`features/task_relations.py`，[design/task-list.md §13](design/task-list.md)）、待辦清單 checklist（`task_checklist_items` 0014，列表 / 看板顯示 ☑ 3/5 徽章，[design/task-list.md §16](design/task-list.md)）、下方討論區（討論串、@提及、未讀徽章）與描述鎖定（[task-discussion.md](design/task-discussion.md)） |
 | 延遲鏈 `/tasks/delay-link`          | 任務依賴（前置任務 → 等待中的任務，禁止循環）、看板琥珀色「等待中 · 預計延後 N 天」、整條依賴鏈與最長延遲路徑（[design/delay-link.md](design/delay-link.md)） |
-| 任務 `/tasks/list` `kanban` `gantt`   | 清單（就地編輯、快速新增、自訂欄位、詳情抽屜、拖曳列換群組 / 排序）、看板（拖曳改狀態與排序）、甘特圖；可直接管理狀態與專案               |
 | 甘特圖拖曳排程 `/tasks/gantt`         | 未排程任務拖到時間軸即排程（預設天數依預估工時、拖到別人的列同時改指派、鍵盤拖曳、可復原；純前端，沿用 `PATCH /api/tasks/:id`；規格見 [design/gantt-overview.md §A7](design/gantt-overview.md)） |
 | 問題回饋 `/feedback`                  | 回饋 / 問題清單與月曆排程（拖曳排程）                                                                                |
 | 個人清單 `/me`                        | 我的任務、釘選、自由待辦（含延後 / 取消等小狀態）；「產生匯報報告」依日期區間彙整完成事項（`personal_report.py`、`personal_items.done_at` 0020，規格見 [design/personal.md §10](design/personal.md)） |
@@ -198,7 +196,7 @@ npm run backup:self-test
 npx prettier --check .
 ```
 
-- 交接時實測：`npm run py:test` 479 通過、`npm test` 227 通過。E2E 與 `npm run check` 交接時未重跑（先前驗收 E2E 28/28）。
+- 測試數量會隨功能增加，這裡不寫死；以 `npm run check` 與 `npm run test:e2e` 實跑結果為準。
 - **`requirements.txt` 必須維持純 ASCII**：pip 以系統碼頁讀取，繁中 Windows（cp950）遇到非 ASCII 會安裝失敗（曾因此出過 bug）。
 - E2E 帳號（由 `server/e2e_setup.py` 建立，同 `tests/helpers/e2eUsers.ts`）：`admin`（root）、`manager`、`member`（user）、`newbie`（首次登入須改密碼）、`bootstrap`（模擬預設管理員，ADMIN_USERNAME）、`peer`。其他 spec 請勿動 `newbie` 與 `bootstrap`。
 - E2E 專用 DB 路徑必須含 `e2e`（`e2e_setup.py` 會拒絕其他路徑，避免誤刪正式資料）。

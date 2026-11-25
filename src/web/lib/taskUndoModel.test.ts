@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { Task } from '../../shared/tasks.ts';
+import { taskUpdateInput, type Task } from '../../shared/tasks.ts';
 import {
   applyTaskPatch,
   describeTaskUpdate,
   fieldKeysOf,
+  fieldLabel,
+  TASK_FIELD_LABELS,
   findConflicts,
   isNoop,
   mergeChanges,
@@ -142,5 +144,22 @@ describe('describeTaskUpdate 文案', () => {
         },
       ]),
     ).toBe('修改『寫報告』的 2 個欄位');
+  });
+});
+
+describe('欄位中文名稱', () => {
+  it('任務所有可 PATCH 的欄位都有中文標籤（不會在復原文案露出英文欄位名）', () => {
+    const keys = Object.keys(taskUpdateInput.shape).filter((k) => k !== 'custom');
+    const missing = keys.filter((k) => !(k in TASK_FIELD_LABELS));
+    expect(missing).toEqual([]);
+    for (const k of keys) expect(fieldLabel(k)).not.toMatch(/[A-Za-z]/);
+  });
+
+  it('鎖定描述的文案為中文', () => {
+    expect(
+      describeTaskUpdate([
+        { id: 1, title: '寫報告', before: { descriptionLocked: false }, after: { descriptionLocked: true } },
+      ]),
+    ).toBe('修改『寫報告』的描述鎖定');
   });
 });

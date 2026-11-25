@@ -11,6 +11,12 @@ function undoShortcutText(kind: UndoKind): string {
   return kind === 'undo' ? 'Ctrl+Z' : 'Ctrl+Shift+Z';
 }
 
+/** aria-keyshortcuts：依平台（Mac 為 Meta，其他為 Control） */
+function undoKeyShortcuts(kind: UndoKind, mac = isMac()): string {
+  const mod = mac ? 'Meta' : 'Control';
+  return kind === 'undo' ? `${mod}+Z` : `${mod}+Shift+Z`;
+}
+
 /**
  * 頂欄的「復原」「重做」圖示按鈕（docs/design/undo.md）：無項目時停用；Tooltip 顯示下一步內容與快捷鍵。
  * 同時掛載復原衝突對話框。
@@ -27,7 +33,7 @@ export function UndoButtons() {
           iconOnly
           icon={kind}
           aria-label={text}
-          aria-keyshortcuts={kind === 'undo' ? 'Control+Z' : 'Control+Shift+Z'}
+          aria-keyshortcuts={undoKeyShortcuts(kind)}
           disabled={!enabled || busy}
           data-undo-button={kind}
           onClick={() => void performUndo(kind)}

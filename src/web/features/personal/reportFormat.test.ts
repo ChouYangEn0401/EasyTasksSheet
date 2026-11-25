@@ -211,6 +211,12 @@ describe('CSV', () => {
     expect(csvCell('他說"好"')).toBe('"他說""好"""');
     expect(csvCell('第一行\n第二行')).toBe('"第一行\n第二行"');
     expect(csvCell('=SUM(A1)')).toBe("'=SUM(A1)");
+    expect(csvCell('-1+2')).toBe("'-1+2");
+    expect(csvCell('-cmd|calc')).toBe("'-cmd|calc");
+    expect(csvCell('- 條列項目')).toBe("'- 條列項目");
+    expect(csvCell('-3')).toBe('-3');
+    expect(csvCell('-2.5')).toBe('-2.5');
+    expect(csvCell(-1)).toBe('-1');
     expect(csvCell(null)).toBe('');
     expect(csvCell(2.5)).toBe('2.5');
   });

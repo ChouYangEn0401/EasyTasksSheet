@@ -16,6 +16,7 @@ import { useCan } from '../../lib/permissions.ts';
 import { toast, truncate } from '../../lib/toast.ts';
 import { recordDependencyAdd, recordDependencyRemove, undoFromToast } from '../undo/linkUndo.ts';
 import { Button, Icon, Input, Skeleton } from '../../ui/index.ts';
+import { useDrawerActive } from '../tasks/drawerActive.ts';
 import { Popover } from '../tasks/Popover.tsx';
 import { useCreateDependency, useDeleteDependency, useTaskDependencies } from './api.ts';
 import { delayPhrase, lagLabel, shortDate } from './depText.ts';
@@ -28,7 +29,7 @@ import './dependency.css';
  * 移除：一鍵移除，toast 可復原。建立失敗（例如會形成循環）在選單內顯示中文訊息。
  */
 export function DependenciesSection({ task }: { task: Task }) {
-  const q = useTaskDependencies(task.id);
+  const q = useTaskDependencies(task.id, useDrawerActive());
   const canEdit = useCan('tasks.edit');
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [initialDir, setInitialDir] = useState<DependencyDirection>('blocked_by');

@@ -41,7 +41,7 @@ import {
 } from '@dnd-kit/core';
 import type { Task } from '../../../shared/tasks.ts';
 import { useProjectsById, useStatusesById, useUpdateTask, useUsersById } from '../../lib/hooks.ts';
-import { newUndoGroup } from '../../lib/taskUndo.ts';
+import { findCachedTask, newUndoGroup } from '../../lib/taskUndo.ts';
 import { motionEasing, motionMs, useReducedMotion } from '../../lib/motion.ts';
 import { useCan } from '../../lib/permissions.ts';
 import { queryKeys } from '../../lib/queryClient.ts';
@@ -229,17 +229,17 @@ export function ListDnd({
   const commit = (plan: DropPlan, title: string, label: string) => {
     const sortMap = new Map(plan.sortPatches.map((p) => [p.id, p.sortOrder]));
     const ids = new Set([plan.taskId, ...sortMap.keys()]);
+    // 復原用前值：各快取中 updatedAt 最新的一份（不能取第一個含該任務的清單——最早建立的可能是不再更新的舊篩選快取）
     const original = new Map<number, Pick<Task, 'statusId' | 'assigneeId' | 'projectId' | 'sortOrder'>>();
-    for (const [, list] of qc.getQueriesData<Task[]>({ queryKey: queryKeys.tasks.lists() })) {
-      for (const t of list ?? []) {
-        if (ids.has(t.id) && !original.has(t.id))
-          original.set(t.id, {
-            statusId: t.statusId,
-            assigneeId: t.assigneeId,
-            projectId: t.projectId,
-            sortOrder: t.sortOrder,
-          });
-      }
+    for (const id of ids) {
+      const t = findCachedTask(qc, id);
+      if (t)
+        original.set(id, {
+          statusId: t.statusId,
+          assigneeId: t.assigneeId,
+          projectId: t.projectId,
+          sortOrder: t.sortOrder,
+        });
     }
     const apply = () =>
       qc.setQueriesData<Task[]>({ queryKey: queryKeys.tasks.lists() }, (old) =>

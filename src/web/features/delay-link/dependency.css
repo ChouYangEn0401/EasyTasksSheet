@@ -18,6 +18,11 @@
   }
   .dep-lock-icon {
     display: inline-flex;
+    border-radius: var(--radius-sm);
+  }
+  .dep-lock-icon:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
   }
   .dep-lock--list {
     flex: none;

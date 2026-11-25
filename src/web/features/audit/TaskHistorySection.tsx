@@ -4,6 +4,7 @@ import type { AuditEntry } from '../../../shared/audit.ts';
 import { formatDateTime, formatRelative } from '../../lib/format.ts';
 import { useCan } from '../../lib/permissions.ts';
 import { Avatar, Badge, Button, ErrorState, Icon, Skeleton, Tooltip } from '../../ui/index.ts';
+import { useDrawerActive } from '../tasks/drawerActive.ts';
 import { useTaskHistory } from './api.ts';
 import { ChangeTable } from './ChangeTable.tsx';
 import { canShowRevert, entryState } from './model.ts';
@@ -41,7 +42,7 @@ export function TaskHistorySection({ taskId }: { taskId: number }) {
 }
 
 function HistoryList({ taskId }: { taskId: number }) {
-  const query = useTaskHistory(taskId);
+  const query = useTaskHistory(taskId, useDrawerActive());
   const canRevert = useCan('audit.revert');
   const canAudit = useCan('audit.view');
   const [reverting, setReverting] = useState<AuditEntry | null>(null);

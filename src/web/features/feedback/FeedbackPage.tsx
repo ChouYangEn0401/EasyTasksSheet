@@ -140,13 +140,13 @@ export function FeedbackPage() {
   /** 送出 PATCH（樂觀更新）；失敗時已還原，於頁面頂部顯示提示與「重試」 */
   function patch(vars: FeedbackPatch, failMessage: string) {
     setWriteError(null);
-    update.mutate(vars, {
-      onError: (err) =>
-        setWriteError({
-          message: `${failMessage}（${errorMessage(err)}）`,
-          retry: () => patch(vars, failMessage),
-        }),
-    });
+    // mutateAsync：連續操作多張卡片時，每一筆的失敗都會提示（mutate 的呼叫層回呼只保留最後一次）
+    update.mutateAsync(vars).catch((err: unknown) =>
+      setWriteError({
+        message: `${failMessage}（${errorMessage(err)}）`,
+        retry: () => patch(vars, failMessage),
+      }),
+    );
   }
 
   const actions: FeedbackActions = {

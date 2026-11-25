@@ -2,6 +2,7 @@
  * 任務討論區的純函式（docs/design/task-discussion.md）：
  * 訊息內容切段（@提及、網址）、@ 選單的觸發與過濾、草稿存取、未讀分隔線、捲動貼底判斷、討論串篩選。
  */
+import { safeLocalStorage, userDraftPrefix, type DraftStorage } from '../../lib/drafts.ts';
 
 // ── 型別（對應 server/app/features/task_comments.py 的回應） ──
 
@@ -150,36 +151,34 @@ export function applyMention(
   return { text: next, caret: start + insert.length };
 }
 
-// ── 草稿（以任務為單位，存在 localStorage） ─────────────
+// ── 草稿（以「使用者 + 任務」為單位，存在 localStorage；登出時清除，見 lib/drafts.ts） ──
 
-export type DraftStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+export type { DraftStorage };
+export { safeLocalStorage };
 
-export const draftKey = (taskId: number) => `tasks-sheets:discussion-draft:${taskId}`;
+export const draftKey = (userId: number | null, taskId: number) => `${userDraftPrefix(userId)}${taskId}`;
 
-export function loadDraft(storage: DraftStorage | null, taskId: number): string {
+export function loadDraft(storage: DraftStorage | null, userId: number | null, taskId: number): string {
   try {
-    return storage?.getItem(draftKey(taskId)) ?? '';
+    return storage?.getItem(draftKey(userId, taskId)) ?? '';
   } catch {
     return '';
   }
 }
 
 /** 空白草稿即刪除；超過上限只保留上限內的文字 */
-export function saveDraft(storage: DraftStorage | null, taskId: number, text: string): void {
+export function saveDraft(
+  storage: DraftStorage | null,
+  userId: number | null,
+  taskId: number,
+  text: string,
+): void {
   try {
     if (!storage) return;
-    if (!text.trim()) storage.removeItem(draftKey(taskId));
-    else storage.setItem(draftKey(taskId), text.slice(0, BODY_MAX));
+    if (!text.trim()) storage.removeItem(draftKey(userId, taskId));
+    else storage.setItem(draftKey(userId, taskId), text.slice(0, BODY_MAX));
   } catch {
     // 無法使用 localStorage（隱私模式等）時略過
-  }
-}
-
-export function safeLocalStorage(): DraftStorage | null {
-  try {
-    return typeof window !== 'undefined' ? window.localStorage : null;
-  } catch {
-    return null;
   }
 }
 

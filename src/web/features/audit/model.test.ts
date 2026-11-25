@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RevertField } from '../../../shared/audit.ts';
+import { AUDIT_ENTITY_TYPES, type RevertField } from '../../../shared/audit.ts';
 import {
   canShowRevert,
   conflictFields,
@@ -145,6 +145,13 @@ describe('篩選條件', () => {
     expect(writeFilters(byTask).toString()).toBe('taskId=7');
     expect(hasActiveFilters(DEFAULT_FILTERS)).toBe(false);
     expect(hasActiveFilters(byTask)).toBe(true);
+  });
+
+  it('所有實體類型（含相關任務、依賴、待辦清單、留言）都能往返網址', () => {
+    for (const entityType of AUDIT_ENTITY_TYPES) {
+      const f: AuditFilters = { ...DEFAULT_FILTERS, entityType };
+      expect(readFilters(writeFilters(f)).entityType).toBe(entityType);
+    }
   });
 });
 

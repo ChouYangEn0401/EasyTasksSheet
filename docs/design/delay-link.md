@@ -87,10 +87,10 @@
 
 ### 6.3 看板與清單（最小接入，`DependencyBadge.tsx`、`dependency.css`）
 
-- 被擋住的卡片：琥珀左側色條＋淡琥珀底、標題前鎖頭、底部徽章「等待中 · 預計延後 N 天 → 12/20」（無法推算或未延後時只寫「等待中」），Tooltip 說明。
+- 被擋住的卡片：琥珀左側色條＋淡琥珀底、標題前沙漏圖示（不用鎖頭，避免與「描述已鎖定」的鎖頭混淆）、底部徽章「等待中 · 預計延後 N 天 → 12/20」（無法推算或未延後時只寫「等待中」），Tooltip 說明；沙漏圖示可用 Tab 聚焦，聚焦時同樣顯示 Tooltip（aria-describedby），ria-label 含完整說明。
 - 正在擋住別人：「擋住 N」。與逾期、待辦清單、相關任務等徽章並存於卡片底部（自動換行，不擠壓標題）。
 - 看板右上「顯示依賴標示」開關（預設開，`localStorage: ts.kanban.showDeps`）。
-- 清單：標題旁小鎖頭與 Tooltip。
+- 清單：標題旁小沙漏與 Tooltip（清單格由方向鍵導覽，沙漏不另設 Tab 停駐點，說明由 ria-label 讀出）。
 
 ### 6.4 延遲鏈分頁（`DelayLinkPage.tsx`、`delayLinkLayout.ts`）
 

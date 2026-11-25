@@ -17,6 +17,7 @@ import {
   StatusBadge,
 } from '../../ui/index.ts';
 import { recordRelationAdd, recordRelationRemove, undoFromToast } from '../undo/linkUndo.ts';
+import { useDrawerActive } from './drawerActive.ts';
 import { jumpToTask } from './drawerNav.ts';
 import { Popover } from './Popover.tsx';
 import { useAddRelation, useRelationSearch, useRemoveRelation, useTaskRelations } from './relationData.ts';
@@ -25,16 +26,18 @@ import './relations.css';
 
 /** 任務詳情抽屜的「相關任務」區（docs/design/task-list.md §13） */
 export function RelatedTasks({ task }: { task: Task }) {
-  const query = useTaskRelations(task.id);
+  const query = useTaskRelations(task.id, useDrawerActive());
   const remove = useRemoveRelation(task.id);
   const add = useAddRelation(task.id);
   const qc = useQueryClient();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const relations = query.data ?? [];
 
+  // mutateAsync().then：連續移除多筆時每一筆都會登記復原並顯示 toast（mutate 的呼叫層回呼只保留最後一次）
   const onRemove = (rel: TaskRelation) =>
-    remove.mutate(rel, {
-      onSuccess: () => {
+    void remove
+      .mutateAsync(rel)
+      .then(() => {
         // 登記到全站復原堆疊（Ctrl+Z）；toast 的「復原」走同一筆
         const entry = recordRelationRemove(qc, task.id, rel);
         toast({
@@ -44,8 +47,8 @@ export function RelatedTasks({ task }: { task: Task }) {
           action: { label: '復原', onClick: () => undoFromToast(entry) },
           duration: 5000,
         });
-      },
-    });
+      })
+      .catch(() => undefined);
 
   return (
     <div className="task-drawer-section" data-testid="related-tasks">
@@ -87,16 +90,14 @@ export function RelatedTasks({ task }: { task: Task }) {
             selfId={task.id}
             relatedIds={relations.map((r) => r.task.id)}
             onPick={(target) =>
-              add.mutate(
-                { targetId: target.id },
-                {
-                  onSuccess: (rel) => {
-                    recordRelationAdd(qc, task.id, rel);
-                    setAnchor(null);
-                    anchor.focus();
-                  },
-                },
-              )
+              void add
+                .mutateAsync({ targetId: target.id })
+                .then((rel) => {
+                  recordRelationAdd(qc, task.id, rel);
+                  setAnchor(null);
+                  anchor.focus();
+                })
+                .catch(() => undefined)
             }
             busy={add.isPending}
           />

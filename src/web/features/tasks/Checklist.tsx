@@ -31,6 +31,7 @@ import { suspendGlobalShortcuts } from '../../lib/shortcuts.ts';
 import { toast } from '../../lib/toast.ts';
 import { Button, Checkbox, Dialog, Icon, Input, Skeleton } from '../../ui/index.ts';
 import { useChecklist, useChecklistActions } from './checklistData.ts';
+import { useDrawerActive } from './drawerActive.ts';
 import {
   recordChecklistAdd,
   recordChecklistDelete,
@@ -398,7 +399,7 @@ function AddRow({
 /* ── 區塊 ─────────────────────── */
 
 export function Checklist({ taskId }: { taskId: number }) {
-  const q = useChecklist(taskId);
+  const q = useChecklist(taskId, useDrawerActive());
   const { add, patch, remove, clearDone } = useChecklistActions(taskId);
   const qc = useQueryClient();
   const canEdit = useCan('tasks.edit');
@@ -426,11 +427,13 @@ export function Checklist({ taskId }: { taskId: number }) {
   );
 
   /* 動作 */
+  // 成功後才登記復原：用 mutateAsync().then（呼叫層的 mutate(..., { onSuccess }) 連續呼叫時只保留最後一次）；
+  // 失敗由全域 toast 提示，這裡吞掉 rejection
   const onToggle = (item: ChecklistItem, isDone: boolean) =>
-    patch.mutate(
-      { id: item.id, patch: { isDone } },
-      { onSuccess: () => void recordChecklistToggle(qc, taskId, item, isDone) },
-    );
+    void patch
+      .mutateAsync({ id: item.id, patch: { isDone } })
+      .then(() => void recordChecklistToggle(qc, taskId, item, isDone))
+      .catch(() => undefined);
   const onRename = (item: ChecklistItem, text: string) => patch.mutate({ id: item.id, patch: { text } });
 
   const focusRowText = (id: string | undefined) => {
@@ -448,7 +451,10 @@ export function Checklist({ taskId }: { taskId: number }) {
     const rows = [...(rootRef.current?.querySelectorAll<HTMLElement>(ROW) ?? [])];
     const idx = rows.findIndex((r) => r.dataset.checklistRow === String(item.id));
     const target = (focusPrev ? rows[idx - 1] : (rows[idx + 1] ?? rows[idx - 1]))?.dataset.checklistRow;
-    remove.mutate(item.id, { onSuccess: () => void recordChecklistDelete(qc, taskId, item) });
+    void remove
+      .mutateAsync(item.id)
+      .then(() => void recordChecklistDelete(qc, taskId, item))
+      .catch(() => undefined);
     focusRowText(target);
   };
 
@@ -470,10 +476,10 @@ export function Checklist({ taskId }: { taskId: number }) {
   };
 
   const addOne = (text: string, sortOrder?: number) =>
-    add.mutate(
-      { items: [{ text }], sortOrder },
-      { onSuccess: (created) => void recordChecklistAdd(qc, taskId, created) },
-    );
+    void add
+      .mutateAsync({ items: [{ text }], sortOrder })
+      .then((created) => void recordChecklistAdd(qc, taskId, created))
+      .catch(() => undefined);
 
   const onInsertBelow = (item: ChecklistItem) => setDraft({ afterOrder: item.sortOrder });
 
@@ -493,34 +499,44 @@ export function Checklist({ taskId }: { taskId: number }) {
     if (!pending) return;
     const batch = pending.items;
     setPending(null);
-    add.mutate(
-      { items: batch },
-      {
-        onSuccess: (created) => {
-          // 同時登記到全站復原堆疊（Ctrl+Z）；toast 的「復原」走同一筆
-          const entry = recordChecklistAdd(qc, taskId, created);
-          toast({
-            key: 'checklist-pasted',
-            tone: 'success',
-            title: `已建立 ${created.length} 項待辦`,
-            action: {
-              label: '復原',
-              onClick: () =>
-                entry
-                  ? undoFromToast(entry)
-                  : void Promise.all(created.map((c) => remove.mutateAsync(c.id).catch(() => undefined))),
-            },
-            duration: 8000,
-          });
-          focusRowText(undefined);
-        },
-      },
-    );
+    void add
+      .mutateAsync({ items: batch })
+      .then((created) => {
+        // 同時登記到全站復原堆疊（Ctrl+Z）；toast 的「復原」走同一筆
+        const entry = recordChecklistAdd(qc, taskId, created);
+        toast({
+          key: 'checklist-pasted',
+          tone: 'success',
+          title: `已建立 ${created.length} 項待辦`,
+          action: {
+            label: '復原',
+            onClick: () =>
+              entry?.id != null
+                ? undoFromToast(entry)
+                : void Promise.all(created.map((c) => remove.mutateAsync(c.id).catch(() => undefined))),
+          },
+          duration: 8000,
+        });
+        focusRowText(undefined);
+      })
+      .catch(() => undefined);
   };
 
   /* 拖曳 */
   const onDragStart = (_e: DragStartEvent) => {
     resume.current = suspendGlobalShortcuts();
+    // 拖曳中 Esc 只取消拖曳（dnd-kit 自行處理），不讓抽屜關閉：在 window capture 階段先 preventDefault
+    // （與清單拖曳 ListDnd、甘特拖曳一致；優先序 Dialog > 拖曳 > 抽屜）
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey, true);
+    const release = resume.current;
+    resume.current = () => {
+      // 讓本次 Esc 的其他監聽者（抽屜）看完 defaultPrevented 後再移除
+      window.setTimeout(() => window.removeEventListener('keydown', onKey, true), 0);
+      release();
+    };
   };
   const endDrag = () => {
     resume.current?.();

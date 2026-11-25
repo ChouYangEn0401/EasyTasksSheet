@@ -54,13 +54,14 @@ export function GithubDialog({
   const runImport = (project: string) => {
     setError(null);
     setNotice(null);
-    importIssues.mutate(project, {
-      onSuccess: (res) =>
+    // mutateAsync：連續匯入多個專案時每一筆的結果都會顯示（mutate 的呼叫層回呼只保留最後一次）
+    importIssues.mutateAsync(project).then(
+      (res) =>
         setNotice(
           `從 ${res.repo} 匯入 ${res.created} 筆` + (res.skipped ? `（${res.skipped} 筆已存在，略過）` : ''),
         ),
-      onError: (err) => setError(errorMessage(err)),
-    });
+      (err: unknown) => setError(errorMessage(err)),
+    );
   };
 
   return (

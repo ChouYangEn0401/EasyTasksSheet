@@ -128,6 +128,8 @@ test('清單就地改標題：Ctrl+Z 復原、Ctrl+Shift+Z 重做；輸入框內
 
 test('建立任務 → 復原（消失）→ 重做（回來）；刪除 → 復原（回來）', async ({ page }) => {
   test.setTimeout(90_000);
+  // 頁面 console 不可出現 404（抽屜離場中重抓已刪除任務的子資源）；expect.poll 用 page.request，不經過頁面 console
+  const errors = collectErrors(page);
   const P = `UC${Date.now()}`;
   await loginViaUi(page, E2E_USERS.admin, `/tasks/list?q=${P}`);
   await expect(page.getByText('沒有符合條件的任務')).toBeVisible();
@@ -171,6 +173,8 @@ test('建立任務 → 復原（消失）→ 重做（回來）；刪除 → 復
   await page.keyboard.press('Control+y');
   await expect(rows).toHaveCount(0);
   await expect.poll(async () => (await getTask(page, id)).status()).toBe(404);
+  await page.waitForTimeout(500);
+  expect(errors.filter((e) => !/status of 401/.test(e))).toEqual([]);
 });
 
 test('看板拖曳改狀態 → 復原 → 回到原欄', async ({ page }) => {

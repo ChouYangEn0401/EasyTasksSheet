@@ -10,6 +10,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import type { PublicUser } from '../../../shared/users.ts';
+import { useCurrentUser } from '../../lib/auth.ts';
 import { Avatar, Button, Textarea } from '../../ui/index.ts';
 import {
   BODY_MAX,
@@ -29,7 +30,7 @@ const LINE_PX = 22;
 
 /**
  * 討論區輸入框：自動增高（最多 6 行）、Enter 送出 / Shift+Enter 換行（IME 組字中不送出）、
- * `@` 開啟成員選單（上下鍵 / Enter / Tab 選取，Esc 關閉）、草稿以任務為單位存在 localStorage。
+ * `@` 開啟成員選單（上下鍵 / Enter / Tab 選取，Esc 關閉）、草稿以使用者 + 任務為單位存在 localStorage（登出清除）。
  */
 export const DiscussionComposer = forwardRef<
   ComposerHandle,
@@ -43,7 +44,8 @@ export const DiscussionComposer = forwardRef<
   }
 >(function DiscussionComposer({ taskId, users, replyLabel, onCancelReply, onSend, disabled }, ref) {
   const storage = useMemo(() => safeLocalStorage(), []);
-  const [text, setText] = useState(() => loadDraft(storage, taskId));
+  const userId = useCurrentUser()?.id ?? null;
+  const [text, setText] = useState(() => loadDraft(storage, userId, taskId));
   const [caret, setCaret] = useState(0);
   const [menuOpen, setMenuOpen] = useState(true);
   const [active, setActive] = useState(0);
@@ -56,7 +58,7 @@ export const DiscussionComposer = forwardRef<
   useImperativeHandle(ref, () => ({ focus: () => areaRef.current?.focus() }), []);
 
   // 草稿：每次輸入即保存（切換任務、重新整理都不遺失）
-  useEffect(() => saveDraft(storage, taskId, text), [storage, taskId, text]);
+  useEffect(() => saveDraft(storage, userId, taskId, text), [storage, userId, taskId, text]);
 
   useLayoutEffect(() => {
     const el = areaRef.current;

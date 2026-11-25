@@ -40,7 +40,12 @@ export type UndoOption =
       group?: string;
       /** 動作前的值（呼叫端已先樂觀改寫快取時必須提供；未提供則讀快取） */
       before?: Partial<Task>;
+      /** 登記後寫入項目 id（toast 的「復原」以 performUndoEntry(handle.id) 執行） */
+      handle?: UndoHandleRef;
     };
+
+/** 登記結果的回填物件（id = null 代表未入堆疊） */
+export type UndoHandleRef = { id: number | null };
 
 let groupSeq = 0;
 
@@ -160,7 +165,8 @@ export function patchTask(qc: QueryClient, id: number, patch: TaskUpdateInput): 
       onSuccess: (task) => {
         qc.setQueryData(queryKeys.tasks.detail(task.id), task);
         replaceInLists(qc, (list) => list.map((t) => (t.id === task.id ? task : t)));
-        return qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
+        // 不等重抓：復原很快結束（lib/undo.ts）
+        void qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
       },
     },
     patch,
@@ -184,7 +190,8 @@ export function softDeleteTask(qc: QueryClient, id: number): Promise<unknown> {
         // 開著的抽屜不移除詳情（否則會立即重抓而得到 404）
         const detail = qc.getQueryCache().find({ queryKey: queryKeys.tasks.detail(id) });
         if (!detail?.getObserversCount()) qc.removeQueries({ queryKey: queryKeys.tasks.detail(id) });
-        return qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
+        // 不等重抓：復原很快結束（lib/undo.ts）
+        void qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
       },
     },
     id,
@@ -200,7 +207,8 @@ export function restoreTask(qc: QueryClient, id: number): Promise<Task> {
       onSuccess: (task) => {
         qc.setQueryData(queryKeys.tasks.detail(task.id), task);
         enterItem(taskFxKey(task.id));
-        return qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
+        // 不等重抓：復原很快結束（lib/undo.ts）
+        void qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
       },
     },
     id,
@@ -340,10 +348,12 @@ function taskUpdateUndo(
     merge: (older: UndoEntry) => {
       const merged = mergeChanges((older.meta?.changes as TaskFieldChange[]) ?? [], changes);
       // 群組以第一筆指定的文案為準（例如拖曳時主卡片的「把『X』移到…」）
-      return taskUpdateUndo(qc, merged, {
+      const next = taskUpdateUndo(qc, merged, {
         label: opts.group ? (opts.label ?? older.label) : opts.label,
         group: opts.group,
       });
+      // 改過去又改回來（A→B→A）：沒有實際變更，移出堆疊
+      return { ...next, noop: merged.every(isNoop) };
     },
   };
 }
@@ -379,7 +389,10 @@ export function recordTaskUpdate(
     after: pickFields(result, keys),
   };
   if (isNoop(change)) return;
-  registerUndoable(taskUpdateUndo(qc, [change], { label: option?.label, group: option?.group }));
+  const entryId = registerUndoable(
+    taskUpdateUndo(qc, [change], { label: option?.label, group: option?.group }),
+  );
+  if (option?.handle) option.handle.id = entryId;
 }
 
 // ── 登記：新增 / 刪除 ─────────────────────────────────

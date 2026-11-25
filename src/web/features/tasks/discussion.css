@@ -34,9 +34,28 @@
   .task-drawer:has(.disc[data-mode='focus']) .task-drawer-foot {
     display: none;
   }
+  /* 矮視窗：討論區降高，把空間留給內容區（≤ 480px 預設收合，見 DiscussionSection） */
   @media (max-height: 640px) {
-    .disc {
-      --disc-height: clamp(200px, 46vh, 320px);
+    .disc,
+    .disc[data-empty='true'][data-mode='normal'] {
+      --disc-height: clamp(150px, 32vh, 240px);
+    }
+  }
+  @media (max-height: 480px) {
+    /* 抽屜標題列、頁尾、討論區標題列一併壓縮，內容區至少保有約 200px（667×375） */
+    .task-drawer-head {
+      height: 44px;
+    }
+    .task-drawer-foot {
+      padding-top: 6px;
+      padding-bottom: 6px;
+    }
+    .disc-head {
+      height: 36px;
+    }
+    .disc,
+    .disc[data-empty='true'][data-mode='normal'] {
+      --disc-height: clamp(120px, 40vh, 180px);
     }
   }
 
@@ -652,6 +671,10 @@
     line-height: 22px;
     resize: none;
     overflow-y: hidden;
+    scrollbar-gutter: auto;
+  }
+  /* 輸入框只借用 .scroll-soft 的捲軸外觀；不預留捲軸槽（否則右側常駐留白），提高權重蓋過 scroll-soft.css */
+  .disc-input.scroll-soft {
     scrollbar-gutter: auto;
   }
   .disc-send {

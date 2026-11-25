@@ -1,6 +1,7 @@
 /**
  * 待辦清單的資料層：查詢 + 樂觀更新（新增 / 修改 / 刪除 / 清除已完成），失敗回復並由全域 toast 提示。
- * 查詢鍵放在 ['tasks', 'checklist', id] 之下：他人經 SSE 的 task 變更（含清單異動）會自動重抓。
+ * 查詢鍵放在 ['tasks', 'detail', id, 'checklist'] 之下：他人經 SSE 的 task 變更（含清單異動）會自動重抓；
+ * 任務刪除後隨詳情一併排除重抓（lib/sync.ts）。
  */
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { Task } from '../../../shared/tasks.ts';
@@ -15,13 +16,15 @@ import {
   type ChecklistPatch,
 } from './checklistModel.ts';
 
-export const checklistKey = (taskId: number) => ['tasks', 'checklist', taskId] as const;
+/** 掛在任務詳情之下：任務刪除時隨詳情一併排除重抓 / 移除（lib/sync.ts） */
+export const checklistKey = (taskId: number) => [...queryKeys.tasks.detail(taskId), 'checklist'] as const;
 const MUTATION_KEY = ['tasks', 'checklist', 'mutation'] as const;
 
-export function useChecklist(taskId: number) {
+export function useChecklist(taskId: number, enabled = true) {
   return useQuery({
     queryKey: checklistKey(taskId),
     queryFn: ({ signal }) => api.get<ChecklistItem[]>(`/tasks/${taskId}/checklist`, { signal }),
+    enabled,
     refetchInterval: listPollInterval,
   });
 }
@@ -65,7 +68,7 @@ export function useChecklistActions(taskId: number) {
     if (qc.isMutating({ mutationKey: MUTATION_KEY }) <= 1)
       void qc.invalidateQueries({ queryKey: checklistKey(taskId) });
     void qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
-    void qc.invalidateQueries({ queryKey: queryKeys.tasks.detail(taskId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.tasks.detail(taskId), exact: true });
   };
   const revert = (ctx: Snapshot | undefined) => {
     if (ctx?.prev) write(qc, taskId, ctx.prev);

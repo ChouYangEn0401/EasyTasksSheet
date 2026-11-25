@@ -29,6 +29,7 @@ import { DependenciesSection } from '../delay-link/DependenciesSection.tsx';
 import { TaskPresenceHint } from '../presence/TaskPresence.tsx';
 import { reportEditing } from '../../lib/presence.ts';
 import { useDeleteTaskOptimistic, useOptimisticUpdate } from './data.ts';
+import { DrawerActiveContext } from './drawerActive.ts';
 import { backTargetFor, consumeTitleFocus, goBackFrom } from './drawerNav.ts';
 import { DuplicateDialog } from './DuplicateDialog.tsx';
 import { RelatedTasks } from './RelatedTasks.tsx';
@@ -180,7 +181,7 @@ function TaskDrawerPanel({ id, leaving = false }: { id: number; leaving?: boolea
   else if (task) body = <TaskDetail task={task} titleId={titleId} />;
 
   return (
-    <>
+    <DrawerActiveContext.Provider value={!leaving}>
       <div className="task-drawer-backdrop" onClick={closeTask} aria-hidden="true" />
       <aside
         className="task-drawer"
@@ -294,7 +295,7 @@ function TaskDrawerPanel({ id, leaving = false }: { id: number; leaving?: boolea
         <p className="m-0">刪除後將從所有檢視中移除。</p>
       </Dialog>
       {task && <DuplicateDialog task={task} open={duplicating} onClose={() => setDuplicating(false)} />}
-    </>
+    </DrawerActiveContext.Provider>
   );
 }
 

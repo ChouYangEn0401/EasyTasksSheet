@@ -3,6 +3,7 @@ import type { Task } from '../../../shared/tasks.ts';
 import { errorMessage } from '../../lib/api.ts';
 import { useCurrentUser } from '../../lib/auth.ts';
 import { useUsers } from '../../lib/hooks.ts';
+import { prefersReducedMotion } from '../../lib/motion.ts';
 import { useCan } from '../../lib/permissions.ts';
 import { isEditableTarget } from '../../lib/shortcuts.ts';
 import { notifySuccess } from '../../lib/toast.ts';
@@ -33,6 +34,34 @@ const FILTERS: { key: ThreadFilter; label: string }[] = [
 
 let pendingSeq = 0;
 
+const COLLAPSED_KEY = 'tasksheets.discussion.collapsed';
+/** 視窗高度 ≤ 此值且使用者沒設定過時，討論區預設收合（內容區才有足夠空間） */
+const SHORT_VIEWPORT_PX = 480;
+
+function readCollapsed(): boolean | null {
+  try {
+    const v = window.localStorage.getItem(COLLAPSED_KEY);
+    return v === '1' ? true : v === '0' ? false : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCollapsed(collapsed: boolean) {
+  try {
+    window.localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0');
+  } catch {
+    // 無法儲存（隱私模式等）：只影響下次開啟的預設值
+  }
+}
+
+function initialMode(): Mode {
+  if (typeof window === 'undefined') return 'normal';
+  const stored = readCollapsed();
+  if (stored != null) return stored ? 'collapsed' : 'normal';
+  return window.innerHeight <= SHORT_VIEWPORT_PX ? 'collapsed' : 'normal';
+}
+
 /**
  * 任務抽屜最下方的討論區（docs/design/task-discussion.md）：
  * 固定高度的獨立捲動區（clamp(240px, 42vh, 460px)），輸入框固定在底部；可切換聚焦（全高）或收合。
@@ -48,7 +77,12 @@ export function DiscussionSection({ task }: { task: Task }) {
   const query = useThreads(taskId);
   const { create, update, remove, resolve, markRead } = useCommentMutations(taskId);
 
-  const [mode, setMode] = useState<Mode>('normal');
+  const [mode, setModeState] = useState<Mode>(initialMode);
+  // 收合 / 展開（不含聚焦模式）記在 localStorage，下次開抽屜沿用
+  const setMode = useCallback((next: Mode) => {
+    setModeState(next);
+    if (next !== 'focus') writeCollapsed(next === 'collapsed');
+  }, []);
   const [filter, setFilter] = useState<ThreadFilter>('all');
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
   const [replyTo, setReplyTo] = useState<{ root: CommentThread; target: TaskComment } | null>(null);
@@ -93,7 +127,7 @@ export function DiscussionSection({ task }: { task: Task }) {
   const scrollToBottom = useCallback((smooth = false) => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth && !prefersReducedMotion() ? 'smooth' : 'auto' });
     setNewBelow(false);
   }, []);
   const wasNearBottom = useRef(true);
@@ -171,7 +205,7 @@ export function DiscussionSection({ task }: { task: Task }) {
     };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
-  }, [mode]);
+  }, [mode, setMode]);
 
   // ── 動作 ──
   const send = (body: string, parentId: number | null, replyToId: number | null, key?: string) => {
@@ -185,15 +219,13 @@ export function DiscussionSection({ task }: { task: Task }) {
     requestAnimationFrame(() => {
       if (!parentId) scrollToBottom();
     });
-    create.mutate(
-      { body, parentId, replyToId },
-      {
-        onSuccess: () => setPending((list) => list.filter((p) => p.key !== k)),
-        onError: (e) =>
-          setPending((list) =>
-            list.map((p) => (p.key === k ? { ...p, status: 'failed', error: errorMessage(e) } : p)),
-          ),
-      },
+    // mutateAsync：快速連送多則時每一則的成功 / 失敗都會處理（mutate 的呼叫層回呼只保留最後一次）
+    create.mutateAsync({ body, parentId, replyToId }).then(
+      () => setPending((list) => list.filter((p) => p.key !== k)),
+      (e: unknown) =>
+        setPending((list) =>
+          list.map((p) => (p.key === k ? { ...p, status: 'failed', error: errorMessage(e) } : p)),
+        ),
     );
   };
 
@@ -219,7 +251,7 @@ export function DiscussionSection({ task }: { task: Task }) {
       onDelete: (c) => setConfirmDelete(c),
       onResolve: (root, resolved) => {
         setActionError(null);
-        resolve.mutate({ id: root.id, resolved }, { onError: (e) => setActionError(errorMessage(e)) });
+        resolve.mutateAsync({ id: root.id, resolved }).catch((e: unknown) => setActionError(errorMessage(e)));
         if (resolved) setExpanded((s) => new Set([...s].filter((x) => x !== root.id)));
       },
     };
@@ -233,6 +265,7 @@ export function DiscussionSection({ task }: { task: Task }) {
     usersById,
     unreadId,
     mode,
+    setMode,
     update,
     resolve,
   ]);

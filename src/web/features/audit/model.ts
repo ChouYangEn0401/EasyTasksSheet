@@ -1,3 +1,4 @@
+import { AUDIT_ENTITY_TYPES } from '../../../shared/audit.ts';
 import type {
   AuditAction,
   AuditEntityType,
@@ -331,16 +332,7 @@ export function toApiParams(f: AuditFilters, now: number): Record<string, string
   };
 }
 
-const ENTITY_SET = new Set<string>([
-  'task',
-  'project',
-  'status',
-  'property',
-  'user',
-  'permission',
-  'import',
-  'sync',
-]);
+const ENTITY_SET = new Set<string>(AUDIT_ENTITY_TYPES);
 const ACTION_SET = new Set<string>(Object.keys(ACTION_LABELS));
 const posInt = (v: string | null) => (v && /^\d{1,12}$/.test(v) && Number(v) > 0 ? Number(v) : null);
 

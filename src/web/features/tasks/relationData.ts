@@ -14,14 +14,16 @@ import { queryKeys } from '../../lib/queryClient.ts';
 import { listPollInterval } from '../../lib/sync.ts';
 
 export const relationKeys = {
-  of: (taskId: number) => [...queryKeys.tasks.all, 'relations', taskId] as const,
+  // 掛在任務詳情之下：任務刪除時隨詳情一併排除重抓 / 移除（lib/sync.ts）
+  of: (taskId: number) => [...queryKeys.tasks.detail(taskId), 'relations'] as const,
   search: (q: string) => [...queryKeys.tasks.all, 'relation-search', q] as const,
 };
 
-export function useTaskRelations(taskId: number) {
+export function useTaskRelations(taskId: number, enabled = true) {
   return useQuery({
     queryKey: relationKeys.of(taskId),
     queryFn: ({ signal }) => api.get<TaskRelation[]>(`/tasks/${taskId}/relations`, { signal }),
+    enabled,
     refetchInterval: listPollInterval,
   });
 }

@@ -106,7 +106,12 @@ export function TrashDialog({
                   size="sm"
                   variant="secondary"
                   loading={restore.isPending && restore.variables === r.id}
-                  onClick={() => restore.mutate(r.id, { onSuccess: () => notifySuccess('已還原') })}
+                  onClick={() =>
+                    void restore
+                      .mutateAsync(r.id)
+                      .then(() => notifySuccess('已還原'))
+                      .catch(() => undefined)
+                  }
                 >
                   還原
                 </Button>

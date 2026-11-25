@@ -7,10 +7,29 @@ import './dependency.css';
 
 /*
  * 看板 / 清單上的依賴標示（小元件，最小接入既有卡片與列；共用邏輯在 depFields.ts）。
- * 被擋住：琥珀色左側色條 + 淡琥珀底 + 鎖頭 +「等待中」徽章；正在擋住別人：中性小徽章「擋住 N」。
+ * 被擋住：琥珀色左側色條 + 淡琥珀底 + 沙漏 +「等待中」徽章；正在擋住別人：中性小徽章「擋住 N」。
  */
 
-/** 標題旁的鎖頭（被擋住時）；mode = list 時用於清單列 */
+/** 沙漏（等待中）：與描述鎖定的鎖頭區分，同一張卡片上不會出現兩個意義不同的鎖頭 */
+export function HourglassIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M6 3h12M6 21h12M7 3v3.5a5 5 0 0 0 2.2 4.1L12 12l2.8 1.4A5 5 0 0 1 17 17.5V21M17 3v3.5a5 5 0 0 1-2.2 4.1L12 12l-2.8 1.4A5 5 0 0 0 7 17.5V21"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/**
+ * 標題旁的沙漏（被擋住時）；mode = list 時用於清單列。
+ * 可聚焦（看板）：鍵盤 focus 時也會顯示 tooltip 並以 aria-describedby 關聯；aria-label 含完整說明。
+ * 清單列的格子由 grid 方向鍵導覽，這裡不加額外的 Tab 停駐點（tabIndex -1），說明由 aria-label 讀出。
+ */
 export function BlockedLock({ task, mode = 'kanban' }: { task: Depish; mode?: 'kanban' | 'list' }) {
   const show = useShowDependencyMarks();
   const d = depFields(task);
@@ -19,8 +38,13 @@ export function BlockedLock({ task, mode = 'kanban' }: { task: Depish; mode?: 'k
   return (
     <span className={`dep-lock dep-lock--${mode}`} data-testid="dep-lock">
       <Tooltip content={tip}>
-        <span className="dep-lock-icon" role="img" aria-label={`等待中：${tip}`}>
-          <Icon name="lock" size={14} />
+        <span
+          className="dep-lock-icon"
+          role="img"
+          aria-label={`等待中：${tip}`}
+          tabIndex={mode === 'kanban' ? 0 : -1}
+        >
+          <HourglassIcon size={14} />
         </span>
       </Tooltip>
     </span>

@@ -17,15 +17,17 @@ import { listPollInterval } from '../../lib/sync.ts';
  */
 
 export const depKeys = {
-  task: (id: number) => ['tasks', 'deps', id] as const,
+  // 掛在任務詳情之下：任務刪除時隨詳情一併排除重抓 / 移除（lib/sync.ts）
+  task: (id: number) => ['tasks', 'detail', id, 'deps'] as const,
   chains: (filters: TaskFilters, includeDone: boolean) =>
     ['tasks', 'delay-chains', filters, includeDone] as const,
 };
 
-export function useTaskDependencies(id: number) {
+export function useTaskDependencies(id: number, enabled = true) {
   return useQuery({
     queryKey: depKeys.task(id),
     queryFn: ({ signal }) => api.get<TaskDependencies>(`/tasks/${id}/dependencies`, { signal }),
+    enabled,
     refetchInterval: listPollInterval,
   });
 }

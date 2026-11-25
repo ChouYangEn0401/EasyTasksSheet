@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import type { ChangePasswordInput, LoginInput, MeResponse, SessionInfo } from '../../shared/auth.ts';
 import type { PublicUser } from '../../shared/users.ts';
 import { ApiError, api, onApiEvent } from './api.ts';
+import { clearUserDrafts, safeLocalStorage } from './drafts.ts';
 import { createIdleTracker } from './idle.ts';
 import { currentPath, loginUrl, navigateTo } from './navigation.ts';
 import { queryClient, queryKeys } from './queryClient.ts';
@@ -23,6 +24,11 @@ function endSession(to: string) {
   idleTracker.reset();
   // 復原紀錄只屬於這次登入
   undoManager.clear();
+  // 討論草稿只屬於這位使用者：登出 / session 失效時清除（共用電腦不留給下一位）
+  clearUserDrafts(
+    safeLocalStorage(),
+    queryClient.getQueryData<MeResponse | null>(queryKeys.me)?.user.id ?? null,
+  );
   queryClient.setQueryData(queryKeys.me, null);
   navigateTo(to, { replace: true });
   window.setTimeout(() => {

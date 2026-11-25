@@ -16,9 +16,9 @@ import { useStatusesById, useTasks, useUpdateTask, useUsers, useUsersById } from
 import { useCan } from '../../lib/permissions.ts';
 import { isEditableTarget } from '../../lib/shortcuts.ts';
 import { readStorage, writeStorage } from '../../lib/storage.ts';
-import { newUndoGroup } from '../../lib/taskUndo.ts';
+import { newUndoGroup, type UndoHandleRef } from '../../lib/taskUndo.ts';
 import { toast, truncate } from '../../lib/toast.ts';
-import { performUndo, undoManager } from '../../lib/undo.ts';
+import { performUndoEntry } from '../../lib/undo.ts';
 import { useTaskFilters } from '../../lib/useTaskFilters.ts';
 import { NoFilterResults } from '../../shell/FilterBar.tsx';
 import { ViewTabsActions } from '../../shell/ViewTabs.tsx';
@@ -172,18 +172,17 @@ export function GanttPage() {
     (task: Task, patch: TaskOverride) => {
       setSaveError(null);
       setOverrides((m) => new Map(m).set(task.id, { ...m.get(task.id), ...patch }));
-      update.mutate(
-        { id: task.id, ...patch },
-        {
-          onError: (err) => setSaveError({ task, patch, message: errorMessage(err) }),
-          onSettled: () =>
-            setOverrides((m) => {
-              const next = new Map(m);
-              next.delete(task.id);
-              return next;
-            }),
-        },
-      );
+      // mutateAsync：連續拖曳多條時每一筆的失敗 / 清理都會執行（mutate 的呼叫層回呼只保留最後一次）
+      update
+        .mutateAsync({ id: task.id, ...patch })
+        .catch((err: unknown) => setSaveError({ task, patch, message: errorMessage(err) }))
+        .finally(() =>
+          setOverrides((m) => {
+            const next = new Map(m);
+            next.delete(task.id);
+            return next;
+          }),
+        );
     },
     [update],
   );
@@ -219,11 +218,12 @@ export function GanttPage() {
       setSaveError(null);
       setOverrides((m) => new Map(m).set(task.id, { ...m.get(task.id), ...patch }));
       // mutateAsync：連續放下多筆時每一筆的成功 / 失敗處理都會執行（mutate 的回呼只保留最後一次）
+      const handle: UndoHandleRef = { id: null };
       update
         .mutateAsync({
           id: task.id,
           ...patch,
-          undo: { group: newUndoGroup('gantt'), label, before: scheduleBefore(task) },
+          undo: { group: newUndoGroup('gantt'), label, before: scheduleBefore(task), handle },
         })
         .then(
           () =>
@@ -233,9 +233,8 @@ export function GanttPage() {
               description: note ?? undefined,
               action: {
                 label: '復原',
-                onClick: () => {
-                  if (undoManager.getSnapshot().nextUndoLabel === label) void performUndo('undo');
-                },
+                // 以項目 id 復原：不在堆疊頂端也能復原，且之後 Ctrl+Z 不會重複執行
+                onClick: () => void performUndoEntry(handle.id),
               },
               duration: SCHEDULED_TOAST_MS,
             }),

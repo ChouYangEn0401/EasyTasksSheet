@@ -21,9 +21,7 @@ import { readStorage, writeStorage } from '../../lib/storage.ts';
 import { Avatar, Badge, ColorDot, Button, Icon, Input, Spinner, StatusBadge } from '../../ui/index.ts';
 import { PinButton } from '../personal/PinButton.tsx';
 import { openAdminDialog } from './adminUi.ts';
-import { TaskPresenceDots } from '../presence/TaskPresence.tsx';
-import { BlockedLock } from '../delay-link/DependencyBadge.tsx';
-import { TaskBadges } from './TaskBadges.tsx';
+import { TitleBadges } from './TitleBadges.tsx';
 import { flashTask, useUpdateProperty } from './data.ts';
 import { EditableField, type EditState } from './EditableField.tsx';
 import { ListGroupDnd, ListInsertDnd, ListRowDnd } from './ListDnd.tsx';
@@ -41,11 +39,9 @@ import {
   type SortState,
   type TaskGroup,
 } from './model.ts';
-import { ChecklistBadge } from './ChecklistBadge.tsx';
 import { Popover } from './Popover.tsx';
 import { EditOptionsForm, NewPropertyForm } from './PropertyPanel.tsx';
 import { QuickAdd } from './QuickAdd.tsx';
-import { RelationBadge } from './RelationBadge.tsx';
 import { useFieldCommit, type CommitResult } from './useFieldCommit.ts';
 
 const COLLAPSED_KEY = 'tasks.list.collapsed';
@@ -521,7 +517,8 @@ function RenameInput({
     if (!save || name.trim() === property.name) return onDone();
     const err = checkPropertyName(name, others, property.id);
     if (err) return onDone(err);
-    update.mutate({ id: property.id, name: name.trim() }, { onError: (e) => onDone(e.message) });
+    // mutateAsync：onDone() 之後此輸入框即卸載，mutate 的呼叫層 onError 不會再執行
+    update.mutateAsync({ id: property.id, name: name.trim() }).catch((e: Error) => onDone(e.message));
     onDone();
   };
   return (
@@ -860,7 +857,11 @@ function TaskCell({
       )
     ) : null;
   return (
-    <div role="gridcell" className={`tl-cell${sticky}`} title={col.kind === 'title' ? task.title : undefined}>
+    <div
+      role="gridcell"
+      className={`tl-cell${sticky}${col.kind === 'title' ? ' tl-cell--title' : ''}`}
+      title={col.kind === 'title' ? task.title : undefined}
+    >
       <EditableField
         task={task}
         col={col}
@@ -872,11 +873,7 @@ function TaskCell({
         className={col.kind === 'estimate' || col.kind === 'number' ? 'tl-right' : ''}
         {...cellProps(rowKey, colIndex)}
       />
-      {col.kind === 'title' && <BlockedLock task={task} mode="list" />}
-      {col.kind === 'title' && task.id > 0 && <RelationBadge count={task.relationCount} />}
-      {col.kind === 'title' && task.id > 0 && <TaskPresenceDots taskId={task.id} />}
-      {col.kind === 'title' && task.id > 0 && <ChecklistBadge task={task} />}
-      {col.kind === 'title' && task.id > 0 && <TaskBadges task={task} />}
+      {col.kind === 'title' && task.id > 0 && <TitleBadges task={task} />}
       {extra}
     </div>
   );

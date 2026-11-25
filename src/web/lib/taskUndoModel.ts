@@ -113,6 +113,7 @@ export const TASK_FIELD_LABELS: Record<string, string> = {
   progress: '進度',
   projectId: '專案',
   sortOrder: '順序',
+  descriptionLocked: '描述鎖定',
 };
 
 export function fieldLabel(field: string, propertyName?: (key: string) => string | undefined): string {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { clearUserDrafts } from '../../lib/drafts.ts';
 import {
   applyMention,
   draftKey,
@@ -126,22 +127,40 @@ describe('草稿', () => {
       getItem: (k) => data.get(k) ?? null,
       setItem: (k, v) => void data.set(k, v),
       removeItem: (k) => void data.delete(k),
+      key: (i) => [...data.keys()][i] ?? null,
+      get length() {
+        return data.size;
+      },
     };
   }
 
-  it('以任務為單位保存、空白即刪除', () => {
+  it('以使用者 + 任務為單位保存、空白即刪除', () => {
     const s = memory();
-    saveDraft(s, 7, '還沒寫完');
-    saveDraft(s, 8, '另一個任務');
-    expect(loadDraft(s, 7)).toBe('還沒寫完');
-    expect(loadDraft(s, 8)).toBe('另一個任務');
-    saveDraft(s, 7, '   ');
-    expect(s.data.has(draftKey(7))).toBe(false);
-    expect(loadDraft(s, 7)).toBe('');
+    saveDraft(s, 1, 7, '還沒寫完');
+    saveDraft(s, 1, 8, '另一個任務');
+    expect(loadDraft(s, 1, 7)).toBe('還沒寫完');
+    expect(loadDraft(s, 1, 8)).toBe('另一個任務');
+    // 換人登入看不到別人的草稿
+    expect(loadDraft(s, 2, 7)).toBe('');
+    saveDraft(s, 1, 7, '   ');
+    expect(s.data.has(draftKey(1, 7))).toBe(false);
+    expect(loadDraft(s, 1, 7)).toBe('');
+  });
+
+  it('登出時清除該使用者的草稿（含舊版不分使用者的鍵），不動其他人與其他資料', () => {
+    const s = memory();
+    saveDraft(s, 1, 7, 'A 的草稿');
+    saveDraft(s, 1, 9, 'A 的另一份');
+    saveDraft(s, 2, 7, 'B 的草稿');
+    s.setItem('tasks-sheets:discussion-draft:5', '舊版草稿');
+    s.setItem('tasks-sheets:other', '其他設定');
+    clearUserDrafts(s, 1);
+    expect([...s.data.keys()].sort()).toEqual([draftKey(2, 7), 'tasks-sheets:other'].sort());
+    expect(() => clearUserDrafts(null, 1)).not.toThrow();
   });
 
   it('storage 不可用或丟出例外時靜默略過', () => {
-    expect(loadDraft(null, 1)).toBe('');
+    expect(loadDraft(null, 1, 1)).toBe('');
     const broken: DraftStorage = {
       getItem: () => {
         throw new Error('denied');
@@ -151,11 +170,10 @@ describe('草稿', () => {
       },
       removeItem: () => undefined,
     };
-    expect(loadDraft(broken, 1)).toBe('');
-    expect(() => saveDraft(broken, 1, 'x')).not.toThrow();
+    expect(loadDraft(broken, 1, 1)).toBe('');
+    expect(() => saveDraft(broken, 1, 1, 'x')).not.toThrow();
   });
 });
-
 describe('未讀分隔線', () => {
   const ordered = [
     comment(1, 2),

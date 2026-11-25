@@ -402,12 +402,16 @@ export function TodoSection({
 
   const onSave = (patch: TodoPatch, onError: () => void) => {
     setActionError(null);
-    update.mutate(patch, { onError });
+    // mutateAsync：同一個 mutation 連續呼叫時，每一筆的失敗處理都會執行（mutate 的呼叫層回呼只保留最後一次）
+    update.mutateAsync(patch).catch(onError);
   };
 
   const inspectorSave: InspectorSave = (patch, cb) => {
     if (inspected == null) return;
-    update.mutate({ id: inspected.id, ...patch }, { onSuccess: cb?.onSuccess, onError: cb?.onError });
+    update.mutateAsync({ id: inspected.id, ...patch }).then(
+      () => cb?.onSuccess?.(),
+      () => cb?.onError?.(),
+    );
   };
 
   const moveTo = (item: PersonalItem, to: number) => {
@@ -440,7 +444,7 @@ export function TodoSection({
       returnFocus.current = null;
       dropTodoParam();
     }
-    del.mutate(item.id, { onError: () => setActionError('刪除失敗，請再試一次') });
+    del.mutateAsync(item.id).catch(() => setActionError('刪除失敗，請再試一次'));
     requestAnimationFrame(() => {
       const el = nextId
         ? listRef.current?.querySelector<HTMLElement>(`[data-todo-id="${nextId}"] .pl-todo-title--btn`)

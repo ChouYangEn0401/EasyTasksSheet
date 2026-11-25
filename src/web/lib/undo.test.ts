@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createUndoManager, type UndoInput } from './undo.ts';
+import { ApiError } from './api.ts';
+import { createUndoManager, isPermanentUndoError, type UndoInput } from './undo.ts';
 
 function setup(opts: { limit?: number } = {}) {
   let t = 1000;
@@ -108,19 +109,108 @@ describe('UndoManager', () => {
     expect(m.getSnapshot().nextUndoLabel).toBe('合併 2');
   });
 
-  it('執行失敗不推進堆疊，並呼叫 onError', async () => {
+  it('暫時性失敗（網路、5xx、401、408、429）不推進堆疊，並呼叫 onError', async () => {
+    for (const err of [
+      new Error('網路錯誤'),
+      new ApiError(0, 'NETWORK_ERROR', '無法連線'),
+      new ApiError(500, 'INTERNAL', '伺服器錯誤'),
+      new ApiError(401, 'UNAUTHORIZED', '請重新登入'),
+      new ApiError(408, 'TIMEOUT', '逾時'),
+      new ApiError(429, 'RATE_LIMITED', '太頻繁'),
+    ]) {
+      const { m, onError } = setup();
+      m.push({
+        label: 'A',
+        undo: () => Promise.reject(err),
+        redo: () => undefined,
+      });
+      const res = await m.undo();
+      expect(res.status).toBe('failed');
+      expect(onError).toHaveBeenCalledWith(err, expect.objectContaining({ label: 'A' }), 'undo', false);
+      expect(m.sizes()).toEqual({ undo: 1, redo: 0 });
+      expect(m.getSnapshot().busy).toBe(false);
+    }
+  });
+
+  it('永久性失敗（其他 4xx，例如描述已被鎖定）移除該筆，之後可復原更早的動作', async () => {
     const { m, onError } = setup();
-    const err = new Error('網路錯誤');
-    m.push({
-      label: 'A',
-      undo: () => Promise.reject(err),
-      redo: () => undefined,
-    });
+    const log: string[] = [];
+    m.push(action(log, '新增待辦項目'));
+    const err = new ApiError(403, 'DESCRIPTION_LOCKED', '描述已由管理者鎖定');
+    m.push({ label: '修改描述', undo: () => Promise.reject(err), redo: () => undefined });
     const res = await m.undo();
-    expect(res.status).toBe('failed');
-    expect(onError).toHaveBeenCalledWith(err, expect.objectContaining({ label: 'A' }), 'undo');
+    expect(res.status).toBe('rejected');
+    expect(onError).toHaveBeenCalledWith(err, expect.objectContaining({ label: '修改描述' }), 'undo', true);
     expect(m.sizes()).toEqual({ undo: 1, redo: 0 });
-    expect(m.getSnapshot().busy).toBe(false);
+    expect(m.getSnapshot().nextUndoLabel).toBe('新增待辦項目');
+    expect((await m.undo()).status).toBe('done');
+    expect(log).toEqual(['undo:新增待辦項目']);
+  });
+
+  it('isPermanentUndoError：只把 401 / 408 / 429 以外的 4xx 視為永久性', () => {
+    expect(isPermanentUndoError(new ApiError(403, 'X', ''))).toBe(true);
+    expect(isPermanentUndoError(new ApiError(409, 'X', ''))).toBe(true);
+    expect(isPermanentUndoError(new ApiError(422, 'X', ''))).toBe(true);
+    expect(isPermanentUndoError(new ApiError(401, 'X', ''))).toBe(false);
+    expect(isPermanentUndoError(new ApiError(429, 'X', ''))).toBe(false);
+    expect(isPermanentUndoError(new ApiError(503, 'X', ''))).toBe(false);
+    expect(isPermanentUndoError(new Error('x'))).toBe(false);
+  });
+
+  it('合併後回到原值（A→B→A，merge 回傳 noop）時移出堆疊', () => {
+    const { m, advance } = setup();
+    m.push(action([], '更早的動作'));
+    const toggle = (from: boolean, to: boolean): UndoInput => ({
+      ...action([], `改成 ${String(to)}`),
+      mergeKey: 'checklist:1:done',
+      meta: { from, to },
+      merge: (older) => ({
+        ...action([], `改成 ${String(to)}`),
+        meta: { from: older.meta?.from, to },
+        noop: older.meta?.from === to,
+      }),
+    });
+    m.push(toggle(false, true));
+    advance(500);
+    expect(m.push(toggle(true, false))).toBeNull();
+    expect(m.sizes().undo).toBe(1);
+    expect(m.getSnapshot().nextUndoLabel).toBe('更早的動作');
+  });
+
+  it('undoEntry：在頂端走一般流程（可重做）', async () => {
+    const { m } = setup();
+    const log: string[] = [];
+    const a = m.push(action(log, 'A'))!;
+    expect((await m.undoEntry(a.id)).status).toBe('done');
+    expect(m.sizes()).toEqual({ undo: 0, redo: 1 });
+    // 已復原過：再按一次 toast 的「復原」不會重複執行
+    expect((await m.undoEntry(a.id)).status).toBe('empty');
+    expect(log).toEqual(['undo:A']);
+  });
+
+  it('undoEntry：不在頂端時執行後從堆疊移除，之後 Ctrl+Z 不再重複執行', async () => {
+    const { m } = setup();
+    const log: string[] = [];
+    const a = m.push(action(log, 'A'))!;
+    m.push(action(log, 'B'));
+    expect((await m.undoEntry(a.id)).status).toBe('done');
+    expect(m.sizes()).toEqual({ undo: 1, redo: 0 });
+    await m.undo();
+    expect((await m.undo()).status).toBe('empty');
+    expect(log).toEqual(['undo:A', 'undo:B']);
+  });
+
+  it('undoEntry：不在頂端且暫時性失敗時保留，永久性失敗時移除', async () => {
+    const { m, onError } = setup();
+    let err: unknown = new ApiError(503, 'X', '暫停服務');
+    const a = m.push({ label: 'A', undo: () => Promise.reject(err), redo: () => undefined })!;
+    m.push(action([], 'B'));
+    expect((await m.undoEntry(a.id)).status).toBe('failed');
+    expect(m.sizes().undo).toBe(2);
+    err = new ApiError(403, 'X', '沒有權限');
+    expect((await m.undoEntry(a.id)).status).toBe('rejected');
+    expect(m.sizes().undo).toBe(1);
+    expect(onError).toHaveBeenCalledTimes(2);
   });
 
   it("回傳 'drop' 時從堆疊移除（例如任務已被刪除）", async () => {
@@ -132,11 +222,12 @@ describe('UndoManager', () => {
     expect(m.getSnapshot().nextUndoLabel).toBe('A');
   });
 
-  it('執行中忽略新的 push 與重複的 undo（避免遞迴記錄）', async () => {
+  it('執行中忽略重複的 undo；執行中完成的其他寫入照常登記（不與執行中的那筆合併）', async () => {
     const { m } = setup();
     let release!: () => void;
     m.push({
       label: 'A',
+      mergeKey: 'k',
       undo: () =>
         new Promise<void>((r) => {
           release = r;
@@ -145,11 +236,13 @@ describe('UndoManager', () => {
     });
     const running = m.undo();
     expect(m.getSnapshot().busy).toBe(true);
-    expect(m.push(action([], '復原觸發的寫入'))).toBeNull();
     expect((await m.undo()).status).toBe('busy');
+    expect(m.push(action([], '其他寫入', { mergeKey: 'k' }))).not.toBeNull();
     release();
     await running;
-    expect(m.sizes()).toEqual({ undo: 0, redo: 1 });
+    // A 已復原並離開堆疊；新動作留在復原堆疊，且新動作清空 redo（A 不進 redo）
+    expect(m.sizes()).toEqual({ undo: 1, redo: 0 });
+    expect(m.getSnapshot().nextUndoLabel).toBe('其他寫入');
   });
 
   it('clear（登出）清空兩個堆疊並通知訂閱者', async () => {

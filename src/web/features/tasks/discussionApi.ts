@@ -1,6 +1,6 @@
 /**
  * 任務討論區的資料層（/api/tasks/:id/comments*）。查詢鍵以 ['taskComments', taskId] 開頭；
- * SSE 的 task_comment 事件由 lib/sync.ts 失效 ['taskComments'] 與任務清單（留言徽章）。
+ * SSE 的 task_comment 事件由 lib/sync.ts 失效 ['taskComments'] 與任務清單 / 詳情（留言徽章）；自己寫入的回音略過。
  */
 import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { api } from '../../lib/api.ts';
@@ -73,11 +73,15 @@ export type CreateCommentVars = { body: string; parentId?: number | null; replyT
 /** 寫入後重抓此任務的討論串與任務清單（留言數徽章）；失敗由呼叫端就地顯示（不發全域 toast） */
 export function useCommentMutations(taskId: number) {
   const qc = useQueryClient();
-  const refresh = () =>
+  // 只重抓這個任務的討論串、任務清單與詳情本身（留言數徽章）；不碰 ['tasks'] 之下的其他子資源。
+  // SSE 回音由 lib/sync.ts 略過（避免一次寫入觸發兩輪重抓）
+  const refreshBadges = () =>
     Promise.all([
-      qc.invalidateQueries({ queryKey: commentKeys.task(taskId) }),
-      qc.invalidateQueries({ queryKey: queryKeys.tasks.all }),
+      qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() }),
+      qc.invalidateQueries({ queryKey: queryKeys.tasks.detail(taskId), exact: true }),
     ]);
+  const refresh = () =>
+    Promise.all([qc.invalidateQueries({ queryKey: commentKeys.task(taskId) }), refreshBadges()]);
   const create = useMutation({
     meta: { errorToast: false },
     mutationFn: ({ body, parentId, replyToId }: CreateCommentVars) =>
@@ -111,7 +115,7 @@ export function useCommentMutations(taskId: number) {
     meta: { errorToast: false },
     mutationFn: () => api.post<{ lastReadCommentId: number | null }>(`/tasks/${taskId}/comments/read`),
     // 只影響自己的未讀徽章：重抓任務清單即可（討論串內的分隔線維持進入時的位置）
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.tasks.all }),
+    onSuccess: refreshBadges,
   });
   return { create, update, remove, resolve, markRead };
 }

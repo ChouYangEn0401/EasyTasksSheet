@@ -17,6 +17,8 @@ import { createRealtimeClient, type ChangesResponse, type RealtimeClient } from 
 
 // 稽核紀錄（features/audit）：寫入稽核時沿用主操作本身的流水，收到這些實體的變更即重抓稽核頁與任務活動歷史
 const AUDIT: QueryKey = ['audit'];
+/** 所有任務詳情（只比對詳情本身，不含其下的子資源；見 flush） */
+const TASK_DETAILS: QueryKey = ['tasks', 'detail'];
 const TASK_DEPENDENT: QueryKey[] = [queryKeys.tasks.all, ['overview'], ['personal'], AUDIT];
 
 export const ENTITY_QUERY_KEYS: Record<EntityType, QueryKey[]> = {
@@ -31,8 +33,8 @@ export const ENTITY_QUERY_KEYS: Record<EntityType, QueryKey[]> = {
   worktree_plan: [['eng']],
   // 權限設定變更：在線使用者重抓 me（capabilities），畫面即時顯示 / 隱藏功能
   permission: [queryKeys.me, ['admin', 'permissions'], AUDIT],
-  // 任務討論區：討論串與清單 / 看板的留言徽章（commentCount、unreadComments）
-  task_comment: [['taskComments'], queryKeys.tasks.all, AUDIT],
+  // 任務討論區：討論串與清單 / 看板 / 詳情的留言徽章（commentCount、unreadComments）；不重抓任務的其他子資源
+  task_comment: [['taskComments'], queryKeys.tasks.lists(), TASK_DETAILS, AUDIT],
 };
 
 /** 一批變更需要 invalidate 的查詢鍵（去重；meId 被修改時一併重抓 me） */
@@ -45,10 +47,42 @@ export function keysForChanges(changes: Change[], meId: number | null): QueryKey
   return [...seen.values()];
 }
 
-/** queryKey 是否為 ids 中某任務的詳情查詢（['tasks', 'detail', id]） */
+/**
+ * queryKey 是否屬於 ids 中某任務：詳情與其子資源（['tasks', 'detail', id, ...]：相關任務、依賴、待辦清單）、
+ * 討論串（['taskComments', id, ...]）、任務活動歷史（['audit', 'task', id]）
+ */
 export function isTaskDetailOf(queryKey: QueryKey, ids: ReadonlySet<number>): boolean {
   const [scope, kind, id] = queryKey;
-  return scope === queryKeys.tasks.all[0] && kind === 'detail' && typeof id === 'number' && ids.has(id);
+  if (scope === queryKeys.tasks.all[0] && kind === 'detail') return typeof id === 'number' && ids.has(id);
+  if (scope === 'taskComments') return typeof kind === 'number' && ids.has(kind);
+  if (scope === 'audit' && kind === 'task') return typeof id === 'number' && ids.has(id);
+  return false;
+}
+
+/** 自己這個分頁剛寫入後，多久內收到的「自己造成」事件視為回音（本地 mutation 已自行更新快取 / 重抓） */
+export const ECHO_WINDOW_MS = 3000;
+
+/**
+ * 回音（自己剛寫入造成的 SSE 事件）的重抓範圍：
+ * - 'skip'：完全不重抓（討論區留言：本地已重抓該任務的討論串與任務清單）
+ * - 'task-echo'：任務事件不重抓清單與該任務詳情本身（本地 mutation 已更新 / 重抓），子資源與其他查詢照常
+ * - 'all'：照常
+ */
+type EchoMode = 'all' | 'task-echo' | 'skip';
+
+function echoModeFor(entityType: EntityType, key: QueryKey): EchoMode {
+  if (entityType === 'task_comment' && (key[0] === 'taskComments' || key[0] === queryKeys.tasks.all[0]))
+    return 'skip';
+  if (entityType === 'task' && key[0] === queryKeys.tasks.all[0]) return 'task-echo';
+  return 'all';
+}
+
+const MODE_RANK: Record<EchoMode, number> = { skip: 0, 'task-echo': 1, all: 2 };
+
+/** 'task-echo' 時略過的查詢：清單與任務詳情本身（不含子資源） */
+function locallyRefreshed(queryKey: QueryKey): boolean {
+  if (queryKey[0] !== queryKeys.tasks.all[0]) return false;
+  return queryKey[1] === 'list' || (queryKey[1] === 'detail' && queryKey.length === 3);
 }
 
 // ── 他人變更廣播 ─────────────────────────────────────
@@ -71,13 +105,28 @@ const FLUSH_DELAY_MS = 50;
 /**
  * 把變更合併後 invalidate；進行中的 mutation（樂觀更新）結束前先延後，避免舊資料蓋過畫面。
  * 他人刪除任務時先播離場動畫，再移除。
+ * - 已刪除任務的詳情 / 子資源 / 討論 / 活動歷史不再重抓（只會得到 404），直到收到該任務的 create（還原）
+ * - 自己這個分頁剛寫入造成的回音依 echoModeFor 縮小重抓範圍（避免一次寫入觸發兩輪重抓）
  */
-export function createChangeApplier(qc: QueryClient, getMeId: () => number | null) {
-  const pending = new Map<string, QueryKey>();
+export function createChangeApplier(
+  qc: QueryClient,
+  getMeId: () => number | null,
+  now: () => number = Date.now,
+) {
+  const pending = new Map<string, { queryKey: QueryKey; mode: EchoMode }>();
   let timer: ReturnType<typeof setTimeout> | null = null;
   let waitUntil = 0;
   let unsubscribeMutations: (() => void) | null = null;
   const deletedTaskIds = new Set<number>();
+  // 本分頁最近一次寫入成功的時間（回音判斷）
+  let lastLocalWrite = Number.NEGATIVE_INFINITY;
+  const unsubscribeWrites = qc.getMutationCache().subscribe((event) => {
+    if (event.type === 'updated' && event.action.type === 'success') lastLocalWrite = now();
+  });
+  const isLocalEcho = (c: Change, meId: number | null) =>
+    c.actorId != null &&
+    c.actorId === meId &&
+    (qc.isMutating() > 0 || now() - lastLocalWrite <= ECHO_WINDOW_MS);
 
   function flush() {
     timer = null;
@@ -97,26 +146,43 @@ export function createChangeApplier(qc: QueryClient, getMeId: () => number | nul
         });
       return;
     }
-    const keys = [...pending.values()];
+    const entries = [...pending.values()];
     pending.clear();
-    // 已刪除任務的詳情查詢不重抓（抽屜可能仍開著，重抓只會得到 404）；關閉後由快取回收
+    // 已刪除任務的詳情與子資源不重抓（抽屜可能仍開著或正在離場，重抓只會得到 404）；關閉後由快取回收
     const gone = new Set(deletedTaskIds);
-    deletedTaskIds.clear();
-    const refetchable = (q: Query) => !isTaskDetailOf(q.queryKey, gone);
-    for (const queryKey of keys) void qc.invalidateQueries({ queryKey, predicate: refetchable });
+    for (const { queryKey, mode } of entries) {
+      if (mode === 'skip') continue;
+      void qc.invalidateQueries({
+        queryKey,
+        predicate: (q: Query) =>
+          !isTaskDetailOf(q.queryKey, gone) &&
+          !(mode === 'task-echo' && locallyRefreshed(q.queryKey)) &&
+          !(queryKey === TASK_DETAILS && q.queryKey.length > 3),
+      });
+    }
   }
 
   function schedule() {
     if (timer == null) timer = setTimeout(flush, FLUSH_DELAY_MS);
   }
 
+  function addKey(queryKey: QueryKey, mode: EchoMode) {
+    const id = JSON.stringify(queryKey);
+    const prev = pending.get(id);
+    if (!prev || MODE_RANK[mode] > MODE_RANK[prev.mode]) pending.set(id, { queryKey, mode });
+  }
+
   return {
     apply(changes: Change[]) {
       const meId = getMeId();
-      for (const k of keysForChanges(changes, meId)) pending.set(JSON.stringify(k), k);
       const t = Date.now();
       for (const c of changes) {
         if (c.entityType === 'task' && c.action === 'delete') deletedTaskIds.add(c.entityId);
+        if (c.entityType === 'task' && c.action === 'create') deletedTaskIds.delete(c.entityId);
+        const echo = isLocalEcho(c, meId);
+        for (const k of keysForChanges([c], meId)) addKey(k, echo ? echoModeFor(c.entityType, k) : 'all');
+      }
+      for (const c of changes) {
         if (c.actorId != null && c.actorId === meId) continue;
         if (c.entityType === 'task') {
           const key = taskFxKey(c.entityId);
@@ -130,18 +196,19 @@ export function createChangeApplier(qc: QueryClient, getMeId: () => number | nul
       }
       schedule();
     },
-    /** 全部重抓（恢復連線後；重抓造成的變動不播增刪動畫） */
+    /** 全部重抓（恢復連線後；重抓造成的變動不播增刪動畫）；已刪除任務的詳情仍不重抓 */
     resync() {
       pending.clear();
-      void qc.invalidateQueries();
+      const gone = new Set(deletedTaskIds);
+      void qc.invalidateQueries({ predicate: (q: Query) => !isTaskDetailOf(q.queryKey, gone) });
     },
     dispose() {
       if (timer != null) clearTimeout(timer);
       unsubscribeMutations?.();
+      unsubscribeWrites();
     },
   };
 }
-
 // ── 全域連線 ─────────────────────────────────────────
 
 let client: RealtimeClient | null = null;

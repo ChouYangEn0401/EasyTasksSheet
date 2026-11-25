@@ -8,12 +8,15 @@ import './discussion.css';
  */
 export function TaskBadges({
   task,
+  part,
 }: {
   task: Pick<Task, 'commentCount' | 'unreadComments' | 'descriptionLocked'>;
+  /** 只輸出其中一種（清單標題欄依優先序個別排列時使用） */
+  part?: 'lock' | 'comments';
 }) {
-  const count = task.commentCount ?? 0;
+  const count = part === 'lock' ? 0 : (task.commentCount ?? 0);
   const unread = task.unreadComments ?? 0;
-  const locked = !!task.descriptionLocked;
+  const locked = part === 'comments' ? false : !!task.descriptionLocked;
   if (!count && !locked) return null;
   return (
     <span className="task-badges">

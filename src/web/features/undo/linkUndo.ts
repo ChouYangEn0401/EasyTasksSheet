@@ -5,13 +5,8 @@ import { ApiError, api } from '../../lib/api.ts';
 import { queryKeys } from '../../lib/queryClient.ts';
 import { quote } from '../../lib/taskUndoModel.ts';
 import { toast } from '../../lib/toast.ts';
-import {
-  performUndo,
-  registerUndoable,
-  undoManager,
-  type UndoInput,
-  type UndoOutcome,
-} from '../../lib/undo.ts';
+import { performUndoEntry, registerUndoable, type UndoInput, type UndoOutcome } from '../../lib/undo.ts';
+import { checklistKey } from '../tasks/checklistData.ts';
 import type { ChecklistItem } from '../tasks/checklistModel.ts';
 
 /*
@@ -34,24 +29,26 @@ async function orDrop(fn: () => Promise<unknown>, label: string): Promise<UndoOu
 
 const refreshTasks = (qc: QueryClient) => qc.invalidateQueries({ queryKey: queryKeys.tasks.all });
 
+/** 登記後的項目：id 給 toast 的「復原」使用（null = 未入堆疊） */
+export type UndoHandle = { id: number | null; label: string };
+
 /**
- * toast 上的「復原」：若這筆仍是全站堆疊最上面的一筆就走堆疊（之後可重做），否則直接執行這筆的 undo。
+ * toast 上的「復原」：以項目 id 執行（lib/undo.ts performUndoEntry）——在頂端走一般復原（之後可重做）；
+ * 不在頂端則執行後從堆疊移除（之後 Ctrl+Z 不會重複執行）；已復原過則不做事。錯誤照常提示。
  */
-export function undoFromToast(entry: UndoInput): void {
-  if (undoManager.getSnapshot().nextUndoLabel === entry.label) void performUndo('undo');
-  else void Promise.resolve(entry.undo()).catch(() => undefined);
+export function undoFromToast(entry: UndoHandle): void {
+  void performUndoEntry(entry.id);
 }
 
-function register(input: UndoInput): UndoInput {
-  registerUndoable(input);
-  return input;
+function register(input: UndoInput): UndoHandle {
+  return { id: registerUndoable(input), label: input.label };
 }
 
 // ── 相關任務 ─────────────────────────────────────────
 
 const relationLabel = (verb: string, rel: TaskRelation) => `${verb}相關任務${quote(rel.task.title)}`;
 
-export function recordRelationAdd(qc: QueryClient, taskId: number, rel: TaskRelation): UndoInput {
+export function recordRelationAdd(qc: QueryClient, taskId: number, rel: TaskRelation): UndoHandle {
   const ref = { id: rel.id };
   const label = relationLabel('新增', rel);
   return register({
@@ -80,7 +77,7 @@ export function recordRelationAdd(qc: QueryClient, taskId: number, rel: TaskRela
   });
 }
 
-export function recordRelationRemove(qc: QueryClient, taskId: number, rel: TaskRelation): UndoInput {
+export function recordRelationRemove(qc: QueryClient, taskId: number, rel: TaskRelation): UndoHandle {
   const ref = { id: rel.id };
   const label = relationLabel('移除', rel);
   return register({
@@ -117,7 +114,7 @@ export function recordDependencyAdd(
   input: DependencyCreateInput,
   created: DependencyMutationResult,
   title: string,
-): UndoInput {
+): UndoHandle {
   const ref = { id: created.id };
   const label = `${input.direction === 'blocked_by' ? '加入前置任務' : '加入後續任務'}${quote(title)}`;
   return register({
@@ -147,7 +144,7 @@ export function recordDependencyRemove(
   depId: number,
   input: DependencyCreateInput,
   title: string,
-): UndoInput {
+): UndoHandle {
   const ref = { id: depId };
   const label = `移除依賴${quote(title)}`;
   return register({
@@ -173,13 +170,11 @@ export function recordDependencyRemove(
 
 // ── 待辦清單 ─────────────────────────────────────────
 
-const checklistKey = (taskId: number) => ['tasks', 'checklist', taskId] as const;
-
 async function refreshChecklist(qc: QueryClient, taskId: number) {
   await Promise.all([
     qc.invalidateQueries({ queryKey: checklistKey(taskId) }),
     qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() }),
-    qc.invalidateQueries({ queryKey: queryKeys.tasks.detail(taskId) }),
+    qc.invalidateQueries({ queryKey: queryKeys.tasks.detail(taskId), exact: true }),
   ]);
 }
 
@@ -219,7 +214,7 @@ export function recordChecklistAdd(
   qc: QueryClient,
   taskId: number,
   created: ChecklistItem[],
-): UndoInput | null {
+): UndoHandle | null {
   if (created.length === 0) return null;
   const ref = { ids: created.map((c) => c.id) };
   const items = created.map(snap);
@@ -250,7 +245,7 @@ export function recordChecklistToggle(
   taskId: number,
   item: ChecklistItem,
   isDone: boolean,
-): UndoInput {
+): UndoHandle {
   const label = `${isDone ? '勾選' : '取消勾選'}待辦項目${quote(item.text)}`;
   const apply = (value: boolean) => () =>
     orDrop(async () => {
@@ -263,12 +258,21 @@ export function recordChecklistToggle(
   return register({
     label,
     mergeKey: `checklist:${item.id}:done`,
+    meta: { from: !isDone },
     undo: apply(!isDone),
     redo: apply(isDone),
+    // 1.5 秒內勾選又取消：回到原值，移出堆疊
+    merge: (older) => ({
+      label,
+      meta: { from: older.meta?.from },
+      undo: older.undo,
+      redo: apply(isDone),
+      noop: older.meta?.from === isDone,
+    }),
   });
 }
 
-export function recordChecklistDelete(qc: QueryClient, taskId: number, item: ChecklistItem): UndoInput {
+export function recordChecklistDelete(qc: QueryClient, taskId: number, item: ChecklistItem): UndoHandle {
   const ref = { id: item.id };
   const label = `刪除待辦項目${quote(item.text)}`;
   return register({

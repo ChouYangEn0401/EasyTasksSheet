@@ -3,6 +3,7 @@ import { useCurrentUser } from '../../lib/auth.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { useUsersById } from '../../lib/hooks.ts';
 import { useCan } from '../../lib/permissions.ts';
+import { quote } from '../../lib/taskUndoModel.ts';
 import { notifySuccess } from '../../lib/toast.ts';
 import { Button, Icon, Tooltip } from '../../ui/index.ts';
 import { useOptimisticUpdate } from './data.ts';
@@ -40,10 +41,15 @@ export function DescriptionLockButton({ task }: { task: Task }) {
         aria-pressed={locked}
         aria-label={locked ? '解除鎖定' : '鎖定（避免誤改）'}
         onClick={() =>
-          update.mutate(
-            { id: task.id, patch: { descriptionLocked: !locked }, userId: me?.id },
-            { onSuccess: () => notifySuccess(locked ? '已解除描述鎖定' : '已鎖定描述') },
-          )
+          void update
+            .mutateAsync({
+              id: task.id,
+              patch: { descriptionLocked: !locked },
+              userId: me?.id,
+              undo: { label: `${locked ? '解除鎖定' : '鎖定'}${quote(task.title)}的描述` },
+            })
+            .then(() => notifySuccess(locked ? '已解除描述鎖定' : '已鎖定描述'))
+            .catch(() => undefined)
         }
       />
     </Tooltip>
