@@ -84,7 +84,7 @@ def create_session(db: Database, settings: AuthSettings, user_id: int, t: int, r
         SESSION_COOKIE,
         token,
         max_age=settings.session_max_ms // 1000,
-        path="/",
+        path=settings.cookie_path,
         httponly=True,
         samesite="Lax",  # type: ignore[arg-type]
         secure=settings.cookie_secure,
@@ -96,7 +96,7 @@ def destroy_session(db: Database, settings: AuthSettings, request: Request, resp
     token = request.cookies.get(SESSION_COOKIE)
     if token:
         db.execute("DELETE FROM sessions WHERE id = ?", (hash_token(token),))
-    response.delete_cookie(SESSION_COOKIE, path="/", secure=settings.cookie_secure)
+    response.delete_cookie(SESSION_COOKIE, path=settings.cookie_path, secure=settings.cookie_secure)
 
 
 def revoke_other_sessions(conn: sqlite3.Connection, user_id: int, keep_id: str) -> None:

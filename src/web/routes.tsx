@@ -18,6 +18,7 @@ import { PageLayout, type RouteHandle } from './shell/AppShell.tsx';
 import { NotFoundPage } from './shell/NotFoundPage.tsx';
 import { RequireAuth } from './shell/RequireAuth.tsx';
 import { TaskAreaLayout, TaskIndexRedirect } from './shell/TaskAreaLayout.tsx';
+import { BASE_PATH } from './lib/base.ts';
 
 const h = (title: string): RouteHandle => ({ title });
 
@@ -63,4 +64,4 @@ export const routes: RouteObject[] = [
   },
 ];
 
-export const createAppRouter = () => createBrowserRouter(routes);
+export const createAppRouter = () => createBrowserRouter(routes, { basename: BASE_PATH || '/' });

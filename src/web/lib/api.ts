@@ -1,4 +1,5 @@
 import type { ApiError as ApiErrorBody } from '../../shared/common.ts';
+import { apiUrl } from './base.ts';
 
 /** API 錯誤：status 0 代表網路錯誤（無法連線） */
 export class ApiError extends Error {
@@ -75,7 +76,7 @@ export async function apiFetch<T>(
   const isGet = method === 'GET' || method === 'HEAD';
   let res: Response;
   try {
-    res = await fetch(`/api${path}`, {
+    res = await fetch(apiUrl(path), {
       method,
       credentials: 'same-origin',
       headers: {

@@ -1,0 +1,52 @@
+@echo off
+@echo off
+rem ============================================================================
+rem  EasyTasksSheet：第一次準備（或重建）程式環境。不註冊服務、不停任何服務。
+rem  做的事：建 .venv -> 安裝 Python 套件 -> 放 .env（已存在就不動）-> 建置前端 -> 建 data、logs
+rem  前提：已經 git clone 到 APP_DIR；已安裝 Python 3.11（所有使用者）與 Node.js 22 LTS（只用來建置前端）
+rem ============================================================================
+setlocal EnableExtensions EnableDelayedExpansion
+chcp 65001 >nul
+set "APP_DIR=C:\EasyTasksSheet"
+
+if not exist "%APP_DIR%\main.py" (
+  echo [X] 找不到 %APP_DIR%\main.py。先 git clone 到 %APP_DIR%。
+  goto :end
+)
+cd /d "%APP_DIR%"
+
+echo === [1/4] Python 環境 ===
+if not exist ".venv\Scripts\python.exe" (
+  py -3.11 -m venv .venv || ( echo [X] 建立 venv 失敗：確認已安裝 Python 3.11 與 py launcher & goto :end )
+)
+".venv\Scripts\python.exe" -m pip install -r requirements.txt || ( echo [X] pip 安裝失敗 & goto :end )
+".venv\Scripts\python.exe" --version
+
+echo === [2/4] .env ===
+if exist ".env" (
+  echo   .env 已存在，不覆蓋。
+) else (
+  copy /Y "deploy\windows\env.152.example" ".env" >nul
+  echo   已從 deploy\windows\env.152.example 建立 .env，請用記事本確認 BACKUP_DIR 等值。
+)
+
+echo === [3/4] 建置前端（會讀 .env 的 BASE_PATH）===
+where npm >nul 2>&1
+if errorlevel 1 (
+  echo [X] 找不到 npm：安裝 Node.js 22 LTS 後重開 cmd 再執行；
+  echo     或在開發電腦用相同的 BASE_PATH 建置後，把 dist\web 整個複製到 %APP_DIR%\dist\web
+  goto :end
+)
+call npm ci || ( echo [X] npm ci 失敗 & goto :end )
+call npm run build || ( echo [X] npm run build 失敗 & goto :end )
+
+echo === [4/4] 資料夾 ===
+if not exist "data" mkdir "data"
+if not exist "logs" mkdir "logs"
+if not exist "backups" mkdir "backups"
+echo 完成。下一步：install_easytasks_service.bat check
+
+:end
+echo.
+pause
+endlocal

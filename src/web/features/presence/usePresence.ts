@@ -15,6 +15,7 @@ import {
   type PresenceReporter,
 } from '../../lib/presence.ts';
 import { useRealtimeStatus } from '../../lib/sync.ts';
+import { apiUrl } from '../../lib/base.ts';
 
 const fetchPresence = ({ signal }: { signal?: AbortSignal }) =>
   api.get<PresenceResponse>('/presence', { signal });
@@ -57,7 +58,7 @@ const ACTIVITY_EVENTS = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'scro
 
 function sendOnExit(body: PresenceReport) {
   try {
-    void fetch('/api/presence', {
+    void fetch(apiUrl('/presence'), {
       method: 'PUT',
       keepalive: true,
       credentials: 'same-origin',

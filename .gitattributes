@@ -1,1 +1,4 @@
 * text=auto eol=lf
+# Windows 批次檔必須是 CRLF（goto 與標籤在 LF 下可能找不到）
+*.bat text eol=crlf
+*.cmd text eol=crlf

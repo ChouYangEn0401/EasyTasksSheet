@@ -42,6 +42,7 @@ import { applicableProperties, propertyColumn } from './model.ts';
 import { Popover } from './Popover.tsx';
 import { NewPropertyForm } from './PropertyPanel.tsx';
 import './tasks.css';
+import { withBase } from '../../lib/base.ts';
 
 /**
  * 插槽：任務詳情抽屜（T1 升級為可編輯）。
@@ -225,7 +226,7 @@ function TaskDrawerPanel({ id, leaving = false }: { id: number; leaving?: boolea
                   label: '複製連結',
                   onSelect: () =>
                     void navigator.clipboard
-                      ?.writeText(`${window.location.origin}/tasks/list?task=${task.id}`)
+                      ?.writeText(`${window.location.origin}${withBase('/tasks/list')}?task=${task.id}`)
                       .catch(() => undefined),
                 },
                 { key: 'sep', separator: true },

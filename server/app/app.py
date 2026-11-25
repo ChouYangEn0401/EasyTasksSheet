@@ -48,9 +48,11 @@ def create_app(
     now: Callable[[], int] | None = None,
     settings: dict[str, Any] | None = None,
     static_dir: str | None = None,
+    base_path: str = "",
 ) -> FastAPI:
     """建立 app。now：可注入時鐘（unix ms）；settings：AuthSettings 欄位覆寫（測試用）；
-    static_dir：正式模式提供前端靜態檔與 SPA fallback 的目錄（None = 不提供）。"""
+    static_dir：正式模式提供前端靜態檔與 SPA fallback 的目錄（None = 不提供）；
+    base_path：子路徑前綴（BASE_PATH，例如 /easytasks；空 = 根目錄）。"""
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.db = db
     app.state.now = now or _real_now
@@ -123,7 +125,33 @@ def create_app(
 
     if static_dir is not None:
         _mount_spa(app, Path(static_dir))
+    if base_path:
+        # 最外層：先去掉子路徑前綴，內部所有路由與檢查仍以 /api/... 為準
+        app.add_middleware(StripBasePath, base_path=base_path)
     return app
+
+
+class StripBasePath:
+    """子路徑部署（BASE_PATH=/easytasks）：請求路徑若帶前綴就去掉。
+
+    nginx 以 `proxy_pass http://127.0.0.1:PORT/;`（結尾斜線）轉發時前綴已被去掉，這裡不做任何事；
+    直接連後端（http://127.0.0.1:PORT/easytasks/）或 proxy_pass 不去前綴時，由這裡去掉。兩種都能用。
+    """
+
+    def __init__(self, app: Any, base_path: str) -> None:
+        self.app = app
+        self.base = base_path
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] in ("http", "websocket"):
+            path: str = scope.get("path", "")
+            if path == self.base or path.startswith(self.base + "/"):
+                scope = dict(scope)
+                scope["path"] = path[len(self.base) :] or "/"
+                raw = scope.get("raw_path")
+                if isinstance(raw, bytes | bytearray) and raw.startswith(self.base.encode()):
+                    scope["raw_path"] = bytes(raw[len(self.base) :]) or b"/"
+        await self.app(scope, receive, send)
 
 
 def _mount_spa(app: FastAPI, root: Path) -> None:

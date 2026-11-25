@@ -25,6 +25,8 @@ class AuthSettings:
     trusted_proxy: bool = False
     #: 預設管理員帳號（ADMIN_USERNAME）：此帳號在 must_change_password 時須同時改帳號與密碼
     bootstrap_admin_username: str = "admin"
+    #: session cookie 的 Path（BASE_PATH；空 = "/"），避免與同網域其他服務（Gitea、pyDMS）互相干擾
+    cookie_path: str = "/"
 
     def with_overrides(self, **overrides: Any) -> "AuthSettings":
         return replace(self, **overrides) if overrides else self
@@ -42,4 +44,5 @@ def auth_settings_from(config: Config) -> AuthSettings:
         login_max_fails_per_ip=config.LOGIN_MAX_FAILS_PER_IP,
         trusted_proxy=config.TRUSTED_PROXY,
         bootstrap_admin_username=config.ADMIN_USERNAME,
+        cookie_path=config.BASE_PATH or "/",
     )

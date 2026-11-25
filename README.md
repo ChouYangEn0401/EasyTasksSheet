@@ -28,6 +28,7 @@ python main.py                             # 啟動，開啟 http://localhost:30
 | ------------------------------------------------------- | ------------------------------------------------------ |
 | [docs/HANDOFF.md](docs/HANDOFF.md)                      | 交接總覽：現況、程式地圖、已知問題、待決策、如何擴充   |
 | [docs/MOVE-TO-SERVER.md](docs/MOVE-TO-SERVER.md)        | 把本機資料搬到 server 的逐步教學（整包搬 / JSON / 同步） |
+| [docs/DEPLOY-152.md](docs/DEPLOY-152.md)                | 架到實驗室 152（Windows + nginx `/easytasks/` + NSSM 服務） |
 | [docs/permissions.md](docs/permissions.md)              | 角色與權限矩陣                                         |
 | [docs/design/task-discussion.md](docs/design/task-discussion.md) | 任務討論區（討論串、未讀、捲軸）與描述鎖定     |
 | [docs/design/audit-log.md](docs/design/audit-log.md)    | 稽核紀錄與一鍵還原                                     |
