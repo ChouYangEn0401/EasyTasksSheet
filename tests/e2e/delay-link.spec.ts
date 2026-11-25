@@ -156,7 +156,7 @@ test('依賴：建立 A→B→C、看板標示、延遲鏈、循環被拒、完�
   await row.hover();
   await row.getByRole('button', { name: `移除依賴「${T.b}」` }).click();
   await expect(row).toHaveCount(0);
-  await page.getByRole('button', { name: '復原' }).click();
+  await page.getByRole('button', { name: '復原', exact: true }).click();
   await expect(depSection(page).getByTestId('dep-row').filter({ hasText: T.b })).toBeVisible();
 
   // 409（循環被拒）與登入前的 401 為預期內的請求失敗
