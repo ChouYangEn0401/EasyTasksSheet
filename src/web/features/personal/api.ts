@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import type {
   PersonalCreateInput,
   PersonalItem,
+  PersonalReport,
   PersonalUpdateInput,
   PinnedTask,
 } from '../../../shared/personal.ts';
@@ -39,6 +40,28 @@ export function usePins(userId: number | undefined) {
     queryFn: ({ signal }) => api.get<PinnedTask[]>(`/personal/pins${userQuery(userId!, me)}`, { signal }),
     refetchInterval: LIST_POLL_MS,
     enabled: me != null && userId != null,
+  });
+}
+
+/** 匯報報告：某成員在 from~to（含頭尾日）的完成事項；extra 為 include 項目（doing / deferred / cancelled / created） */
+export function useReport(
+  userId: number,
+  range: { from: string; to: string },
+  include: readonly string[],
+  enabled: boolean,
+) {
+  const me = useCurrentUser()?.id;
+  const inc = include.join(',');
+  return useQuery({
+    queryKey: [...personalKeys.all, 'report', userId, range.from, range.to, inc] as const,
+    queryFn: ({ signal }) => {
+      const q = new URLSearchParams({ from: range.from, to: range.to });
+      if (userId !== me) q.set('user', String(userId));
+      if (inc) q.set('include', inc);
+      return api.get<PersonalReport>(`/personal/report?${q}`, { signal });
+    },
+    enabled: enabled && me != null,
+    staleTime: 0,
   });
 }
 

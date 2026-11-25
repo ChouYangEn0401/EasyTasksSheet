@@ -39,6 +39,7 @@ def test_todos_crud():
         "status",
         "dueDate",
         "isDone",
+        "doneAt",
         "taskId",
         "sortOrder",
         "createdAt",

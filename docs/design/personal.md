@@ -184,3 +184,25 @@
 3. PinButton 在 List、Kanban、TaskDrawer 引用處皆可切換，且不觸發外層點擊；標記後「我標記的」區不需重整即更新。
 4. `/me?user=<id>` 完全唯讀，畫面上找不到任何可修改他人清單的控制項。
 5. 1280px 與 768px 無水平捲軸；所有顏色皆取自 core token。
+
+## 10. 匯報報告（產生「這段期間完成了什麼」）
+
+個人頁標題列的「產生匯報報告」開啟對話框（`ReportDialog.tsx`）：選日期區間與內容 → 即時預覽 → 複製 / 下載 / 列印，方便向上級匯報。語氣見 [../product-principles.md](../product-principles.md)：這是讓人**整理自己做了什麼**的工具，不是績效評比；沒有項目時寫「這段期間沒有紀錄」。
+
+**資料來源與口徑**（`GET /api/personal/report?from=&to=&user=&include=`，`server/app/personal_report.py`）
+
+- 日界線以伺服器時區（`TZ`，預設 `Asia/Taipei`）計；區間**含頭尾日**（起始日 00:00 至結束日隔日 00:00），最長 366 天（超過 400）；日期格式須為 `YYYY-MM-DD`。
+- **完成任務**：指派給該成員、`tasks.completed_at` 落在區間、目前仍為 done 類別狀態、未軟刪除（完成後又改回未完成的不算）。
+- **完成待辦**：該成員自由待辦 `status = 'done'` 且 `personal_items.done_at` 落在區間。`done_at`（migration 0020）在狀態變為 done 時寫入現在時間、由 done 改回其他狀態時清為 NULL；既有資料回填為 `updated_at`；匯入舊匯出檔缺 `doneAt` 時同樣以 `updatedAt` 推得。
+- **預估工時**：只加總有填 `estimate_hours` 的完成任務，回傳 `estimatedHours` 與 `hoursKnown`（件數）；沒人填就不回傳這兩個欄位，前端也不顯示「顯示預估工時」選項。
+- 可選 `include=doing,deferred,cancelled,created`：`inProgress`（目前指派給他、進行中類別、建立於區間結束前的任務）、`deferredTodos`（延後 / 取消的待辦，**截至今日**的現況）、`createdTasks`（區間內他建立的任務）。預設只回完成事項。
+- 權限同個人頁：登入即可；預設為本人，`user=` 指定他人為唯讀檢視（已停用或不存在的成員回 404，不洩漏）。
+- 每種資料各一次批次查詢（專案名稱以 JOIN 取得），無 N+1。
+
+**前端**
+
+- 快速區間：本週 / 上週（週一至週日）、近兩週 / 近三週（含今天往前 14 / 21 天）、本月 / 上月、自訂（兩個原生日期欄）；預設本週；選項與區間記在 localStorage（`personal-report-prefs`），快速區間每次開啟依今天重算。
+- 選項：已完成的任務、已完成的待辦（預設勾選）、進行中的任務、延後／取消的待辦、期間新建立的任務；依專案分組（預設開）、顯示預估工時（有填估時才出現）、顯示完成日期。
+- 預覽每項前有勾選可排除；彙總句（例「11/17–11/23 完成任務 5 件、待辦 3 件」）依實際納入的項目重算。「可編輯文字」分頁可直接改文字，修改內容用於複製與 .md / .txt 下載（.csv 依預覽產生）。
+- 輸出：複製（純文字條列 / Markdown / Markdown 表格 / 一行摘要）、下載 .md / .txt / .csv（CSV 含 UTF-8 BOM、CRLF，欄位依 RFC 4180 跳脫，`= + @` 開頭的文字加 `'` 前綴避免 Excel 當公式）、列印（`@media print` 只輸出報告內容）。
+- 格式化是純函式（`reportFormat.ts`，含單元測試）；檢視他人（`?user=`）時為該成員產生，標題標示名稱。

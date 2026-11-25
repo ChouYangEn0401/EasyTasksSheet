@@ -65,8 +65,14 @@
     text-underline-offset: 2px;
     white-space: nowrap;
   }
-  .pl-switch {
+  .pl-head-actions {
     margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+  .pl-switch {
     display: flex;
     align-items: center;
     gap: var(--space-2);
@@ -647,8 +653,228 @@
     .pl-task-main > .ui-status-badge {
       display: none;
     }
-    .pl-switch {
+    .pl-head-actions {
       margin-left: 0;
     }
+  }
+
+  /* ── 匯報報告對話框 ─────────────────────── */
+  .pl-report {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+  .pl-report-controls {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .pl-report-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+  .pl-report-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+  }
+  .pl-report-opts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    font-size: var(--text-sm);
+  }
+  .pl-report-opts legend {
+    float: left;
+    width: 100%;
+    padding: 0;
+    margin-bottom: var(--space-1);
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+  }
+  .pl-report-error {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--color-danger);
+  }
+  .pl-report-result {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .pl-report-loading {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-6);
+  }
+  .pl-report-summary {
+    margin: 0;
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+  }
+  .pl-report-summary span {
+    color: var(--color-text-secondary);
+    font-weight: var(--font-regular);
+  }
+  .pl-report-tabs {
+    display: flex;
+    gap: var(--space-1);
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .pl-report-tab {
+    padding: var(--space-2) var(--space-3);
+    margin-bottom: -1px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: none;
+    font: inherit;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+  }
+  .pl-report-tab[aria-selected='true'] {
+    color: var(--color-text);
+    border-bottom-color: var(--color-accent);
+    font-weight: var(--font-medium);
+  }
+  .pl-report-tab:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: -2px;
+  }
+  .pl-report-panel {
+    min-height: 140px;
+    max-height: 340px;
+    overflow-y: auto;
+    padding: var(--space-2) 0;
+  }
+  .pl-report-empty {
+    margin: 0;
+    padding: var(--space-6) 0;
+    text-align: center;
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+  }
+  .pl-report-heading {
+    margin: var(--space-2) 0 var(--space-1);
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+  }
+  .pl-report-project {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: var(--space-2) 0 var(--space-1);
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    color: var(--color-text-secondary);
+  }
+  .pl-report-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .pl-report-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 32px;
+    font-size: var(--text-sm);
+  }
+  .pl-report-item[data-excluded] .pl-report-title {
+    color: var(--color-text-tertiary);
+    text-decoration: line-through;
+  }
+  .pl-report-date {
+    flex: none;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-secondary);
+  }
+  .pl-report-title {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .pl-report-note {
+    flex: none;
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+  }
+  .pl-report-text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .pl-report-textarea {
+    min-height: 220px;
+    font-family: var(--font-mono, ui-monospace, monospace);
+  }
+  .pl-report-text-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+  }
+  .ui-dialog-actions:has(.pl-report-actions-main) {
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+  .pl-report-actions-main,
+  .pl-report-actions-side {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .pl-report-select {
+    width: auto;
+  }
+  .pl-report-print-portal {
+    display: none;
+  }
+  @media (max-width: 767px) {
+    .pl-report-row {
+      grid-template-columns: 1fr;
+    }
+  }
+}
+
+/* 列印：只輸出報告內容（portal 到 body 的 .pl-report-print-portal），隱藏其餘介面 */
+@media print {
+  body > *:not(.pl-report-print-portal) {
+    display: none !important;
+  }
+  .pl-report-print-portal {
+    display: block !important;
+    color: #000;
+    background: #fff;
+    font-size: 12pt;
+    line-height: 1.6;
+  }
+  .pl-report-print-portal h1 {
+    font-size: 18pt;
+    margin: 0 0 4pt;
+  }
+  .pl-report-print-portal h2 {
+    font-size: 14pt;
+    margin: 14pt 0 4pt;
+  }
+  .pl-report-print-portal h3 {
+    font-size: 12pt;
+    margin: 8pt 0 2pt;
+  }
+  .pl-report-print-portal ul {
+    margin: 0;
+    padding-left: 1.4em;
+  }
+  .pl-report-print-portal li {
+    break-inside: avoid;
   }
 }

@@ -207,6 +207,7 @@ SPECS: tuple[Spec, ...] = (
             F("status", "status", "str", extra=("todo", "doing", "deferred", "cancelled", "done"), default=None),
             F("dueDate", "due_date", "date", True),
             F("detail", "detail", "str", extra=100_000, default=""),
+            F("doneAt", "done_at", "int", True, default=None),
             F("taskUid", "task_id", "ref", True, "tasks"),
             F("sortOrder", "sort_order", "float"),
             _CREATED,
@@ -308,6 +309,7 @@ FIELD_LABELS = {
     "createdByUsername": "建立者",
     "createdAt": "建立時間",
     "completedAt": "完成時間",
+    "doneAt": "完成時間",
     "deletedAt": "刪除時間",
     "kind": "類型",
     "body": "內容",
@@ -457,6 +459,11 @@ def parse_document(raw: bytes | str | dict[str, Any]) -> dict[str, Any]:
         if p["status"] is None:
             p["status"] = "done" if p["isDone"] else "todo"
         p["isDone"] = p["status"] == "done"
+        # doneAt：缺漏時 done 的待辦以 updatedAt 推得；非 done 一律為 null
+        if p["isDone"] and p.get("doneAt") is None and p["taskUid"] is None:
+            p["doneAt"] = p["updatedAt"]
+        elif not p["isDone"]:
+            p["doneAt"] = None
     _check_integrity(doc)
     return doc
 

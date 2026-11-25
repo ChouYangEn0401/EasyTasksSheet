@@ -7,6 +7,7 @@
                   done <-> isDone 一致（勾選 = done、取消勾選 = 回 todo）
 - DELETE /done    清除已完成（只清 done；延後 / 取消的項目保留）
 - DELETE /:id     刪除
+- GET /report      匯報報告（見 personal_report.py）
 - GET /pins       標記的任務（依標記時間新→舊，排除已刪除任務）
 - PUT|DELETE /pins/:taskId  標記 / 取消標記（冪等）
 """
@@ -22,9 +23,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StringConstraints
 
 from ..changes import record_change
+from ..config import config
 from ..context import Ctx, get_ctx
 from ..db import row_to_dict, rows_to_dicts
 from ..errors import bad_request, forbidden, not_found, validation_error
+from ..personal_report import build_report, parse_include, parse_range
 from ..schemas import DateString, Title
 from ..validate import parse_id, present, read_json
 
@@ -131,6 +134,17 @@ async def list_todos(request: Request):
     return rows_to_dicts(rows)
 
 
+@router.get("/report")
+async def personal_report(request: Request):
+    """匯報報告：?from=&to=（YYYY-MM-DD，含頭尾）&user=&include=doing,deferred,cancelled,created"""
+    ctx = get_ctx(request)
+    user_id = _read_target(request, ctx)
+    start, end = parse_range(request.query_params.get("from"), request.query_params.get("to"))
+    include = parse_include(request.query_params.get("include"))
+    with ctx.db.lock:
+        return build_report(ctx.db.conn, user_id, start, end, include, config.TZ)
+
+
 @router.post("")
 async def create_todo(request: Request):
     ctx = get_ctx(request)
@@ -145,7 +159,7 @@ async def create_todo(request: Request):
         status = data.status or "todo"
         cur = conn.execute(
             "INSERT INTO personal_items (user_id, title, note, status, is_done, due_date, detail, sort_order, "
-            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "created_at, updated_at, done_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 uid,
                 data.title,
@@ -157,6 +171,7 @@ async def create_todo(request: Request):
                 0 if top is None else top - 1,
                 t,
                 t,
+                t if status == "done" else None,
             ),
         )
         pid = int(cur.lastrowid)  # type: ignore[arg-type]
@@ -268,6 +283,12 @@ async def update_todo(request: Request, id: str):
                 fields["status"] = "todo"
         sets = {_COLUMNS[k]: (int(v) if k == "isDone" else v) for k, v in fields.items()}
         sets["updated_at"] = t
+        # done_at：變為 done 時寫入現在時間（已是 done 則保留）；從 done 改回其他狀態時清空
+        new_done = fields.get("status") == "done" if "status" in fields else None
+        if new_done is True and current["status"] != "done":
+            sets["done_at"] = t
+        elif new_done is False and current["status"] == "done":
+            sets["done_at"] = None
         conn.execute(
             f"UPDATE personal_items SET {', '.join(f'{c} = ?' for c in sets)} WHERE id = ?", (*sets.values(), pid)
         )

@@ -30,7 +30,7 @@ TasksSheets 是給實驗室內部用的多人任務 / 專案管理網站。本�
 | 任務 `/tasks/list` `kanban` `gantt`   | 清單（就地編輯、快速新增、自訂欄位、詳情抽屜）、看板（拖曳改狀態與排序）、甘特圖；可直接管理狀態與專案；抽屜內可建立相關任務（`task_relations`，0013）與複製任務（`features/task_relations.py`，規格見 [design/task-list.md §13](design/task-list.md)） |
 | 任務 `/tasks/list` `kanban` `gantt`   | 清單（就地編輯、快速新增、自訂欄位、詳情抽屜、拖曳列換群組 / 排序）、看板（拖曳改狀態與排序）、甘特圖；可直接管理狀態與專案               |
 | 問題回饋 `/feedback`                  | 回饋 / 問題清單與月曆排程（拖曳排程）                                                                                |
-| 個人清單 `/me`                        | 我的任務、釘選、自由待辦（含延後 / 取消等小狀態）                                                                    |
+| 個人清單 `/me`                        | 我的任務、釘選、自由待辦（含延後 / 取消等小狀態）；「產生匯報報告」依日期區間彙整完成事項（`personal_report.py`、`personal_items.done_at` 0020，規格見 [design/personal.md §10](design/personal.md)） |
 | 個人設定 `/settings`                  | 改顯示名稱、帳號、密碼（改密碼後其他裝置登出）                                                                       |
 | 工程追蹤 `/eng`                       | 問題（含附件圖片 / 影片 / 檔案、連結預覽、選配 GitHub 連動）、工作樹（worktree）紀錄、自訂狀態、掃描本機專案、貼上 `git worktree list` 快速登記、回收區 |
 | 成員管理 `/admin/users`               | 新增 / 停用 / 重設密碼 / 角色 / 解鎖（`members.manage`）                                                             |

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useCurrentUser } from '../../lib/auth.ts';
 import { useUsers } from '../../lib/hooks.ts';
@@ -12,6 +12,7 @@ import {
   Spinner,
   type SelectOption,
 } from '../../ui/index.ts';
+import { ReportDialog } from './ReportDialog.tsx';
 import { readTodoParam, sectionText } from './model.ts';
 import { AssignedSection, PinnedSection } from './TaskSections.tsx';
 import { TodoSection } from './TodoSection.tsx';
@@ -25,6 +26,7 @@ const USER_PARAM = 'user';
  */
 export function PersonalPage() {
   const me = useCurrentUser();
+  const [reportOpen, setReportOpen] = useState(false);
   const [sp, setSp] = useSearchParams();
   const users = useUsers();
   const raw = sp.get(USER_PARAM);
@@ -104,21 +106,32 @@ export function PersonalPage() {
             正在檢視 {name} 的清單（唯讀）
           </Alert>
         )}
-        <div className="pl-switch">
-          <span className="pl-switch-label" aria-hidden="true">
-            檢視：
-          </span>
-          <Select
-            aria-label="檢視成員的清單"
-            className="pl-switch-select"
-            align="end"
-            placeholder={name ?? '我自己'}
-            options={options}
-            value={viewingId}
-            onChange={switchTo}
-          />
+        <div className="pl-head-actions">
+          <Button variant="secondary" icon="list" onClick={() => setReportOpen(true)}>
+            產生匯報報告
+          </Button>
+          <div className="pl-switch">
+            <span className="pl-switch-label" aria-hidden="true">
+              檢視：
+            </span>
+            <Select
+              aria-label="檢視成員的清單"
+              className="pl-switch-select"
+              align="end"
+              placeholder={name ?? '我自己'}
+              options={options}
+              value={viewingId}
+              onChange={switchTo}
+            />
+          </div>
         </div>
       </div>
+      <ReportDialog
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        userId={viewingId}
+        memberName={name}
+      />
       <div className="pl-grid" key={viewingId}>
         <div className="pl-col">
           <AssignedSection userId={viewingId} text={{ title: t.assigned, empty: t.assignedEmpty }} />

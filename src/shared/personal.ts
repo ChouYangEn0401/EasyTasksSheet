@@ -26,6 +26,8 @@ export const personalItem = z.object({
   status: personalStatus,
   dueDate: dateString.nullable(),
   isDone: z.boolean(),
+  /** 完成時間（ms）：狀態變為 done 時寫入，改回其他狀態時清空；舊資料缺漏時視為 updatedAt */
+  doneAt: z.number().int().nullable().optional(),
   /** 有值 = 標記的任務；null = 自由待辦 */
   taskId: z.number().int().nullable(),
   sortOrder: z.number(),
@@ -81,3 +83,59 @@ export function sortOrderForMove(list: readonly { sortOrder: number }[], from: n
   if (next) return next.sortOrder - 1;
   return list[from]?.sortOrder ?? 0;
 }
+
+/* ── 匯報報告（GET /api/personal/report，docs/design/personal.md「匯報報告」） ── */
+
+/** include 查詢參數可用的項目（預設只回完成事項） */
+export const REPORT_INCLUDE_KEYS = ['doing', 'deferred', 'cancelled', 'created'] as const;
+export type ReportIncludeKey = (typeof REPORT_INCLUDE_KEYS)[number];
+/** 區間最長天數（含頭尾日），超過回 400 */
+export const REPORT_MAX_DAYS = 366;
+
+export type ReportTask = {
+  id: number;
+  title: string;
+  projectId: number;
+  projectName: string;
+  projectColor: string;
+  statusName: string;
+  /** 完成日（台北時區 YYYY-MM-DD）；非完成任務為 null */
+  completedDate: string | null;
+  startDate: string | null;
+  dueDate: string | null;
+  estimateHours: number | null;
+  priority: string;
+  /** 只有 createdTasks 會有：建立日 */
+  createdDate?: string;
+};
+
+export type ReportTodo = {
+  id: number;
+  title: string;
+  note: string;
+  /** 細節前 200 字 */
+  detail: string;
+  status: PersonalStatus;
+  doneDate: string | null;
+  dueDate: string | null;
+};
+
+export type PersonalReport = {
+  from: string;
+  to: string;
+  timeZone: string;
+  user: { id: number; displayName: string } | null;
+  summary: {
+    completedTaskCount: number;
+    completedTodoCount: number;
+    byProject: { projectId: number; projectName: string; projectColor: string; count: number }[];
+    /** 有填估時才會出現 */
+    estimatedHours?: number;
+    hoursKnown?: number;
+  };
+  completedTasks: ReportTask[];
+  completedTodos: ReportTodo[];
+  inProgress?: ReportTask[];
+  deferredTodos?: ReportTodo[];
+  createdTasks?: ReportTask[];
+};
