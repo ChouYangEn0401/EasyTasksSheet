@@ -16,7 +16,7 @@ import math
 from datetime import date, datetime, timedelta
 from typing import Any, Iterable
 
-from ..timeutil import get_zone, local_midnight_ms
+from ..timeutil import DAY_MS, get_zone, local_midnight_ms
 
 
 def week_of(now: int, time_zone: str) -> dict[str, Any]:
@@ -102,7 +102,7 @@ def compute_activity(
     - changes 只保留 retention_days 天；週起點早於保留界線時 touchedPartial = true
     """
     week_list = activity_weeks(now, time_zone, weeks)
-    cutoff = now - int(retention_days * 86_400_000)
+    cutoff = now - int(retention_days * DAY_MS)
     status_by_id = {s["id"]: s for s in statuses}
     task_by_id = {t["id"]: t for t in tasks}
     # 不列入總覽統計的帳號（in_overview = 0）：其完成 / 處理不計入成員，也不計入團隊合計

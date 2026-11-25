@@ -7,6 +7,9 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone, tzinfo
 
+MINUTE_MS = 60_000
+DAY_MS = 86_400_000
+
 #: 沒有 IANA 時區資料庫（Windows 未裝 tzdata）時的固定位移備援（皆無日光節約時間）
 _FIXED_OFFSETS = {
     "Asia/Taipei": 8,

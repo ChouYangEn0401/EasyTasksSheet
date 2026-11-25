@@ -24,6 +24,7 @@ from typing import Any, Callable, Iterable, Mapping
 
 from .changes import record_change
 from .db import Database, now_ms
+from .timeutil import DAY_MS, MINUTE_MS
 
 log = logging.getLogger("server.audit")
 
@@ -31,8 +32,7 @@ log = logging.getLogger("server.audit")
 MAX_FIELD_CHARS = 20_000
 TRUNCATED_KEY = "__truncated__"
 #: 連續「調整順序」在此時間內（同一人、同一筆、尚未還原）合併為一筆
-REORDER_MERGE_MS = 10 * 60_000
-DAY_MS = 86_400_000
+REORDER_MERGE_MS = 10 * MINUTE_MS
 
 SOURCES = ("web", "api", "import", "sync", "system", "revert")
 ENTITY_TYPES = (

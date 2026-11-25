@@ -41,6 +41,7 @@ from ..permissions import can, require
 from ..validate import parse_id, present, read_json
 from .. import worktree_scan as ws
 from ..schemas import SQL_INT_MAX, UID_PATTERN, DbId, SqlInt
+from ..timeutil import DAY_MS
 from . import eng_attach
 from .eng_status import check_value, default_key, keys_in_category
 
@@ -48,7 +49,6 @@ router = APIRouter()
 
 #: 回收區：超過此天數標示「已超過保留期」，但仍不會自動清除（只有管理者按「清空回收區」才永久刪除）
 TRASH_RETENTION_DAYS = 30
-DAY = 86_400_000
 #: 可疑回報：筆數減少超過一半且減少至少這麼多筆
 DROP_MIN = 5
 
@@ -746,7 +746,7 @@ async def list_trash(request: Request):
     return {
         "retentionDays": TRASH_RETENTION_DAYS,
         "records": [
-            {**_record(r), "expired": now - r["deleted_at"] > TRASH_RETENTION_DAYS * DAY} for r in rows
+            {**_record(r), "expired": now - r["deleted_at"] > TRASH_RETENTION_DAYS * DAY_MS} for r in rows
         ],
     }
 
@@ -915,7 +915,7 @@ def build_overview(
 
     if now is not None:
         for g in groups.values():
-            g["stale"] = g["reportedAt"] is not None and now - g["reportedAt"] > stale_days * DAY
+            g["stale"] = g["reportedAt"] is not None and now - g["reportedAt"] > stale_days * DAY_MS
     return sorted(groups.values(), key=lambda g: (machine_key(g["machine"]), g["key"]))
 
 

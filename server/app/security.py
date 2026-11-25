@@ -20,6 +20,7 @@ from starlette.responses import Response
 from .db import Database
 from .errors import forbidden, unauthorized
 from .settings import AuthSettings
+from .timeutil import DAY_MS
 
 SESSION_COOKIE = "sid"
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
@@ -195,8 +196,6 @@ def _normalize_host(scheme: str, netloc: str) -> str:
 
 
 # ── 登入失敗限制 ──
-
-DAY_MS = 86_400_000
 
 
 def login_blocked_for(db: Database, s: AuthSettings, username: str, ip: str, t: int) -> int:
