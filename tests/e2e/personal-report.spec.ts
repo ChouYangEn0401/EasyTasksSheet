@@ -1,6 +1,9 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // 個人頁「匯報報告」：完成任務 / 待辦 → 選本週 → 預覽 → 取消勾選 → 複製 → 下載 .md；上週無資料 → 空狀態
 test.describe.configure({ mode: 'serial' });

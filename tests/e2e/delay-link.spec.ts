@@ -1,5 +1,8 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // 延遲鏈（docs/design/delay-link.md）：在詳情建立 A→B→C 依賴 → 看板變色並顯示延後 → 延遲鏈分頁顯示整條鏈與最長路徑
 // → 嘗試建立循環被拒 → A 完成後 B 不再被擋；成員沒有 tasks.edit 時不可新增（結尾還原權限）。

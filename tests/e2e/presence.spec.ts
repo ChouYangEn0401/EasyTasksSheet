@@ -2,6 +2,9 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { E2E_USERS, loginViaUi, type E2EUser } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // feat/presence：三位使用者同時在線（docs/design/presence.md、docs/multi-user.md）
 // E2E 伺服器以 PRESENCE_ONLINE_SECONDS=10、PRESENCE_IDLE_SECONDS=25 啟動（playwright.config.ts）

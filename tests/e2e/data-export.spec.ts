@@ -1,5 +1,8 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // 資料管理：權限、完整備份下載（含敏感確認）、JSON 匯出 → 改動資料 → 匯入預覽出現衝突 →
 // 全域 keep_local + 逐筆 use_import → 結果正確。只改動本 spec 自建的任務。

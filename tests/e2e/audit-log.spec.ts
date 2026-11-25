@@ -1,5 +1,8 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // 稽核紀錄與還原（docs/design/audit-log.md）：成員修改描述 → 管理者在稽核頁看到前後差異並還原；
 // 衝突時可「仍要還原（覆蓋）」；成員可在任務詳情看到活動歷史但沒有還原鈕。

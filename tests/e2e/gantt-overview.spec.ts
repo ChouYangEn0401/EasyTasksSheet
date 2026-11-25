@@ -1,5 +1,8 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // feat/gantt-overview：總覽（目前無任務者排前且明顯標示）→ Gantt（刻度切換、今日線、未排程、排入日期、拖曳改日期、開啟詳情）
 test.describe.configure({ mode: 'serial' });

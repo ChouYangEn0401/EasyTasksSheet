@@ -2,6 +2,9 @@ import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // 工程追蹤簡化版（手動輸入優先）：問題的新增 / 改狀態 / 結案；worktree 紀錄的新增 / 登記 / 刪除；
 // 各電腦回報快照的顯示與「未登記」「可能遺失」提示。

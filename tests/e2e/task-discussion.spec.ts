@@ -2,6 +2,9 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { E2E_USERS, loginViaUi, type E2EUser } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // feat/task-discussion：任務抽屜的討論區（討論串、@提及、未讀）與描述鎖定。docs/design/task-discussion.md
 test.describe.configure({ mode: 'serial' });
@@ -262,15 +265,23 @@ test('大量訊息：討論區高度固定、不撐開抽屜，可載入更早�
   await member.context().close();
 });
 
+// 斷言一律執行；設定 DISCUSSION_SHOTS 時才額外輸出截圖
 test('768 寬：空狀態、鎖定提示與清單徽章', async ({ browser }) => {
-  test.skip(!SHOTS, '只在輸出截圖時執行');
   const P = `DISC-768-${Date.now()}`;
   const mgr = await openAs(browser, E2E_USERS.manager, `/tasks/list?q=${P}`, 768);
   const t1 = await createTask(mgr, { title: `${P} 有討論`, description: '說明', descriptionLocked: true });
   await createTask(mgr, { title: `${P} 沒有討論` });
   await comment(mgr, t1.id, { body: '第一則：請大家把測試結果補在這裡 https://example.com/report' });
   const mem = await openAs(browser, E2E_USERS.member, `/tasks/list?q=${P}`, 768);
-  await expect(rowOf(mem, `${P} 有討論`).locator('.task-badge--comments')).toBeVisible();
+  // 768 寬時標題欄放不下徽章，會收成「+N」（aria-label 列出被收合的項目，含留言徽章）
+  const moreChip = rowOf(mem, `${P} 有討論`).locator('.tl-tbadge-more');
+  const badge = rowOf(mem, `${P} 有討論`).locator('.task-badge--comments');
+  await expect(async () => {
+    const shown = await badge.isVisible();
+    const collapsed =
+      (await moreChip.count()) > 0 && /討論/.test((await moreChip.getAttribute('aria-label')) ?? '');
+    expect(shown || collapsed).toBe(true);
+  }).toPass();
   await shot(mem, '768-list-badges');
   await mem.goto(`/tasks/list?q=${P}&task=${t1.id}`);
   await expect(drawerOf(mem).getByRole('note')).toBeVisible();

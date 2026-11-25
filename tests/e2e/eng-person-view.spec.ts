@@ -2,6 +2,9 @@ import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // 工程追蹤「工作樹」每人一份：檢視切換（?user=<id|all>）、我自己只看自己的紀錄、
 // 新增預設負責人為自己、檢視他人為唯讀、全部成員依成員分組（含未指派）、重整保留。

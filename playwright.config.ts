@@ -15,8 +15,9 @@ export default defineConfig({
   testDir: 'tests/e2e',
   fullyParallel: false,
   workers: 1,
-  // 「等 SSE 推送」類斷言對機器負載敏感：失敗時自動重試一次；重試後才過會在報告標為 flaky，不會被掩蓋
-  retries: 1,
+  // 預設嚴格：不重試。偶發失敗多半是真缺陷（例如曾經的偶發 404），不得用重試掩蓋缺陷。
+  // 高負載機器臨時可用環境變數 E2E_RETRIES=1 覆寫，但失敗仍須查明根因。
+  retries: Number(process.env.E2E_RETRIES ?? 0),
   reporter: 'list',
   use: { baseURL: `http://localhost:${port}` },
   webServer: {

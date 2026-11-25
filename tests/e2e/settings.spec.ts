@@ -1,5 +1,8 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // 個人設定：自建專用成員（由 admin 建立 → 首次登入改密碼），不動 admin / member / newbie 的狀態；
 // 測完以 admin 停用該測試帳號。

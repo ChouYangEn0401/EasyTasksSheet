@@ -1,5 +1,8 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // 權限設定（docs/design/permissions-config.md）：root 調整成員權限 → 在線成員不需重新整理即更新（SSE）。
 // 結束時一律還原為預設，避免影響其他 spec。

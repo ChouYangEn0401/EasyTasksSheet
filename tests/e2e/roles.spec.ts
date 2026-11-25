@@ -1,5 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // 三層角色（docs/permissions.md）：user 看不到管理入口；manager 可管理成員與資料但不能設 root、
 // 看不到完整備份與取代全部；root 皆可。只讀取畫面與 API，不改動任何共用帳號的角色。

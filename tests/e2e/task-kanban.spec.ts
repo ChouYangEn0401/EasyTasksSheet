@@ -1,5 +1,8 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // T2 Kanban：欄 = 狀態、拖曳改狀態 / 順序（重整後保留）、點擊開詳情、欄尾快速新增、鍵盤拖曳、錯誤與空狀態
 test.describe.configure({ mode: 'serial' });

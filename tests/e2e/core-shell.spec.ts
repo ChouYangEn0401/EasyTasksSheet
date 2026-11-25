@@ -1,5 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // core/shell 冒煙：登入 → 強制改密碼 → 逐一走訪導覽 → 快速新增任務 → 多人可見 → 登出；另測閒置逾時
 test.describe.configure({ mode: 'serial' });
@@ -67,10 +70,14 @@ test('登入 → 強制改密碼 → 走訪導覽 → 快速新增 → 另一瀏
   // 登入前的 401（/api/auth/me 探測、錯誤密碼）屬預期，之後不得再有 console error
   errors.length = 0;
 
+  // 任務計數只看本次執行專屬標題前綴（?q=），不假設全域任務清單為空，也不依賴其他 spec 的清理
+  const P = `E2E 任務 ${Date.now()}`;
+  const listUrl = `/tasks/list?q=${encodeURIComponent(P)}`;
+
   // 另一個瀏覽器（admin）先停在任務 List，之後應在輪詢週期內看到新任務
   const ctxB = await browser.newContext();
   const pageB = await ctxB.newPage();
-  await loginViaUi(pageB, E2E_USERS.admin, '/tasks/list');
+  await loginViaUi(pageB, E2E_USERS.admin, listUrl);
   await expect(
     pageB.getByRole('navigation', { name: '主要導覽' }).getByRole('link', { name: '成員管理' }),
   ).toBeVisible();
@@ -105,13 +112,13 @@ test('登入 → 強制改密碼 → 走訪導覽 → 快速新增 → 另一瀏
   await expect(page).toHaveURL(/\/$/);
 
   // 快速新增：N 聚焦 → Enter 建立 → 保持 focus 連續新增
-  await page.goto('/tasks/list');
+  await page.goto(listUrl);
   await expect(page.getByText('共 0 筆')).toBeVisible();
   await page.locator('#main').click({ position: { x: 5, y: 200 } });
   await page.keyboard.press('n');
   const quickAdd = page.getByRole('textbox', { name: '快速新增任務' });
   await expect(quickAdd).toBeFocused();
-  const title = `E2E 任務 ${Date.now()}`;
+  const title = P;
   await quickAdd.fill(title);
   await quickAdd.press('Enter');
   await expect(page.getByText('已建立')).toBeVisible();
@@ -125,7 +132,7 @@ test('登入 → 強制改密碼 → 走訪導覽 → 快速新增 → 另一瀏
   // 不需重整即更新（FilterBar 結果數與任務清單共用查詢）
   await expect(page.getByText('共 2 筆')).toBeVisible();
 
-  const res = await page.request.get('/api/tasks');
+  const res = await page.request.get(`/api/tasks?q=${encodeURIComponent(P)}`);
   const tasks = (await res.json()) as { id: number; title: string }[];
   const created = tasks.find((t) => t.title === title);
   expect(created).toBeTruthy();
@@ -134,10 +141,12 @@ test('登入 → 強制改密碼 → 走訪導覽 → 快速新增 → 另一瀏
   await page.keyboard.press('/');
   const search = page.getByRole('textbox', { name: '搜尋任務' });
   await expect(search).toBeFocused();
-  await search.fill('第二筆');
-  await expect(page).toHaveURL(/q=%E7%AC%AC%E4%BA%8C%E7%AD%86/);
+  await search.fill(`${P} 第二筆`);
+  await expect.poll(() => new URL(page.url()).searchParams.get('q')).toBe(`${P} 第二筆`);
   await expect(page.getByText('共 1 筆')).toBeVisible();
   await page.getByRole('search').getByRole('button', { name: '清除篩選' }).click();
+  await expect.poll(() => new URL(page.url()).searchParams.get('q')).toBeNull();
+  await search.fill(P);
   await expect(page.getByText('共 2 筆')).toBeVisible();
 
   // TaskDrawer：?task=<id> 開啟，Esc 關閉

@@ -1,5 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // T1 feat/task-list：快速新增 → 就地編輯 → 一鍵完成 → 排序 / 分組 → 自訂欄位 → Drawer
 test.describe.configure({ mode: 'serial' });

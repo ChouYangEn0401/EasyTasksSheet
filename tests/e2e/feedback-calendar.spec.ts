@@ -1,5 +1,8 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // T4 問題 / 回饋 + 月曆：新增、篩選、拖到某天排程、改期、拖回清單、月份切換、重整保留、編輯、解決、刪除
 test.describe.configure({ mode: 'serial' });

@@ -2,6 +2,9 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi, type E2EUser } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // R2 前端審查修正：復原堆疊、拖曳 Esc、標題徽章、討論區、即時同步請求數、矮視窗、依賴圖示
 

@@ -7,6 +7,9 @@ import {
   type Page,
 } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // 甘特圖：未排程任務拖到時間軸排程（docs/design/gantt-overview.md §A7）。
 // 指標拖曳（預覽長條 + 氣泡）、重整保留、復原 / 重做、依負責人分組改指派、預估工時決定天數、

@@ -2,6 +2,9 @@ import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // 貼上 git worktree list 輸出 → 預覽 → 勾選 → 登記。截圖：設定 ENG_SHOT_DIR（與 ENG_SHOT_WIDTH）時存檔。
 test.describe.configure({ mode: 'serial' });

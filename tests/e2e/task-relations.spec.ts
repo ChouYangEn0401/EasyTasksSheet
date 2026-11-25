@@ -1,5 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // feat/task-relations：相關任務（新增 → 清單連結數 → 跳轉 → 移除）與複製任務
 test.describe.configure({ mode: 'serial' });

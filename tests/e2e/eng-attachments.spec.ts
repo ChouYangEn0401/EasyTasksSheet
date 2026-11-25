@@ -3,6 +3,9 @@ import type { AddressInfo } from 'node:net';
 import { resolve } from 'node:path';
 import { expect, test, type FileChooser, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // 問題的附件（圖片 / 影片上傳、燈箱、刪除、失敗卡片）與連結預覽（本機測試頁）。
 // E2E 伺服器以 LINK_PREVIEW_ALLOW_PRIVATE=true 啟動（僅限 E2E），才能抓 127.0.0.1 的測試頁。

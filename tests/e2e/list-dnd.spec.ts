@@ -7,6 +7,9 @@ import {
   type Page,
 } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // 清單拖曳（docs/design/task-list.md §13）：拖到別的群組改狀態 / 負責人、空群組、收合群組、鍵盤拖曳、
 // 排序中限制、權限；以及表格撐滿寬度（§10）。截圖於設定 LIST_DND_SHOTS 時輸出。

@@ -1,5 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // feat/overview-optout：帳號可「不列入總覽統計」。root（admin）預設不列入；
 // 只操作本 spec 自建的帳號，不改動 admin / member / manager / peer 的狀態。
@@ -51,6 +54,13 @@ test('root 不出現在總覽；成員管理可關閉 / 開啟「列入總覽統
   const mine = list.find((u) => u.username === USERNAME)!;
   expect(admin.inOverview).toBe(false);
   expect(mine.inOverview).toBe(true);
+
+  // 全站完全沒有任務時，總覽會把「目前無任務」的成員收合成一組（不顯示個別卡片）；
+  // 先指派一筆任務給新成員，讓卡片版面不依賴其他 spec 殘留的資料
+  const seed = await page.request.post('/api/tasks', {
+    data: { title: `指派給新成員 ${stamp}`, assigneeId: mine.id },
+  });
+  expect(seed.ok()).toBeTruthy();
 
   // 總覽：root 無卡片、新成員有卡片
   await page.goto('/');

@@ -1,5 +1,8 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // feat/task-checklist：新增 → 勾選 → 進度 → 列表徽章 → 拖曳排序 → 貼上多行 → 清除已完成 → 重整後仍在
 test.describe.configure({ mode: 'serial' });

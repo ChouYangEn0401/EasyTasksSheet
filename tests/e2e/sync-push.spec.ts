@@ -1,5 +1,8 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // 多台電腦同步（docs/sync.md、docs/design/sync.md）：manager 建立來源 → 取得一次性金鑰 →
 // 以該金鑰推送兩次製造一筆衝突 → 在「待確認衝突」並排比較、逐欄位選擇 → 套用後任務資料正確。

@@ -19,19 +19,26 @@ describe('sortOverviewMembers', () => {
   });
 
   it('同條件依 zh-Hant 定序排列顯示名稱，與 localeCompare(…, "zh-Hant") 一致', () => {
-    const input = ['陳大文', '王小明', '林志玲', '張三', 'Amy', 'bob'].map((n, i) => mk(i + 1, n, true, 0, 0));
-    const expected = input
-      .map((m) => m.user.displayName)
-      .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+    const input = ['陳大文', '王小明', '林志玲', '張三', 'Amy', 'bob'].map((n, i) =>
+      mk(i + 1, n, true, 0, 0),
+    );
+    const expected = input.map((m) => m.user.displayName).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
     expect(names(sortOverviewMembers(input))).toEqual(expected);
     // 後端以 id 排的順序不影響結果
     expect(names(sortOverviewMembers([...input].reverse()))).toEqual(expected);
     // 拉丁字母不分大小寫
-    expect(names(sortOverviewMembers([mk(1, 'bob', true, 0, 0), mk(2, 'Amy', true, 0, 0)]))).toEqual(['Amy', 'bob']);
+    expect(names(sortOverviewMembers([mk(1, 'bob', true, 0, 0), mk(2, 'Amy', true, 0, 0)]))).toEqual([
+      'Amy',
+      'bob',
+    ]);
   });
 
   it('名稱條件只在同數值條件間生效', () => {
-    const sorted = sortOverviewMembers([mk(1, 'Amy', false, 0, 1), mk(2, 'Zed', false, 0, 2), mk(3, 'Bob', true, 1, 0)]);
+    const sorted = sortOverviewMembers([
+      mk(1, 'Amy', false, 0, 1),
+      mk(2, 'Zed', false, 0, 2),
+      mk(3, 'Bob', true, 1, 0),
+    ]);
     expect(names(sorted)).toEqual(['Bob', 'Zed', 'Amy']);
   });
 

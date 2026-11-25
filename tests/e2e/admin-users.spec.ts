@@ -1,5 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // T7 成員管理：權限、列出 / 搜尋、新增（臨時密碼 → 強制改密碼）、停用使 session 失效、啟用、
 // 重設密碼、編輯、解除登入鎖定、最後一位 root 保護。只操作本 spec 自建的帳號，不影響其他 spec。

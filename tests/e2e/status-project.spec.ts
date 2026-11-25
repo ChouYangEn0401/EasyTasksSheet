@@ -1,6 +1,9 @@
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // feat/status-project：statuses.manage 者可在清單 / 看板管理狀態；projects.create 者可在 FilterBar 直接新增專案。
 // 截圖：設 E2E_SHOTS=<目錄> 時輸出（驗收用）。

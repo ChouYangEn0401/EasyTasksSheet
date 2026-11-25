@@ -1,5 +1,8 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // T5 個人清單：三區、PinButton（個人頁 / Kanban / List）、自由待辦（新增 / 勾選 / 排序 / 刪除 / 重整保留）、唯讀檢視他人、403
 test.describe.configure({ mode: 'serial' });
@@ -17,11 +20,15 @@ async function meId(req: APIRequestContext): Promise<number> {
 
 const section = (page: Page, name: string) => page.getByRole('region', { name, exact: true });
 const pinOf = (scope: Locator) => scope.getByRole('button', { name: /我的標記$/ });
-const todoTitles = (page: Page) =>
-  section(page, '自由待辦')
-    .getByRole('list', { name: '自由待辦' })
-    .locator('.pl-todo-title')
-    .allTextContents();
+// 只看本 spec 自己建立的待辦（標題帶 stamp），不假設 member 原本沒有任何待辦
+const mine = (titles: string[]) => titles.filter((t) => t.includes(`-${stamp}`));
+const todoTitles = async (page: Page) =>
+  mine(
+    await section(page, '自由待辦')
+      .getByRole('list', { name: '自由待辦' })
+      .locator('.pl-todo-title')
+      .allTextContents(),
+  );
 
 async function key(page: Page, k: string) {
   await page.keyboard.press(k);
@@ -52,8 +59,8 @@ test('個人清單：指派 / 標記 / 自由待辦，PinButton 於 Kanban 與 L
   await expect(row.locator('.pl-task-due')).toHaveClass(/is-overdue/);
   await expect(row.locator('time')).toHaveText('剛剛');
 
-  // 我標記的：空狀態 → 點書籤 → 不需重整即出現，且不開啟詳情
-  await expect(pinned.getByText('還沒有標記的任務')).toBeVisible();
+  // 我標記的：本 spec 的任務尚未標記 → 點書籤 → 不需重整即出現，且不開啟詳情
+  await expect(pinned.locator(`.pl-task-row[data-task-id="${task.id}"]`)).toHaveCount(0);
   const pin = pinOf(row);
   await expect(pin).toHaveAttribute('aria-pressed', 'false');
   await pin.click();
@@ -106,7 +113,7 @@ test('個人清單：指派 / 標記 / 自由待辦，PinButton 於 Kanban 與 L
   // 勾選 → 移入「已完成」群組（預設收合）
   await todos.getByRole('checkbox', { name: `標為完成：${TODO.b}` }).click();
   await expect.poll(() => todoTitles(page)).toEqual([TODO.a, `${TODO.c}改`]);
-  await expect(todos.getByRole('button', { name: '已完成 1' })).toHaveAttribute('aria-expanded', 'false');
+  await expect(todos.getByRole('button', { name: /^已完成 \d+/ })).toHaveAttribute('aria-expanded', 'false');
 
   // 刪除
   await todos.getByRole('button', { name: `刪除待辦：${TODO.a}` }).click();
@@ -115,7 +122,7 @@ test('個人清單：指派 / 標記 / 自由待辦，PinButton 於 Kanban 與 L
   // 重整後順序與完成狀態保留
   await page.reload();
   await expect.poll(() => todoTitles(page)).toEqual([`${TODO.c}改`]);
-  await todos.getByRole('button', { name: '已完成 1' }).click();
+  await todos.getByRole('button', { name: /^已完成 \d+/ }).click();
   await expect(todos.getByRole('checkbox', { name: `標為未完成：${TODO.b}` })).toBeChecked();
   await expect(pinned.locator(`.pl-task-row[data-task-id="${task.id}"]`)).toBeVisible();
 
@@ -182,7 +189,7 @@ test('自由待辦小狀態與詳情 inspector：切換狀態、篩選、編輯�
 
   // 篩選：取消 → 只剩取消的；已完成 → 看到 b；全部
   await todos.getByRole('button', { name: /^篩選取消/ }).click();
-  await expect(todos.locator('.pl-todo-row')).toHaveCount(1);
+  await expect(todos.locator('.pl-todo-row').filter({ hasText: `-${stamp}` })).toHaveCount(1);
   await todos.getByRole('button', { name: /^篩選已完成/ }).click();
   await expect(todos.getByText(`${TODO.b}`)).toBeVisible();
   await todos.getByRole('button', { name: /^篩選全部/ }).click();

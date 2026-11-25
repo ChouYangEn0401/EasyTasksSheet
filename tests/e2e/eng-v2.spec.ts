@@ -4,6 +4,9 @@ import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // 工程追蹤 v2：(A) 自訂狀態、(B) 掃描本機專案、(C) 多台電腦回報的安全機制（空回報攔截、回收區）。
 // 截圖：設定 ENG_SHOT_DIR（與 ENG_SHOT_WIDTH）時，把關鍵畫面存到該資料夾。

@@ -1,5 +1,8 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi, type E2EUser } from '../helpers/e2e.ts';
+import { useDataHygiene } from '../helpers/hygiene.ts';
+
+useDataHygiene();
 
 // feat/undo：全站復原 / 重做（docs/design/undo.md）
 test.describe.configure({ mode: 'serial' });
