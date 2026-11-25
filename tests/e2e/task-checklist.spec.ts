@@ -104,7 +104,10 @@ test('待辦清單：新增、勾選、進度、徽章、排序、貼上、清�
   await next.fill('不會建立');
   await next.press('Escape'); // Esc 取消目前輸入並結束連續新增
   await expect.poll(() => texts(page)).toEqual(['丁（改）', '丁之二', '丁之三', '戊']);
-  await list.locator('[data-checklist-row]', { hasText: '丁之三' }).locator('.cl-text').press('F2');
+  // 等新項目寫入完成（暫時列換成正式列後才有刪除鈕），避免 F2 打開的編輯框在換列時被重新掛載而關閉
+  const row3 = list.locator('[data-checklist-row]', { hasText: '丁之三' });
+  await expect(row3.getByRole('button', { name: /刪除待辦/ })).toBeVisible();
+  await row3.locator('.cl-text').press('F2');
   const e2 = list.getByRole('textbox', { name: /編輯待辦：丁之三/ });
   await e2.fill('');
   await e2.press('Backspace');
