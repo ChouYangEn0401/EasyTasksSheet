@@ -23,6 +23,7 @@ import { PinButton } from '../personal/PinButton.tsx';
 import { openAdminDialog } from './adminUi.ts';
 import { TaskPresenceDots } from '../presence/TaskPresence.tsx';
 import { BlockedLock } from '../delay-link/DependencyBadge.tsx';
+import { TaskBadges } from './TaskBadges.tsx';
 import { flashTask, useUpdateProperty } from './data.ts';
 import { EditableField, type EditState } from './EditableField.tsx';
 import { ListGroupDnd, ListInsertDnd, ListRowDnd } from './ListDnd.tsx';
@@ -875,6 +876,7 @@ function TaskCell({
       {col.kind === 'title' && task.id > 0 && <RelationBadge count={task.relationCount} />}
       {col.kind === 'title' && task.id > 0 && <TaskPresenceDots taskId={task.id} />}
       {col.kind === 'title' && task.id > 0 && <ChecklistBadge task={task} />}
+      {col.kind === 'title' && task.id > 0 && <TaskBadges task={task} />}
       {extra}
     </div>
   );

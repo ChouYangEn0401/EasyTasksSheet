@@ -9,7 +9,9 @@ from .db import now_ms
 
 #: permission：權限設定（entity_id 固定為 0；前端收到後重抓 /api/auth/me）
 EntityType = Literal[
-    "user", "project", "status", "task", "property", "feedback", "personal", "repo", "worktree_plan", "permission"
+    "user", "project", "status", "task", "property", "feedback", "personal", "repo", "worktree_plan", "permission",
+    # 任務討論區的留言（entity_id = 留言 id；前端據此重抓討論區與任務清單的留言徽章）
+    "task_comment",
 ]
 ChangeAction = Literal["create", "update", "delete"]
 

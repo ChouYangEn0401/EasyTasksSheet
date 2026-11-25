@@ -29,6 +29,7 @@ python main.py                             # 啟動，開啟 http://localhost:30
 | [docs/HANDOFF.md](docs/HANDOFF.md)                      | 交接總覽：現況、程式地圖、已知問題、待決策、如何擴充   |
 | [docs/MOVE-TO-SERVER.md](docs/MOVE-TO-SERVER.md)        | 把本機資料搬到 server 的逐步教學（整包搬 / JSON / 同步） |
 | [docs/permissions.md](docs/permissions.md)              | 角色與權限矩陣                                         |
+| [docs/design/task-discussion.md](docs/design/task-discussion.md) | 任務討論區（討論串、未讀、捲軸）與描述鎖定     |
 | [docs/multi-user.md](docs/multi-user.md)                | 多人同時使用、在線感知、限制                           |
 | [docs/sync.md](docs/sync.md)                            | 多台電腦同步（sync-push）                              |
 | [docs/product-principles.md](docs/product-principles.md) | 產品原則                                               |
@@ -373,6 +374,15 @@ docker compose -f deploy/docker-compose.yml exec app python -m server.cli backup
 - 個人待辦不記錄；密碼內容一律不記錄。紀錄保留 `AUDIT_RETENTION_DAYS`（預設 365）天。
 
 可還原 / 不可還原的規則與資料模型見 [docs/design/audit-log.md](docs/design/audit-log.md)。
+
+## 任務討論區與描述鎖定
+
+- 任務詳情抽屜最下方是**討論區**：大家可以在這裡和負責人、管理者溝通，或留下自己的筆記。每則訊息都能「回覆」形成討論串（只有一層回覆，回覆預設收合），討論結束可「標記為已解決」。輸入 `@` 可提及成員；`Enter` 送出、`Shift+Enter` 換行，沒送出的草稿會保留。
+- 討論區高度固定、在自己的區域內捲動，訊息再多也不會把抽屜撐長；需要專心討論時按右上角「展開」佔滿抽屜（`Esc` 還原）。
+- 清單與看板的任務標題旁會顯示討論數，有未讀（含被提及）時多一個藍色小圓點；打開任務後即視為已讀。
+- **描述鎖定**：任務派發後，管理者可按描述旁的鎖頭鎖定描述，避免被誤改；鎖定後成員看到提示「有補充或筆記，歡迎寫在下方討論區」，管理者仍可修改。
+- 權限：`comments.write`（留言，預設全員）、`comments.moderate`（刪除他人訊息，預設管理者）、`tasks.lock`（鎖定描述，預設管理者），可在「權限設定」調整。
+- 留言會隨 JSON 匯出 / 匯入，但**不會**透過多台電腦同步（sync-push）傳送。規格見 [docs/design/task-discussion.md](docs/design/task-discussion.md)。
 
 ## 多人同時使用與在線感知
 

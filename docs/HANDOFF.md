@@ -28,7 +28,7 @@ TasksSheets 是給實驗室內部用的多人任務 / 專案管理網站。本�
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | 總覽 `/`                              | 每位成員的進行中任務卡、近三週完成 / 處理件數；語氣中性、不排名（[product-principles.md](product-principles.md)）   |
 | 任務 `/tasks/list` `kanban` `gantt`   | 清單（就地編輯、快速新增、自訂欄位、詳情抽屜）、看板（拖曳改狀態與排序）、甘特圖；可直接管理狀態與專案；抽屜內可建立相關任務（`task_relations`，0013）與複製任務（`features/task_relations.py`，規格見 [design/task-list.md §13](design/task-list.md)） |
-| 任務 `/tasks/list` `kanban` `gantt`   | 清單（就地編輯、快速新增、自訂欄位、詳情抽屜含待辦清單 checklist（`task_checklist_items` 0014，列表 / 看板顯示 ☑ 3/5 徽章，[design/task-list.md §16](design/task-list.md)）、拖曳列換群組 / 排序）、看板（拖曳改狀態與排序）、甘特圖；可直接管理狀態與專案               |
+| 任務 `/tasks/list` `kanban` `gantt`   | 清單（就地編輯、快速新增、自訂欄位、詳情抽屜含待辦清單 checklist（`task_checklist_items` 0014，列表 / 看板顯示 ☑ 3/5 徽章，[design/task-list.md §16](design/task-list.md)）、拖曳列換群組 / 排序）、看板（拖曳改狀態與排序）、甘特圖；可直接管理狀態與專案。詳情抽屜下方有討論區（討論串、@提及、未讀徽章）與描述鎖定（[task-discussion.md](design/task-discussion.md)） |
 | 延遲鏈 `/tasks/delay-link`          | 任務依賴（前置任務 → 等待中的任務，禁止循環）、看板琥珀色「等待中 · 預計延後 N 天」、整條依賴鏈與最長延遲路徑（[design/delay-link.md](design/delay-link.md)） |
 | 問題回饋 `/feedback`                  | 回饋 / 問題清單與月曆排程（拖曳排程）                                                                                |
 | 個人清單 `/me`                        | 我的任務、釘選、自由待辦（含延後 / 取消等小狀態）；「產生匯報報告」依日期區間彙整完成事項（`personal_report.py`、`personal_items.done_at` 0020，規格見 [design/personal.md §10](design/personal.md)） |
@@ -222,19 +222,20 @@ npx prettier --check .
 10. 同步依各電腦時鐘判斷新舊，時鐘誤差大會誤判；同步單向，中央變更不回寫。
 11. 在線感知：多分頁以最後回報為準；重啟後即時狀態全部視為離線。
 12. 匯入「取代全部」後可能留下沒有對應問題的附件檔，用 `python -m server.cli attachments-prune` 清除。
-13. 稽核紀錄（feat/audit-log，[audit-log.md](design/audit-log.md)）：留言、描述鎖定、待辦清單、相關任務、依賴等尚未接入（呼叫 `server/app/audit.py` 的 `record_audit` 即可）；匯入與同步只記一筆摘要、不可逐筆還原，同步衝突的手動處理不記錄；個人待辦、問題回饋、工程追蹤不記錄；專案與成員的「建立」、狀態「改移並刪除」不可還原；保留 `AUDIT_RETENTION_DAYS`（預設 365）天後自動刪除。即時更新沿用各資料本身的變更流水（不另寫 `audit` 流水）。
+13. 稽核紀錄（feat/audit-log，[audit-log.md](design/audit-log.md)）：留言、描述鎖定、待辦清單、相關任務、依賴已接入（範圍見 audit-log.md「記錄範圍」）；匯入與同步只記一筆摘要、不可逐筆還原，同步衝突的手動處理不記錄；個人待辦、問題回饋、工程追蹤不記錄；專案與成員的「建立」、狀態「改移並刪除」不可還原；保留 `AUDIT_RETENTION_DAYS`（預設 365）天後自動刪除。即時更新沿用各資料本身的變更流水（不另寫 `audit` 流水）。
+14. 任務討論區：留言與已讀位置**不透過 sync-push 同步**（JSON 匯出 / 匯入有帶）；沒有獨立通知系統，@提及只反映在清單 / 看板的未讀徽章；「與我有關」篩選只看已載入的討論串；軟刪除的訊息內容仍留在資料庫與匯出檔；資料管理頁尚未顯示留言的匯入統計（API 回應有 `taskComments`）。描述鎖定只在詳情抽屜切換（快速新增未提供「建立後鎖定」）。見 [design/task-discussion.md](design/task-discussion.md) §9。
 
 **UI 小瑕疵（依 PROGRESS，未重驗）**
 
-13. 部分頁面失敗仍用頁內提示列而非 toast；編輯衝突「採用」鈕未做。
-14. 看板 PinButton 一直顯示；768–1023px 回饋頁拖曳時「取消排程」放置列未做（鍵盤可取消）。
-15. 甘特圖：長條起點在畫面左側外時，條內標題被切；768 寬時分組標頭同時有逾期 Badge，成員名稱會被截斷。
-16. 6 處 Python docstring 仍寫「行為同 src/server/…」（歷史對照，`src/server` 已移除，已核對仍存在）。
+15. 部分頁面失敗仍用頁內提示列而非 toast；編輯衝突「採用」鈕未做。
+16. 看板 PinButton 一直顯示；768–1023px 回饋頁拖曳時「取消排程」放置列未做（鍵盤可取消）。
+17. 甘特圖：長條起點在畫面左側外時，條內標題被切；768 寬時分組標頭同時有逾期 Badge，成員名稱會被截斷。
+18. 6 處 Python docstring 仍寫「行為同 src/server/…」（歷史對照，`src/server` 已移除，已核對仍存在）。
 
 **任務依賴（feat/delay-link，[design/delay-link.md](design/delay-link.md)）**
 
-17. 多台電腦同步（sync-push）不同步依賴（JSON 匯出 / 匯入有包含，成環者略過並列出原因）。
-18. 甘特圖尚未畫依賴箭頭；只支援 finish-to-start；延後以日曆天推算（不排除週末與假日）。
+19. 多台電腦同步（sync-push）不同步依賴（JSON 匯出 / 匯入有包含，成環者略過並列出原因）。
+20. 甘特圖尚未畫依賴箭頭；只支援 finish-to-start；延後以日曆天推算（不排除週末與假日）。
 
 ## 12. 待使用者決策
 
@@ -277,4 +278,5 @@ npx prettier --check .
 | [product-principles.md](product-principles.md)   | 產品原則（總覽不評比）                       |
 | [core-interfaces.md](core-interfaces.md)         | 核心介面                                     |
 | [design/](design)                                | 各頁面介面規格                               |
+| [design/task-discussion.md](design/task-discussion.md) | 任務討論區、捲軸設計與描述鎖定        |
 | `../PROGRESS.md`、`../PLAN.md`                   | 進度與原始規劃（PLAN 內的 TS 後端為歷史紀錄） |

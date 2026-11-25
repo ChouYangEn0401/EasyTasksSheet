@@ -39,7 +39,7 @@ def caps(api):
 
 
 def probe(api, capability):
-    method, path, body = PROBES[capability]()
+    method, path, body = PROBES[capability](api)
     return api.request(method, path, body)
 
 

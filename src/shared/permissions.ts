@@ -14,6 +14,7 @@ export const CAPABILITIES = {
   'properties.edit': 'user',
   'profile.edit': 'user',
   'audit.view_task_history': 'user',
+  'comments.write': 'user',
   // manager（danger-command）
   'audit.view': 'manager',
   'audit.revert': 'manager',
@@ -27,6 +28,8 @@ export const CAPABILITIES = {
   'data.import_merge': 'manager',
   'sync.manage': 'manager',
   'sync.resolve': 'manager',
+  'comments.moderate': 'manager',
+  'tasks.lock': 'manager',
   // root（damageable-command）
   'data.backup_db': 'root',
   'data.import_replace': 'root',

@@ -13,6 +13,8 @@ export const ENTITY_TYPES = [
   'worktree_plan',
   // 權限設定（entityId 固定為 0）：前端重抓 /api/auth/me 更新 capabilities
   'permission',
+  // 任務討論區的留言（entityId = 留言 id）：前端重抓討論區與清單的留言徽章
+  'task_comment',
 ] as const;
 export const entityType = z.enum(ENTITY_TYPES);
 export type EntityType = z.infer<typeof entityType>;

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router';
 import type { Task } from '../../../shared/tasks.ts';
 import { ApiError } from '../../lib/api.ts';
 import { useCurrentUser } from '../../lib/auth.ts';
+import { useCan } from '../../lib/permissions.ts';
 import { useProperties, useTask, useUsersById } from '../../lib/hooks.ts';
 import { fxAttr, motionMs, prefersReducedMotion, useItemFx, type ItemFx } from '../../lib/motion.ts';
 import { closeTask, readTaskParam } from '../../lib/openTask.ts';
@@ -31,6 +32,8 @@ import { useDeleteTaskOptimistic, useOptimisticUpdate } from './data.ts';
 import { backTargetFor, consumeTitleFocus, goBackFrom } from './drawerNav.ts';
 import { DuplicateDialog } from './DuplicateDialog.tsx';
 import { RelatedTasks } from './RelatedTasks.tsx';
+import { DescriptionLockBanner, DescriptionLockButton } from './DescriptionLock.tsx';
+import { DiscussionSection } from './DiscussionSection.tsx';
 import { EditableField, type EditState } from './EditableField.tsx';
 import type { FieldCol } from './fields.tsx';
 import { Checklist } from './Checklist.tsx';
@@ -250,13 +253,14 @@ function TaskDrawerPanel({ id, leaving = false }: { id: number; leaving?: boolea
           </div>
         )}
         {task && !leaving && <TaskPresenceHint taskId={task.id} />}
-        <div className="task-drawer-body">{body}</div>
+        <div className="task-drawer-body scroll-soft">{body}</div>
         {task && (
           <div className="task-drawer-foot tl-drawer-foot">
             <UpdatedAt at={task.createdAt} by={task.createdBy} prefix="建立於" />
             <UpdatedAt at={task.updatedAt} by={task.updatedBy} prefix="更新於" />
           </div>
         )}
+        {task && !leaving && <DiscussionSection task={task} />}
       </aside>
       <Dialog
         open={confirmDelete && !!task}
@@ -381,24 +385,30 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 function Description({ task, fx }: { task: Task; fx?: ItemFx }) {
   const update = useOptimisticUpdate();
   const me = useCurrentUser();
+  // 描述鎖定（DescriptionLock.tsx）：鎖定中且沒有 tasks.lock 時唯讀（仍可選取複製）
+  const canLock = useCan('tasks.lock');
+  const readOnly = !!task.descriptionLocked && !canLock;
   const [draft, setDraft] = useState(task.description);
   const [base, setBase] = useState(task.description);
   const [focused, setFocused] = useState(false);
   const [state, setState] = useState<SaveState>('idle');
   const ref = useRef<HTMLTextAreaElement>(null);
-  const latest = useRef({ draft, base, id: task.id });
+  const latest = useRef({ draft, base, id: task.id, readOnly });
   useEffect(() => {
-    latest.current = { draft, base, id: task.id };
+    latest.current = { draft, base, id: task.id, readOnly };
   });
 
-  // 他人修改（輪詢）：未在編輯且無未存內容時同步
+  // 他人修改（輪詢）：未在編輯且無未存內容時同步；被鎖定成唯讀時捨棄未存內容
   if (task.description !== base && !focused && draft === base && state !== 'saving') {
+    setBase(task.description);
+    setDraft(task.description);
+  } else if (readOnly && draft !== task.description && state !== 'saving') {
     setBase(task.description);
     setDraft(task.description);
   }
 
   const save = () => {
-    if (draft === base) return;
+    if (draft === base || readOnly) return;
     const value = draft;
     setState('saving');
     update.mutate(
@@ -414,14 +424,14 @@ function Description({ task, fx }: { task: Task; fx?: ItemFx }) {
   };
 
   // 在線感知：描述輸入中回報 editing，失焦即回 viewing
-  useEffect(() => (focused ? reportEditing(task.id) : undefined), [focused, task.id]);
+  useEffect(() => (focused && !readOnly ? reportEditing(task.id) : undefined), [focused, readOnly, task.id]);
 
   // 卸載（關閉 Drawer / 切換任務）時送出未存內容
   const mutate = update.mutate;
   useEffect(
     () => () => {
-      const { draft: d, base: b, id } = latest.current;
-      if (d !== b) mutate({ id, patch: { description: d } });
+      const { draft: d, base: b, id, readOnly: ro } = latest.current;
+      if (d !== b && !ro) mutate({ id, patch: { description: d } });
     },
     [mutate],
   );
@@ -436,7 +446,10 @@ function Description({ task, fx }: { task: Task; fx?: ItemFx }) {
   return (
     <div className="task-drawer-section" {...fxAttr(fx)}>
       <div className="tl-section-title">
-        <span>描述</span>
+        <span className="lock-toggle">
+          描述
+          <DescriptionLockButton task={task} />
+        </span>
         <span className="tl-save-state" aria-live="polite">
           {state === 'saving' && '儲存中…'}
           {state === 'saved' && '已儲存'}
@@ -450,10 +463,12 @@ function Description({ task, fx }: { task: Task; fx?: ItemFx }) {
           )}
         </span>
       </div>
+      <DescriptionLockBanner task={task} />
       <Textarea
         ref={ref}
         value={draft}
-        placeholder="加入描述…"
+        readOnly={readOnly}
+        placeholder={readOnly ? '（沒有描述）' : '加入描述…'}
         aria-label="描述"
         className="tl-desc"
         onFocus={() => setFocused(true)}

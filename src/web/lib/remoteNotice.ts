@@ -22,6 +22,7 @@ const TASK_FIELDS: [keyof Task, string, string][] = [
   ['estimateHours', 'estimateHours', '預估工時'],
   ['progress', 'progress', '進度'],
   ['description', 'description', '描述'],
+  ['descriptionLocked', 'description', '描述鎖定'],
 ];
 
 export type FieldChange = { key: string; label: string };

@@ -28,6 +28,7 @@
 | `audit.view_task_history` | 任務詳情的「活動歷史」（看不到還原按鈕與全站稽核頁；docs/design/audit-log.md） |  ✓   |    ✓    |  ✓   |
 | `audit.view`            | 後台「稽核紀錄」頁：查看所有重要改動的前後內容               |      |    ✓    |  ✓   |
 | `audit.revert`          | 從稽核紀錄還原改動（另需該項目原本的管理權限，例如還原權限設定需 `permissions.configure`） |      |    ✓    |  ✓   |
+| `comments.write`        | 任務討論區：留言、回覆、編輯 / 刪除自己的訊息、標記自己發起的討論串已解決（[task-discussion.md](design/task-discussion.md)） |  ✓   |    ✓    |  ✓   |
 | `members.manage`        | 成員新增 / 停用 / 啟用 / 重設密碼 / 解鎖 / 編輯；角色限 user ↔ manager |      |    ✓    |  ✓   |
 | `statuses.manage`       | 狀態新增 / 改名 / 改色 / 排序 / 刪除                         |      |    ✓    |  ✓   |
 | `projects.manage`       | 專案改名 / 改色 / 排序 / 封存                                |      |    ✓    |  ✓   |
@@ -38,6 +39,8 @@
 | `data.import_merge`     | 匯入（合併模式的預覽與套用）                                 |      |    ✓    |  ✓   |
 | `sync.manage`           | 多台電腦同步：建立 / 停用 / 重新產生金鑰 / 刪除同步來源（docs/sync.md） |      |    ✓    |  ✓   |
 | `sync.resolve`          | 多台電腦同步：處理待確認衝突、檢視處理紀錄                   |      |    ✓    |  ✓   |
+| `comments.moderate`     | 任務討論區：刪除他人的訊息、標記任何討論串已解決 / 重新開啟  |      |    ✓    |  ✓   |
+| `tasks.lock`            | 鎖定 / 解鎖任務描述；鎖定後只有具此權限者可修改描述（其他成員改在討論區補充） |      |    ✓    |  ✓   |
 | `data.backup_db` 🔒      | 完整資料庫 .db 備份下載（含密碼雜湊與 session）              |      |         |  ✓   |
 | `data.import_replace` 🔒 | 匯入「取代全部」模式                                         |      |         |  ✓   |
 | `roles.assign_root` 🔒   | 指派 / 撤銷 root；管理 root 帳號（編輯、停用、重設密碼、解鎖） |      |         |  ✓   |
@@ -68,7 +71,7 @@ root 在「權限設定」頁勾選 / 取消 manager 與 user 的各項權限，
 - 自訂後不再保證「高層擁有低層的全部權限」：例如可以讓 user 有 `statuses.manage` 而 manager 沒有。邊界由 root 決定。
 - 「列入總覽統計」（`inOverview`）屬成員欄位：需 `members.manage`，操作 root 帳號仍需 `roles.assign_root`；匯出 / 匯入含此欄位。
 - 授予 user `members.manage` 等於允許成員新增成員並在 user ↔ manager 間調整角色（含把自己升為 manager）。
-- 一般協作權限（`tasks.edit`、`feedback.edit`、`personal.edit`、`eng.edit`、`projects.create`、`properties.edit`、`profile.edit`）只限制**寫入**（POST / PUT / PATCH / DELETE），讀取不受影響；由全域 middleware 依路徑檢查（`permissions.WRITE_GUARDS`）。前端目前未依這些權限隱藏編輯控制項，收回後操作時會顯示「沒有權限執行此操作」。
+- 一般協作權限（`tasks.edit`、`comments.write`、`feedback.edit`、`personal.edit`、`eng.edit`、`projects.create`、`properties.edit`、`profile.edit`）只限制**寫入**（POST / PUT / PATCH / DELETE），讀取不受影響；由全域 middleware 依路徑檢查（`permissions.WRITE_GUARDS`）。前端目前未依這些權限隱藏編輯控制項，收回後操作時會顯示「沒有權限執行此操作」。
 - 權限設定不在 JSON 匯出 / 匯入範圍內（完整 .db 備份會包含）。
 
 ## 端點對照
@@ -93,10 +96,17 @@ root 在「權限設定」頁勾選 / 取消 manager 與 user 的各項權限，
 | `POST /api/statuses/:id/migrate-and-delete`                    | `statuses.manage`；body `{ targetStatusId }`，單一 transaction 把任務（含已刪除）改移到目標狀態後刪除，並為每筆任務寫入變更流水；仍至少保留一個狀態 |
 | `GET /api/statuses/usage`                                      | 全員；各狀態被任務使用的筆數（管理狀態對話框用）          |
 | `PUT /api/eng/github-links`                                    | `github.manage`                                           |
-| 寫入 `/api/tasks*`（含 `/api/tasks/:id/checklist*` 待辦清單）  | `tasks.edit`                                              |
+| 寫入 `/api/tasks*`（含 `/api/tasks/:id/checklist*` 待辦清單）  | `tasks.edit`（討論區 `/api/tasks/:id/comments*` 除外，見下） |
 | `POST / DELETE /api/tasks/:id/relations*`、`POST /api/tasks/:id/duplicate` | 沿用 `tasks.edit`（同屬寫入 `/api/tasks*`，由寫入守門 middleware 檢查）；`GET /api/tasks/:id/relations` 登入即可 |
 | `POST /api/tasks/:id/restore`                                  | `tasks.edit`（同上寫入守門）；還原軟刪除的任務（復原用），未刪除時冪等回傳、不存在 404 |
 | `POST / PATCH / DELETE /api/tasks/:id/dependencies*`             | `tasks.edit`（沿用上一列的寫入守門）；讀取 `GET /api/tasks/:id/dependencies`、`GET /api/tasks/delay-chains` 登入即可（[design/delay-link.md](design/delay-link.md)） |
+| `PATCH /api/tasks/:id` 或 `POST /api/tasks` 帶 `descriptionLocked` | 另需 `tasks.lock`                                     |
+| `PATCH /api/tasks/:id` 修改已鎖定任務的 `description`（內容有變） | 另需 `tasks.lock`；否則 403「描述已由管理者鎖定，請把補充寫在討論區」 |
+| `GET /api/tasks/:id/comments`、`/comments/:rootId/replies`     | 全員（登入即可）                                          |
+| `POST /api/tasks/:id/comments`、`PATCH /comments/:cid`         | `comments.write`（寫入守門）；編輯只限作者本人            |
+| `DELETE /api/tasks/:id/comments/:cid`                          | `comments.write`；刪除他人的訊息另需 `comments.moderate`  |
+| `POST /api/tasks/:id/comments/:rootId/resolve`、`/unresolve`   | `comments.write`；且須為根訊息作者、任務負責人或具 `comments.moderate` |
+| `POST /api/tasks/:id/comments/read`                            | 全員（只更新自己的已讀位置，不受寫入守門）                |
 | 寫入 `/api/feedback*`                                          | `feedback.edit`                                           |
 | 寫入 `/api/personal*`                                          | `personal.edit`                                           |
 | 寫入 `/api/eng/issues*`、`/api/eng/worktree-records*`、`/api/eng/worktrees/pending/*` | `eng.edit`                         |

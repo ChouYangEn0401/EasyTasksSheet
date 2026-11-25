@@ -33,6 +33,13 @@ export const task = z.object({
   /** 待辦清單項目數 / 已完成數（後端以單一聚合查詢附加；選填以相容既有資料） */
   checklistTotal: z.number().int().min(0).optional(),
   checklistDone: z.number().int().min(0).optional(),
+  /** 描述鎖定（docs/design/task-discussion.md）；選填以相容舊資料與既有測試資料 */
+  descriptionLocked: z.boolean().optional(),
+  lockedBy: z.number().int().nullable().optional(),
+  lockedAt: z.number().int().nullable().optional(),
+  /** 討論區：未刪除留言數與目前使用者的未讀數（GET /api/tasks、/api/tasks/:id） */
+  commentCount: z.number().int().optional(),
+  unreadComments: z.number().int().optional(),
   ...timestamps,
 });
 export type Task = z.infer<typeof task>;
@@ -51,6 +58,8 @@ export const taskCreateInput = z.object({
   progress: z.number().int().min(0).max(100).optional(),
   sortOrder: z.number().optional(),
   custom: customValues.optional(),
+  /** 需 tasks.lock */
+  descriptionLocked: z.boolean().optional(),
 });
 export type TaskCreateInput = z.infer<typeof taskCreateInput>;
 

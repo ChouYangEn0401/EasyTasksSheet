@@ -20,41 +20,61 @@ def _uniq(prefix: str) -> str:
     return f"{prefix}-{next(_seq)}"
 
 
-# 每個 capability 一個探測請求：(method, path, body)。允許時不得為 401 / 403 / 5xx，拒絕時必為 403。
+def _others_comment(api) -> str:
+    """comments.moderate 探測用：在 api 所屬 DB 直接建立一則「他人」的留言，回傳其路徑"""
+    db = api.app.db
+    other = create_test_user(db, role="user")
+    with db.tx() as conn:
+        tid = conn.execute(
+            "INSERT INTO tasks (project_id, title, status_id, created_at, updated_at) VALUES (1, '討論探測', 1, 1, 1)"
+        ).lastrowid
+        cid = conn.execute(
+            "INSERT INTO task_comments (task_id, author_id, body, created_at, updated_at) VALUES (?, ?, '他人的訊息', 1, 1)",
+            (tid, other["id"]),
+        ).lastrowid
+    return f"/api/tasks/{tid}/comments/{cid}"
+
+
+# 每個 capability 一個探測請求（參數為發出請求的 Client）：(method, path, body)。
+# 允許時不得為 401 / 403 / 5xx，拒絕時必為 403。
 PROBES = {
-    "tasks.edit": lambda: ("POST", "/api/tasks", {"title": "權限測試任務"}),
-    "feedback.edit": lambda: ("POST", "/api/feedback", {"kind": "bug", "title": "權限測試回饋"}),
-    "personal.edit": lambda: ("POST", "/api/personal", {"title": "權限測試待辦"}),
-    "eng.edit": lambda: ("POST", "/api/eng/issues", {"title": "權限測試問題"}),
-    "projects.create": lambda: ("POST", "/api/projects", {"name": _uniq("專案")}),
-    "properties.edit": lambda: ("POST", "/api/properties", {"name": _uniq("欄位"), "type": "text"}),
-    "profile.edit": lambda: ("POST", "/api/auth/password", {"currentPassword": "wrong-pass", "newPassword": "x" * 12}),
-    "members.manage": lambda: ("GET", "/api/admin/users", None),
-    "statuses.manage": lambda: ("POST", "/api/statuses", {"name": _uniq("狀態")}),
-    "projects.manage": lambda: ("PATCH", "/api/projects/1", {"name": _uniq("改名")}),
-    "github.manage": lambda: ("PUT", "/api/eng/github-links", {"links": []}),
-    "eng.status.manage": lambda: (
+    "tasks.edit": lambda _api: ("POST", "/api/tasks", {"title": "權限測試任務"}),
+    "feedback.edit": lambda _api: ("POST", "/api/feedback", {"kind": "bug", "title": "權限測試回饋"}),
+    "personal.edit": lambda _api: ("POST", "/api/personal", {"title": "權限測試待辦"}),
+    "eng.edit": lambda _api: ("POST", "/api/eng/issues", {"title": "權限測試問題"}),
+    "projects.create": lambda _api: ("POST", "/api/projects", {"name": _uniq("專案")}),
+    "properties.edit": lambda _api: ("POST", "/api/properties", {"name": _uniq("欄位"), "type": "text"}),
+    "profile.edit": lambda _api: ("POST", "/api/auth/password", {"currentPassword": "wrong-pass", "newPassword": "x" * 12}),
+    "members.manage": lambda _api: ("GET", "/api/admin/users", None),
+    "statuses.manage": lambda _api: ("POST", "/api/statuses", {"name": _uniq("狀態")}),
+    "projects.manage": lambda _api: ("PATCH", "/api/projects/1", {"name": _uniq("改名")}),
+    "github.manage": lambda _api: ("PUT", "/api/eng/github-links", {"links": []}),
+    "eng.status.manage": lambda _api: (
         "POST",
         "/api/eng/statuses",
         {"kind": "issue", "label": _uniq("狀態"), "color": "gray", "category": "open"},
     ),
-    "eng.scan": lambda: ("POST", "/api/eng/worktrees/scan", {"path": "nope"}),
-    "eng.trash.purge": lambda: ("POST", "/api/eng/worktree-records/trash/purge", {"confirm": True}),
-    "data.export_json": lambda: ("GET", "/api/admin/data/export", None),
-    "data.import_merge": lambda: ("POST", "/api/admin/data/import/preview", {"format": "nope"}),
-    "data.backup_db": lambda: ("GET", "/api/admin/data/backup", None),
-    "data.import_replace": lambda: ("POST", "/api/admin/data/import/apply", {"mode": "replace", "token": "nope"}),
-    "roles.assign_root": lambda: (
+    "eng.scan": lambda _api: ("POST", "/api/eng/worktrees/scan", {"path": "nope"}),
+    "eng.trash.purge": lambda _api: ("POST", "/api/eng/worktree-records/trash/purge", {"confirm": True}),
+    "data.export_json": lambda _api: ("GET", "/api/admin/data/export", None),
+    "data.import_merge": lambda _api: ("POST", "/api/admin/data/import/preview", {"format": "nope"}),
+    "data.backup_db": lambda _api: ("GET", "/api/admin/data/backup", None),
+    "data.import_replace": lambda _api: ("POST", "/api/admin/data/import/apply", {"mode": "replace", "token": "nope"}),
+    "roles.assign_root": lambda _api: (
         "POST",
         "/api/admin/users",
         {"username": _uniq("new-root"), "displayName": "R", "role": "root"},
     ),
-    "permissions.configure": lambda: ("GET", "/api/admin/permissions", None),
-    "sync.manage": lambda: ("GET", "/api/admin/sync/sources", None),
-    "sync.resolve": lambda: ("GET", "/api/admin/sync/conflicts", None),
-    "audit.view": lambda: ("GET", "/api/admin/audit", None),
-    "audit.revert": lambda: ("POST", "/api/admin/audit/999999/revert", {}),
-    "audit.view_task_history": lambda: ("GET", "/api/tasks/1/history", None),
+    "permissions.configure": lambda _api: ("GET", "/api/admin/permissions", None),
+    "sync.manage": lambda _api: ("GET", "/api/admin/sync/sources", None),
+    "sync.resolve": lambda _api: ("GET", "/api/admin/sync/conflicts", None),
+    # 任務討論區（不存在的任務：允許時 404，未授權時由寫入守門回 403）
+    "comments.write": lambda _api: ("POST", "/api/tasks/999999/comments", {"body": "權限測試留言"}),
+    "comments.moderate": lambda api: ("DELETE", _others_comment(api), None),
+    "tasks.lock": lambda _api: ("POST", "/api/tasks", {"title": "鎖定測試", "descriptionLocked": True}),
+    "audit.view": lambda _api: ("GET", "/api/admin/audit", None),
+    "audit.revert": lambda _api: ("POST", "/api/admin/audit/999999/revert", {}),
+    "audit.view_task_history": lambda _api: ("GET", "/api/tasks/1/history", None),
 }
 
 
@@ -78,7 +98,7 @@ def test_matrix(env, capability, role):
     _t, apis = env
     allowed = ROLE_ORDER[role] >= ROLE_ORDER[CAPABILITIES[capability]]
     assert role_can(role, capability) is allowed
-    method, path, body = PROBES[capability]()
+    method, path, body = PROBES[capability](apis[role])
     res = apis[role].request(method, path, body)
     if allowed:
         assert res.status_code not in (401, 403) and res.status_code < 500, (res.status_code, res.text)
@@ -105,6 +125,8 @@ def test_matrix_shape():
         "sync.resolve",
         "audit.view",
         "audit.revert",
+        "comments.moderate",
+        "tasks.lock",
     }
     assert by_role["root"] - by_role["manager"] == {
         "data.backup_db",

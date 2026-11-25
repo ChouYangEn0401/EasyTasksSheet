@@ -90,6 +90,11 @@ def _ts(name: str, column: str, nullable: bool = False) -> F:
     return F(name, column, "int", nullable)
 
 
+def _ts_default(name: str, column: str) -> F:
+    """後來新增、可為 null 的時間欄位（舊匯出檔沒有時為 None）"""
+    return F(name, column, "int", True, default=None)
+
+
 _CREATED = _ts("createdAt", "created_at")
 _UPDATED = _ts("updatedAt", "updated_at")
 
@@ -171,6 +176,10 @@ SPECS: tuple[Spec, ...] = (
             _UPDATED,
             _ts("completedAt", "completed_at", True),
             _ts("deletedAt", "deleted_at", True),
+            # 描述鎖定（0017）：舊匯出檔沒有時視為未鎖定
+            F("descriptionLocked", "description_locked", "bool", default=False),
+            F("lockedByUsername", "locked_by", "user", True, default=None),
+            _ts_default("lockedAt", "locked_at"),
         ),
         title="title",
     ),
@@ -355,6 +364,9 @@ FIELD_LABELS = {
     "text": "內容",
     "doneAt": "完成時間",
     "doneByUsername": "完成者",
+    "descriptionLocked": "描述鎖定",
+    "lockedByUsername": "鎖定者",
+    "lockedAt": "鎖定時間",
 }
 
 # ── pydantic 模型（匯入檔驗證） ─────────────────────────────
@@ -434,6 +446,45 @@ RelationItem = create_model(
 )
 
 
+_OptInt = Optional[_Int]
+_OptUser = Optional[UsernameRef]
+
+#: 任務討論區的留言（docs/design/task-discussion.md）：以 uid 對應，任務 / 討論串以 uid 參照，成員以帳號表示
+TaskCommentItem = create_model(
+    "Import_taskComments",
+    __config__=_STRICT,
+    uid=(Uid, ...),
+    taskUid=(Uid, ...),
+    parentUid=(Optional[Uid], None),
+    replyToUid=(Optional[Uid], None),
+    authorUsername=(_OptUser, None),
+    body=(Annotated[str, StringConstraints(max_length=10_000)], ...),
+    mentionUsernames=(Annotated[list[UsernameRef], Field(max_length=200)], []),
+    createdAt=(_Int, ...),
+    updatedAt=(_Int, ...),
+    editedAt=(_OptInt, None),
+    deletedAt=(_OptInt, None),
+    deletedByUsername=(_OptUser, None),
+    threadResolvedAt=(_OptInt, None),
+    threadResolvedByUsername=(_OptUser, None),
+)
+
+#: 留言的使用者欄位（JSON 名稱 → DB 欄位）
+_COMMENT_USER_FIELDS = (
+    ("authorUsername", "author_id"),
+    ("deletedByUsername", "deleted_by"),
+    ("threadResolvedByUsername", "thread_resolved_by"),
+)
+_COMMENT_PLAIN_FIELDS = (
+    ("body", "body"),
+    ("createdAt", "created_at"),
+    ("updatedAt", "updated_at"),
+    ("editedAt", "edited_at"),
+    ("deletedAt", "deleted_at"),
+    ("threadResolvedAt", "thread_resolved_at"),
+)
+
+
 def _list_of(model: Any) -> Any:
     return (Annotated[list[model], Field(max_length=MAX_ITEMS)], [])  # type: ignore[valid-type]
 
@@ -452,6 +503,8 @@ ExportDoc = create_model(
     attachments=(Annotated[list[dict[str, Any]], Field(max_length=MAX_ITEMS)], []),
     #: 任務關聯（0013；不在 SPECS 中，sync-push 不同步）。舊匯出檔沒有此鍵時為空
     taskRelations=(Annotated[list[RelationItem], Field(max_length=MAX_ITEMS)], []),  # type: ignore[valid-type]
+    #: 任務討論區（不在 SPECS 中：多台電腦同步 sync-push 目前不同步留言）
+    taskComments=(Annotated[list[TaskCommentItem], Field(max_length=MAX_ITEMS)], []),  # type: ignore[valid-type]
 )
 
 
@@ -519,6 +572,17 @@ def _check_integrity(doc: dict[str, Any]) -> None:
                 v = item[f.name]
                 if v is not None and v not in keys[f.extra]:
                     issues.append(f"{spec.label}「{item[spec.title]}」的 {f.name} 指向不存在的資料（{v}）")
+    comment_uids: set[str] = set()
+    for c in doc["taskComments"]:
+        if c["uid"] in comment_uids:
+            issues.append(f"任務討論：識別碼重複（{c['uid']}）")
+        comment_uids.add(c["uid"])
+    for c in doc["taskComments"]:
+        if c["taskUid"] not in keys["tasks"]:
+            issues.append(f"任務討論的 taskUid 指向不存在的任務（{c['taskUid']}）")
+        for name in ("parentUid", "replyToUid"):
+            if c[name] is not None and c[name] not in comment_uids:
+                issues.append(f"任務討論的 {name} 指向不存在的留言（{c[name]}）")
     if issues:
         raise TransferError("匯出檔的資料關聯不一致", issues[:50])
 
@@ -634,7 +698,34 @@ def export_document(db: Database, now: int) -> dict[str, Any]:
         doc["attachments"] = _export_attachments(conn, idx)
         doc[RELATIONS_KEY] = _export_relations(conn, idx)
         doc[DEP_KEY] = _export_dependencies(conn, idx)
+        doc["taskComments"] = _export_comments(conn, idx)
     return doc
+
+
+def _export_comments(conn: sqlite3.Connection, idx: LocalIndex) -> list[dict[str, Any]]:
+    """任務討論區：依 id 排序（根訊息一定早於其回覆）；所屬任務 / 討論串以 uid、成員以帳號表示"""
+    rows = conn.execute("SELECT * FROM task_comments ORDER BY id").fetchall()
+    uid_of = {r["id"]: r["uid"] for r in rows}
+    task_uid = idx.uid_by_id["tasks"]
+    out = []
+    for r in rows:
+        item: dict[str, Any] = {
+            "uid": r["uid"],
+            "taskUid": task_uid.get(r["task_id"]),
+            "parentUid": uid_of.get(r["parent_id"]) if r["parent_id"] else None,
+            "replyToUid": uid_of.get(r["reply_to_id"]) if r["reply_to_id"] else None,
+        }
+        for name, col in _COMMENT_USER_FIELDS:
+            item[name] = idx.user_by_id.get(r[col]) if r[col] is not None else None
+        for name, col in _COMMENT_PLAIN_FIELDS:
+            item[name] = r[col]
+        try:
+            ids = json.loads(r["mentions"] or "[]")
+        except ValueError:
+            ids = []
+        item["mentionUsernames"] = [idx.user_by_id[i] for i in ids if i in idx.user_by_id]
+        out.append(item)
+    return out
 
 
 def _export_relations(conn: sqlite3.Connection, idx: LocalIndex) -> list[dict[str, Any]]:
@@ -709,6 +800,8 @@ class Plan:
     relations: dict[str, Any] = field(default_factory=dict)
     #: 任務依賴的預覽統計（new / same / conflict；不列入逐筆衝突清單）
     dependencies: dict[str, int] = field(default_factory=dict)
+    #: 任務討論區（不在 SPECS 中）：{total, new, existing, local}
+    comments: dict[str, int] = field(default_factory=dict)
 
 
 def _relation_end(uid: str, local_task_ids: dict[str, int], file_task_uids: set[str]) -> str | None:
@@ -781,6 +874,10 @@ def _referenced_usernames(doc: dict[str, Any]) -> dict[str, int]:
                 for k, v in item["custom"].items():
                     if k in person_props and isinstance(v, str):
                         counts[v] = counts.get(v, 0) + 1
+    for c in doc.get("taskComments", []):
+        for name, _col in _COMMENT_USER_FIELDS:
+            if c[name] is not None:
+                counts[c[name]] = counts.get(c[name], 0) + 1
     return counts
 
 
@@ -831,12 +928,22 @@ def plan_import(conn: sqlite3.Connection, doc: dict[str, Any]) -> Plan:
                 {"username": username, "displayName": names.get(username) or username, "references": refs.get(username, 0)}
             )
     local_counts = {spec.key: len(idx.rows[spec.key]) for spec in SPECS}
+    local_comment_uids = {r[0] for r in conn.execute("SELECT uid FROM task_comments")}
+    incoming_comments = doc.get("taskComments", [])
+    existing = sum(1 for c in incoming_comments if c["uid"] in local_comment_uids)
+    comments = {
+        "total": len(incoming_comments),
+        "new": len(incoming_comments) - existing,
+        "existing": existing,
+        "local": len(local_comment_uids),
+    }
     return Plan(
         items,
         missing,
         local_counts,
         relations=plan_relations(conn, doc),
         dependencies=_plan_dependencies(conn, doc, idx),
+        comments=comments,
     )
 
 
@@ -909,6 +1016,7 @@ def preview_summary(plan: Plan, doc: dict[str, Any]) -> dict[str, Any]:
         "users": {"total": len(doc["users"]), "existing": existing_users, "missing": len(plan.missing_users)},
         "conflicts": conflicts,
         "missingUsers": plan.missing_users,
+        "taskComments": {"key": "taskComments", "label": "任務討論", **plan.comments},
     }
 
 
@@ -1212,6 +1320,7 @@ def _apply_in_tx(
 
     skipped_relations = _apply_relations(w, rel_stats)
     dep_issues = _apply_dependencies(w, doc, opts, dep_stats)
+    comment_stats = _import_comments(w, opts)
 
     return {
         "mode": opts.mode,
@@ -1219,6 +1328,7 @@ def _apply_in_tx(
         "categories": [stats[s.key] for s in SPECS] + [rel_stats, dep_stats],
         "skippedRelations": skipped_relations,
         "dependencyIssues": dep_issues,
+        "taskComments": comment_stats,
         "createdUsers": created_users,
         "missingUsersSkipped": [m["username"] for m in plan.missing_users] if opts.missing_users == "skip" else [],
     }
@@ -1380,3 +1490,54 @@ def _apply_dependencies(w: _Writer, doc: dict[str, Any], opts: ApplyOptions, sta
         record_change(conn, "task", blocked, "update", w.actor, w.now)
         stats["created"] += 1
     return issues
+
+
+def _import_comments(w: _Writer, opts: ApplyOptions) -> dict[str, Any]:
+    """匯入任務討論區（在任務之後）：同 uid 視為同一則，依策略（updatedAt）決定是否覆寫；
+    所屬任務未匯入（例如被略過）時略過；成員不存在時該欄位留空（留言本身保留）。"""
+    stats = {"key": "taskComments", "label": "任務討論", "created": 0, "updated": 0, "unchanged": 0, "skipped": 0}
+    items = w.doc.get("taskComments", [])
+    if not items:
+        return stats
+    conn = w.conn
+    local = {r["uid"]: r for r in conn.execute("SELECT id, uid, updated_at FROM task_comments")}
+    task_ids = w.maps["tasks"]
+    comment_id: dict[str, int] = {u: r["id"] for u, r in local.items()}
+    # 根訊息先於回覆（回覆的 parent 必須已存在）
+    ordered = sorted(items, key=lambda c: (c["parentUid"] is not None, c["createdAt"]))
+    for c in ordered:
+        tid = task_ids.get(c["taskUid"])
+        parent = comment_id.get(c["parentUid"]) if c["parentUid"] else None
+        if tid is None or (c["parentUid"] and parent is None):
+            stats["skipped"] += 1
+            continue
+        cols: dict[str, Any] = {"task_id": tid, "parent_id": parent}
+        cols["reply_to_id"] = comment_id.get(c["replyToUid"]) if c["replyToUid"] else None
+        for name, col in _COMMENT_USER_FIELDS:
+            cols[col] = w.user_id.get(c[name]) if c[name] is not None else None
+        for name, col in _COMMENT_PLAIN_FIELDS:
+            cols[col] = c[name]
+        cols["mentions"] = json.dumps([w.user_id[u] for u in c["mentionUsernames"] if u in w.user_id])
+        existing = local.get(c["uid"])
+        if existing is None:
+            cols["uid"] = c["uid"]
+            cur = conn.execute(
+                f"INSERT INTO task_comments ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+                tuple(cols.values()),
+            )
+            cid = int(cur.lastrowid)  # type: ignore[arg-type]
+            comment_id[c["uid"]] = cid
+            record_change(conn, "task_comment", cid, "create", w.actor, w.now)
+            stats["created"] += 1
+            continue
+        same_time = existing["updated_at"] == c["updatedAt"]
+        if same_time or resolve(opts.strategy, None, existing["updated_at"], c["updatedAt"]) == "keep_local":
+            stats["unchanged"] += 1
+            continue
+        conn.execute(
+            f"UPDATE task_comments SET {', '.join(f'{k} = ?' for k in cols)} WHERE id = ?",
+            (*cols.values(), existing["id"]),
+        )
+        record_change(conn, "task_comment", existing["id"], "update", w.actor, w.now)
+        stats["updated"] += 1
+    return stats

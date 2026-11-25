@@ -176,6 +176,7 @@ _BOOL_COLUMNS = {
     "is_dirty",
     "is_prunable",
     "is_merged",
+    "description_locked",
 }
 _JSON_COLUMNS = {"custom", "options", "labels"}
 #: 只供匯出 / 匯入對應用的內部欄位，不出現在 API 回應（0005_uid）

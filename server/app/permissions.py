@@ -48,6 +48,7 @@ CAPABILITIES: dict[str, Role] = {
     "properties.edit": "user",  # 自訂欄位（property）
     "profile.edit": "user",  # 自己的個人資料與密碼
     "audit.view_task_history": "user",  # 任務詳情的「活動歷史」（不含還原、不含全站稽核頁）
+    "comments.write": "user",  # 任務討論區：發表、回覆、編輯 / 刪除自己的訊息、標記自己的討論串已解決
     # ── manager（danger-command）──
     "audit.view": "manager",  # 後台「稽核紀錄」頁（docs/design/audit-log.md）
     "audit.revert": "manager",  # 從稽核紀錄還原（另需該項目原本的管理權限；root 恆有）
@@ -61,6 +62,8 @@ CAPABILITIES: dict[str, Role] = {
     "data.import_merge": "manager",  # 匯入（合併模式：預覽與套用）
     "sync.manage": "manager",  # 多台電腦同步：建立 / 停用同步來源與金鑰（docs/sync.md）
     "sync.resolve": "manager",  # 多台電腦同步：處理待確認衝突、檢視同步紀錄
+    "comments.moderate": "manager",  # 任務討論區：刪除他人的訊息、標記任何討論串已解決
+    "tasks.lock": "manager",  # 鎖定 / 解鎖任務描述；鎖定後仍可修改描述
     # ── root（damageable-command）──
     "data.backup_db": "root",  # 完整資料庫 .db 備份下載（含密碼雜湊與 session）
     "data.import_replace": "root",  # 匯入「取代全部」模式
@@ -93,6 +96,9 @@ CAPABILITY_INFO: dict[str, tuple[str, str, str]] = {
     "properties.edit": ("自訂欄位", "新增與編輯任務的自訂欄位", "work"),
     "feedback.edit": ("問題回饋", "新增與編輯問題回饋", "work"),
     "personal.edit": ("個人清單", "使用自己的個人清單", "work"),
+    "comments.write": ("任務討論", "在任務討論區留言、回覆，並編輯或刪除自己的訊息", "work"),
+    "comments.moderate": ("管理任務討論", "刪除他人在任務討論區的訊息、標記任何討論串為已解決", "work"),
+    "tasks.lock": ("鎖定任務描述", "鎖定後成員無法修改描述、改在討論區補充；具此權限者仍可修改", "work"),
     "statuses.manage": ("管理狀態", "狀態新增、改名、改色、排序與刪除", "statuses"),
     "eng.edit": ("工程追蹤紀錄", "問題與 worktree 紀錄，含 GitHub 同步與建立 issue", "eng"),
     "eng.status.manage": ("管理工程狀態", "問題與工作樹狀態的新增、改名、改色、排序與封存", "eng"),
@@ -211,7 +217,9 @@ def denied() -> HttpError:
 # GitHub 連動、成員、資料）不在此表。
 
 _WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+#: 依序比對、取第一個符合者：任務討論區（/api/tasks/:id/comments*）須排在任務之前
 WRITE_GUARDS: tuple[tuple[frozenset[str], re.Pattern[str], str], ...] = (
+    (_WRITE_METHODS, re.compile(r"^/api/tasks/[^/]+/comments(/|$)"), "comments.write"),
     (_WRITE_METHODS, re.compile(r"^/api/tasks(/|$)"), "tasks.edit"),
     (_WRITE_METHODS, re.compile(r"^/api/feedback(/|$)"), "feedback.edit"),
     (_WRITE_METHODS, re.compile(r"^/api/personal(/|$)"), "personal.edit"),
@@ -222,8 +230,14 @@ WRITE_GUARDS: tuple[tuple[frozenset[str], re.Pattern[str], str], ...] = (
 )
 
 
+#: 不受寫入守門的路徑：標記討論區已讀只更新自己的已讀位置（唯讀成員也能清除未讀）
+WRITE_GUARD_EXEMPT: tuple[re.Pattern[str], ...] = (re.compile(r"^/api/tasks/[^/]+/comments/read$"),)
+
+
 def write_capability(method: str, path: str) -> str | None:
     """寫入請求對應的一般協作權限（無對應時 None）"""
+    if any(p.search(path) for p in WRITE_GUARD_EXEMPT):
+        return None
     for methods, pattern, capability in WRITE_GUARDS:
         if method in methods and pattern.search(path):
             return capability

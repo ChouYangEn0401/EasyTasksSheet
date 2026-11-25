@@ -95,6 +95,8 @@ class TaskUpdateInput(_Input):
     progress: Annotated[int, Field(ge=0, le=100)] = None  # type: ignore[assignment]
     sortOrder: float = None  # type: ignore[assignment]
     custom: dict[str, Any] = None  # type: ignore[assignment]
+    #: 描述鎖定（需 tasks.lock；docs/design/task-discussion.md）
+    descriptionLocked: bool = None  # type: ignore[assignment]
 
 
 class TaskCreateInput(TaskUpdateInput):

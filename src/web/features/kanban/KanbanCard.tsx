@@ -11,6 +11,7 @@ import { RelationBadge } from '../tasks/RelationBadge.tsx';
 import { BlockedLock, DependencyBadges } from '../delay-link/DependencyBadge.tsx';
 import { dependencyAriaSuffix, useDependencyCardClass } from '../delay-link/depFields.ts';
 import { ChecklistBadge } from '../tasks/ChecklistBadge.tsx';
+import { TaskBadges } from '../tasks/TaskBadges.tsx';
 import { cardAriaLabel, dueDisplay, formatHours } from './kanbanModel.ts';
 
 /** 16px 線條圖示（core Icon 尚無日曆 / 時鐘，僅供卡片中繼列使用） */
@@ -70,6 +71,7 @@ export function KanbanCardContent({ task, project, showProject, isDone }: CardVi
       <div className="kanban-card-title">
         <BlockedLock task={task} />
         {task.title}
+        <TaskBadges task={task} />
       </div>
       {task.id > 0 && <TaskPresenceDots taskId={task.id} />}
       <div className="kanban-card-meta">

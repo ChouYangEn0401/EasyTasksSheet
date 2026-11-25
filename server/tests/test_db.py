@@ -33,6 +33,8 @@ ALL_TABLES = [
     "sync_sources",
     "sync_uid_aliases",
     "task_checklist_items",
+    "task_comment_reads",
+    "task_comments",
     "task_dependencies",
     "task_relations",
     "tasks",

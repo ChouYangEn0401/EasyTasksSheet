@@ -93,6 +93,11 @@ def test_create_with_title_only():
         "dueDate": None,
         "estimateHours": None,
         "completedAt": None,
+        "descriptionLocked": False,
+        "lockedBy": None,
+        "lockedAt": None,
+        "commentCount": 0,
+        "unreadComments": 0,
     }
     assert {k: t[k] for k in expected} == expected
     assert set(t) == {*expected, "id", "sortOrder", "checklistTotal", "checklistDone"}
