@@ -11,8 +11,10 @@ python -m venv .venv                       # 建立虛擬環境
 .venv/Scripts/activate                     # Windows（Linux / macOS：source .venv/bin/activate）
 pip install -r requirements.txt            # 安裝後端相依套件
 cp .env.example .env                       # 可選；Windows PowerShell：Copy-Item .env.example .env
-python main.py --prod                      # 啟動，開啟 http://127.0.0.1:3000
+python main.py --prod                      # 啟動，開啟 http://localhost:3000
 ```
+
+> 主控台若顯示 `http://0.0.0.0:3000`，那是「監聽所有網卡」的意思，**瀏覽器不能開 0.0.0.0**（會出現 `ERR_ADDRESS_INVALID`）。本機請開 `http://localhost:3000`；同一網路的其他電腦請開 `http://<這台電腦的 IP>:3000`。只想讓本機連線時，在 `.env` 設 `HOST=127.0.0.1`。
 
 - 前端已建置在 `dist/web`；若是第一次取得原始碼或改了前端，需先 `npm ci && npm run build`（Node 只用在建置前端）。
 - 第一次啟動會自動建立資料庫與預設管理員，帳號與密碼會印在主控台（或由 `.env` 的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 指定），首次登入要先改密碼。

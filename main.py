@@ -25,6 +25,9 @@ if __name__ == "__main__":
     from server.app.config import config
 
     reload = "--reload" in args
+
+    # 0.0.0.0 只是「監聽所有網卡」，瀏覽器不能開；印出可直接點的網址
+    print(f"\n>>> 請用瀏覽器開啟： http://localhost:{config.PORT}\n", flush=True)
     uvicorn.run(
         "server.app.main:app",
         host=config.HOST,
