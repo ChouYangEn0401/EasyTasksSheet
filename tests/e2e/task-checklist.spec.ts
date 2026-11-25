@@ -125,7 +125,7 @@ test('待辦清單：新增、勾選、進度、徽章、排序、貼上、清�
   expect(await texts(page, 'done')).toEqual(['甲', '乙', '丙', '寄信']);
   await expect(page.getByTestId('checklist-progress')).toHaveText('4 / 9');
   // 復原
-  await page.getByRole('button', { name: '復原' }).click();
+  await page.getByRole('button', { name: '復原', exact: true }).click();
   await expect.poll(() => texts(page)).toEqual(['丁（改）', '戊']);
   await expect(page.getByTestId('checklist-progress')).toHaveText('3 / 5');
   // 取消貼上不建立
