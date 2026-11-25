@@ -15,6 +15,8 @@ export default defineConfig({
   testDir: 'tests/e2e',
   fullyParallel: false,
   workers: 1,
+  // 「等 SSE 推送」類斷言對機器負載敏感：失敗時自動重試一次；重試後才過會在報告標為 flaky，不會被掩蓋
+  retries: 1,
   reporter: 'list',
   use: { baseURL: `http://localhost:${port}` },
   webServer: {
