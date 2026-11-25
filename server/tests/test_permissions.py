@@ -43,6 +43,8 @@ PROBES = {
         {"username": _uniq("new-root"), "displayName": "R", "role": "root"},
     ),
     "permissions.configure": lambda: ("GET", "/api/admin/permissions", None),
+    "sync.manage": lambda: ("GET", "/api/admin/sync/sources", None),
+    "sync.resolve": lambda: ("GET", "/api/admin/sync/conflicts", None),
 }
 
 
@@ -87,6 +89,8 @@ def test_matrix_shape():
         "github.manage",
         "data.export_json",
         "data.import_merge",
+        "sync.manage",
+        "sync.resolve",
     }
     assert by_role["root"] - by_role["manager"] == {
         "data.backup_db",

@@ -47,6 +47,8 @@ class Config:
     BACKUP_DIR: str = "backups"
     #: 資料匯入檔大小上限（MB）
     DATA_IMPORT_MAX_MB: float = 50
+    #: 多台電腦同步：兩邊更新時間差距超過此分鐘數才自動採較新者，否則列為待確認衝突（docs/sync.md）
+    SYNC_AUTO_RESOLVE_MINUTES: float = 10
 
     GITHUB_TOKEN: str | None = None
     GITHUB_API_URL: str = "https://api.github.com"
@@ -93,6 +95,7 @@ _POSITIVE_FLOAT = {
     "LOGIN_LOCK_MINUTES",
     "CHANGES_RETENTION_DAYS",
     "DATA_IMPORT_MAX_MB",
+    "SYNC_AUTO_RESOLVE_MINUTES",
     "ISSUE_CACHE_MINUTES",
     "GITHUB_SYNC_MINUTES",
     "WORKTREE_STALE_DAYS",

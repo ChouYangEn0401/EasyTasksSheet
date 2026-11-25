@@ -8,6 +8,10 @@ export type NavEntry = {
   icon: IconName;
   /** 需要的權限（有設定者歸在分隔線下方的「管理」區，無此權限時不顯示） */
   capability?: Capability;
+  /** 具備其中任一權限即顯示（設定時取代 capability 的判斷） */
+  anyOf?: Capability[];
+  /** 只在完全相同路徑時標示為目前頁（子路徑另有自己的導覽項目時用） */
+  end?: boolean;
   children?: { key: string; label: string; to: string }[];
 };
 
@@ -35,6 +39,15 @@ export const NAV_ENTRIES: NavEntry[] = [
     to: '/admin/data',
     icon: 'inbox',
     capability: 'data.export_json',
+    end: true,
+  },
+  {
+    key: 'admin-sync',
+    label: '資料同步',
+    to: '/admin/data/sync',
+    icon: 'refresh',
+    capability: 'sync.resolve',
+    anyOf: ['sync.manage', 'sync.resolve'],
   },
   {
     key: 'admin-permissions',

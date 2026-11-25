@@ -19,6 +19,8 @@ export const CAPABILITIES = {
   'github.manage': 'manager',
   'data.export_json': 'manager',
   'data.import_merge': 'manager',
+  'sync.manage': 'manager',
+  'sync.resolve': 'manager',
   // root（damageable-command）
   'data.backup_db': 'root',
   'data.import_replace': 'root',

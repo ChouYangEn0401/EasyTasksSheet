@@ -30,6 +30,8 @@
 | `github.manage`         | GitHub 連動（專案 ↔ repo 設定）                              |      |    ✓    |  ✓   |
 | `data.export_json`      | JSON 匯出                                                    |      |    ✓    |  ✓   |
 | `data.import_merge`     | 匯入（合併模式的預覽與套用）                                 |      |    ✓    |  ✓   |
+| `sync.manage`           | 多台電腦同步：建立 / 停用 / 重新產生金鑰 / 刪除同步來源（docs/sync.md） |      |    ✓    |  ✓   |
+| `sync.resolve`          | 多台電腦同步：處理待確認衝突、檢視處理紀錄                   |      |    ✓    |  ✓   |
 | `data.backup_db` 🔒      | 完整資料庫 .db 備份下載（含密碼雜湊與 session）              |      |         |  ✓   |
 | `data.import_replace` 🔒 | 匯入「取代全部」模式                                         |      |         |  ✓   |
 | `roles.assign_root` 🔒   | 指派 / 撤銷 root；管理 root 帳號（編輯、停用、重設密碼、解鎖） |      |         |  ✓   |
@@ -72,6 +74,9 @@ root 在「權限設定」頁勾選 / 取消 manager 與 user 的各項權限，
 | `POST /api/admin/data/import/preview`、`/import/apply`（merge） | `data.import_merge`                                       |
 | `POST /api/admin/data/import/apply`（`mode: "replace"`）        | 另需 `data.import_replace`                                |
 | `GET /api/admin/data/backup`                                   | `data.backup_db`                                          |
+| `/api/admin/sync/sources*`                                     | `sync.manage`                                             |
+| `/api/admin/sync/conflicts*`                                   | `sync.resolve`                                            |
+| `POST /api/sync/push`                                          | 不需登入；以同步來源金鑰驗證（docs/sync.md）              |
 | `POST /api/projects`                                           | `projects.create`（預設 user 以上；root 可調整各層設定）  |
 | `PATCH /api/projects/:id`                                      | `projects.manage`                                         |
 | `POST / PATCH / DELETE /api/statuses`                          | `statuses.manage`；刪除時仍有任務（含已刪除任務）使用 → 409，且至少保留一個狀態 |

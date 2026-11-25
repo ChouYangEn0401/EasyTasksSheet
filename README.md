@@ -321,6 +321,21 @@ docker compose -f deploy/docker-compose.yml exec app python -m server.cli backup
 
 細節見 `docs/design/data-export.md`。
 
+## 多台電腦同步
+
+各台電腦上的本機系統可以把資料增量上傳到中央伺服器（單向：本機 → 中央）。
+
+1. 管理者在中央「資料同步 → 同步來源」為每台電腦建立來源，取得**只顯示一次**的金鑰。
+2. 在那台電腦的專案目錄執行（可排入工作排程定期執行；中斷後直接重跑即可）：
+
+   ```bash
+   python -m server.cli sync-push --server https://中央網址 --token tss_xxx [--db data/app.db] [--dry-run] [--full]
+   ```
+
+3. 只會新增與更新，**資料不見不會被當成刪除**；兩邊都改過時，更新時間差超過 `SYNC_AUTO_RESOLVE_MINUTES`（預設 10 分鐘）自動採較新者，否則列入「待確認衝突」由管理者逐欄位決定。
+
+需要 HTTPS；附件檔案本體不同步。權限 `sync.manage` / `sync.resolve`（預設管理者以上）。完整說明見 `docs/sync.md`。
+
 ## 權限設定
 
 超級管理員在側邊導覽「權限設定」（`/admin/permissions`）可以調整「管理者」「成員」各自能做哪些操作：勾選後按底部的「儲存」即生效，在線成員不需重新整理，畫面入口會即時出現 / 消失；「還原為預設」可一鍵回到系統預設。

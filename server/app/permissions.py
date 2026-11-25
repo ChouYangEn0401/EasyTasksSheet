@@ -53,6 +53,8 @@ CAPABILITIES: dict[str, Role] = {
     "github.manage": "manager",  # GitHub 連動（專案 ↔ repo 設定）
     "data.export_json": "manager",  # JSON 匯出
     "data.import_merge": "manager",  # 匯入（合併模式：預覽與套用）
+    "sync.manage": "manager",  # 多台電腦同步：建立 / 停用同步來源與金鑰（docs/sync.md）
+    "sync.resolve": "manager",  # 多台電腦同步：處理待確認衝突、檢視同步紀錄
     # ── root（damageable-command）──
     "data.backup_db": "root",  # 完整資料庫 .db 備份下載（含密碼雜湊與 session）
     "data.import_replace": "root",  # 匯入「取代全部」模式
@@ -94,6 +96,8 @@ CAPABILITY_INFO: dict[str, tuple[str, str, str]] = {
     "data.import_merge": ("匯入（合併）", "預覽並以合併模式匯入資料", "data"),
     "data.import_replace": ("匯入（取代全部）", "刪除本機資料後改為匯入檔內容", "data"),
     "data.backup_db": ("完整備份下載", "下載含密碼雜湊的資料庫備份檔", "data"),
+    "sync.manage": ("同步來源管理", "建立、停用、刪除同步來源並產生各台電腦的同步金鑰", "data"),
+    "sync.resolve": ("處理同步衝突", "決定兩邊幾乎同時修改的資料要保留哪一份，並檢視處理紀錄", "data"),
     "permissions.configure": ("權限設定", "調整各角色可執行的操作", "system"),
 }
 

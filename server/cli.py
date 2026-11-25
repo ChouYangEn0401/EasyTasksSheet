@@ -15,6 +15,8 @@
   python -m server.cli import <檔.json> [--strategy keep_newer|keep_local|use_import] [--dry-run]
                              [--create-missing-users] [--replace --yes] [--db 資料庫] [--out 備份目錄]
       匯入（與網頁「資料管理」同一份邏輯：server/app/data_transfer.py）；寫入前自動備份到 BACKUP_DIR。
+  python -m server.cli sync-push --server <https://網址> --token <金鑰> [--db 本機資料庫] [--full] [--dry-run]
+      把本機資料增量上傳到中央（server/sync_client.py、docs/sync.md）。
 """
 
 from __future__ import annotations
@@ -35,7 +37,8 @@ USAGE = (
     "  python -m server.cli restore <備份檔> [--db 資料庫] --yes\n"
     "  python -m server.cli export <檔.json> [--db 資料庫]\n"
     "  python -m server.cli import <檔.json> [--strategy keep_newer|keep_local|use_import] [--dry-run]\n"
-    "      [--create-missing-users] [--replace --yes] [--db 資料庫] [--out 備份目錄]"
+    "      [--create-missing-users] [--replace --yes] [--db 資料庫] [--out 備份目錄]\n"
+    "  python -m server.cli sync-push --server <https://網址> --token <金鑰> [--db 本機資料庫] [--full] [--dry-run]"
 )
 
 
@@ -314,7 +317,14 @@ COMMANDS = {
     "restore": restore_cmd,
     "export": export_cmd,
     "import": import_cmd,
+    "sync-push": lambda argv: _sync_push(argv),
 }
+
+
+def _sync_push(argv: list[str]) -> int:
+    from .sync_client import sync_push_cmd
+
+    return sync_push_cmd(argv)
 
 
 def main(argv: list[str]) -> int:

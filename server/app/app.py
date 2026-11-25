@@ -20,6 +20,7 @@ from .features import admin, auth, data_admin, eng, feedback, overview, personal
 from .features import permissions_admin
 from .features import eng_attach
 from .features import presence
+from .features import sync_push
 
 #: 不需登入的路由。/api/eng/worktrees/report 由端點自行以 WORKTREE_REPORT_TOKEN 驗證（仍受 CSRF 檢查約束）
 PUBLIC_PATHS = {
@@ -27,6 +28,8 @@ PUBLIC_PATHS = {
     "/api/auth/login",
     "/api/auth/logout",
     "/api/eng/worktrees/report",
+    # 多台電腦同步：以同步來源金鑰驗證（server/app/features/sync_push.py）
+    "/api/sync/push",
 }
 
 
@@ -87,6 +90,8 @@ def create_app(
     # 須在 admin.router 之前：admin 有 /api/admin/* 的 fallback
     app.include_router(data_admin.router, prefix="/api/admin/data")
     app.include_router(permissions_admin.router, prefix="/api/admin/permissions")
+    app.include_router(sync_push.admin_router, prefix="/api/admin/sync")
+    app.include_router(sync_push.push_router, prefix="/api/sync")
     app.include_router(admin.router, prefix="/api/admin")
     app.include_router(sync.changes_router, prefix="/api/changes")
     app.include_router(sync.events_router, prefix="/api/events")

@@ -12,7 +12,7 @@ function lastTaskViewPath(): string {
 
 function NavItemLink({ entry, collapsed }: { entry: NavEntry; collapsed: boolean }) {
   const link = (
-    <NavLink to={entry.to} end={entry.to === '/'} className="nav-item">
+    <NavLink to={entry.to} end={entry.end ?? entry.to === '/'} className="nav-item">
       <Icon name={entry.icon} />
       <span className="nav-item-label">{entry.label}</span>
     </NavLink>
@@ -74,7 +74,9 @@ export function Sidebar({
 }) {
   const caps = useCapabilities();
   const main = NAV_ENTRIES.filter((e) => !e.capability);
-  const admin = NAV_ENTRIES.filter((e) => e.capability && caps.has(e.capability));
+  const admin = NAV_ENTRIES.filter(
+    (e) => e.capability && (e.anyOf ?? [e.capability]).some((c) => caps.has(c)),
+  );
   return (
     <aside className="sidebar" data-collapsed={collapsed || undefined}>
       <div className="sidebar-brand">
