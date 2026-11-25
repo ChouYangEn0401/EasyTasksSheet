@@ -97,8 +97,9 @@ describe('變更密碼', () => {
 
 describe('角色名稱', () => {
   it('已知角色轉中文，未知顯示原值', () => {
-    expect(roleLabel('admin')).toBe('管理員');
-    expect(roleLabel('member')).toBe('成員');
+    expect(roleLabel('root')).toBe('超級管理員');
+    expect(roleLabel('manager')).toBe('管理者');
+    expect(roleLabel('user')).toBe('成員');
     expect(roleLabel('weird')).toBe('weird');
   });
 });

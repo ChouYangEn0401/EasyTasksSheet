@@ -1,5 +1,6 @@
 import { adminUsername } from '../../../shared/admin.ts';
 import { DEFAULT_ADMIN_PASSWORD } from '../../../shared/auth.ts';
+import { ROLE_LABELS } from '../../../shared/users.ts';
 
 /** 個人設定頁的純函式（表單驗證、變更內容、密碼強度）。與後端規則一致。 */
 
@@ -17,16 +18,8 @@ export type Profile = {
 
 export type ProfilePatch = { displayName?: string; username?: string; currentPassword?: string };
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: '管理員',
-  member: '成員',
-  root: '最高管理者',
-  manager: '管理者',
-  user: '成員',
-};
-
-/** 角色顯示名稱（未知角色顯示原值） */
-export const roleLabel = (role: string): string => ROLE_LABELS[role] ?? role;
+/** 角色顯示名稱：沿用全站共用的名稱表（未知角色顯示原值） */
+export const roleLabel = (role: string): string => (ROLE_LABELS as Record<string, string>)[role] ?? role;
 
 export function validateDisplayName(value: string): string | undefined {
   const v = value.trim();
