@@ -512,7 +512,7 @@ graph TD
 
 | # | 問題 | 建議預設 | 影響 |
 |---|---|---|---|
-| Q1 | 預設帳密如何設定？ | **不把密碼寫進程式碼**。首次啟動時從 `.env` 的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 建立管理員；未設定則產生隨機密碼並只在 server 主控台顯示一次。首次登入強制改密碼。其他成員由管理員在成員管理頁建立 | core/auth-data |
+| Q1 | 預設帳密如何設定？ | **（2026-11-25 使用者改定）** 首次啟動建立預設管理員 `admin` / `password`（`.env` 的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 可選覆寫），登入後強制重設「帳號＋密碼」；CLI `user-add` 建一般帳號，給密碼就用該密碼、沒給就隨機，皆首次登入強制改密碼 | core/auth-data |
 | Q2 | 閒置多久自動登出？ | 60 分鐘（環境變數可調）；絕對上限 9 小時 | core/auth-data |
 | Q3 | 登入失敗限制的門檻？ | 同帳號 15 分鐘內 5 次失敗鎖 15 分鐘；同 IP 15 分鐘內 20 次 | core/auth-data |
 | Q4 | git issue 的來源？ | **GitHub**（REST API，唯讀 token 放 `.env`），快取 5 分鐘 + 手動重新整理。來源包成單一介面，日後可換成 Gitea / GitLab。註：git 本身沒有 issue，「本機」只能指自架的 Gitea / GitLab 這類服務 | T6 |
