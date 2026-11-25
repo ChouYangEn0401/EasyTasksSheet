@@ -15,8 +15,10 @@ from .app.features.users import create_user
 
 #: 與 tests/helpers/e2eUsers.ts 一致
 E2E_USERS = {
+    # 鍵名與帳號沿用 admin / member（其他 spec 以此參照）；角色為 root / user
     "admin": {"username": "admin", "password": "e2e-admin-pass", "display_name": "管理員"},
     "member": {"username": "member", "password": "e2e-member-pass", "display_name": "一般成員"},
+    "manager": {"username": "manager", "password": "e2e-manager-pass", "display_name": "管理者"},
     "newbie": {"username": "newbie", "password": "e2e-newbie-pass", "display_name": "新成員"},
     # 模擬首次啟動的預設管理員：E2E 伺服器以 ADMIN_USERNAME=bootstrap 啟動（見 playwright.config.ts）
     "bootstrap": {"username": "bootstrap", "password": "password", "display_name": "首次啟動"},
@@ -37,11 +39,12 @@ def main() -> int:
     db = create_db(path)
     run_migrations(db)
     run_seed(db)
-    create_user(db, **E2E_USERS["admin"], role="admin", must_change_password=False)
-    create_user(db, **E2E_USERS["member"], role="member", must_change_password=False)
-    create_user(db, **E2E_USERS["newbie"], role="member", must_change_password=True)
-    # 角色設為 member：admin-users spec 依賴「admin 為唯一管理員」；重設帳號流程只看帳號與 must_change_password
-    create_user(db, **E2E_USERS["bootstrap"], role="member", must_change_password=True)
+    create_user(db, **E2E_USERS["admin"], role="root", must_change_password=False)
+    create_user(db, **E2E_USERS["member"], role="user", must_change_password=False)
+    create_user(db, **E2E_USERS["manager"], role="manager", must_change_password=False)
+    create_user(db, **E2E_USERS["newbie"], role="user", must_change_password=True)
+    # 角色設為 user：admin-users spec 依賴「admin 為唯一 root」；重設帳號流程只看帳號與 must_change_password
+    create_user(db, **E2E_USERS["bootstrap"], role="user", must_change_password=True)
     db.close()
     print(f"[e2e] 已重建 {path} 並建立測試帳號", flush=True)
     return 0

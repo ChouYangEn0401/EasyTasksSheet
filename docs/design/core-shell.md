@@ -156,7 +156,7 @@ Badge 的狀態版：`--radius-full`、高 22、內距 0 8px、前置 6px 圓點
 │              │                                                          │
 │ [« 收合]     │                                                          │
 └──────────────┴──────────────────────────────────────────────────────────┘
-  Sidebar 232px                                    * 僅 role=admin 顯示
+  Sidebar 232px                                    * 依 capability 顯示（docs/permissions.md）
 ```
 
 ### 4.1 Sidebar

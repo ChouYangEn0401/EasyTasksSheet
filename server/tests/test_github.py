@@ -58,7 +58,8 @@ def setup(token: str | None = "gh-secret-token"):
     t.app.state.github_token = token
     gh = FakeGitHub()
     t.app.state.github_client = gh
-    member = create_test_user(t.db)
+    # 專案連動設定（PUT /github-links）需 github.manage，故以 manager 操作；user 的 403 見 test_permissions.py
+    member = create_test_user(t.db, role="manager")
     api = login_as(t, member)
     return t, t.db, clock, gh, member, api
 

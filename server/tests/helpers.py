@@ -66,7 +66,7 @@ def create_test_user(db: Database, password: str = TEST_PASSWORD, **overrides: A
         "username": f"user{n}",
         "display_name": f"測試使用者 {n}",
         "password_hash": hash_password(password),
-        "role": "member",
+        "role": "user",
         "is_active": 1,
         "must_change_password": 0,
         "created_at": 1,

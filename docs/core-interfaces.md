@@ -3,7 +3,7 @@
 ## 執行環境注意
 - Windows 上請用 PowerShell 跑 npm（Git Bash 跑 vitest 會失敗），先 `$env:Path += ";C:\Program Files\nodejs"`。
 - 後端為 Python（FastAPI + uvicorn）：先 `npm run py:install`；`npm run dev` 同時啟動 uvicorn（:3000，--reload）與 Vite（:5173，/api 代理到 PORT）；`npm run py:test` 跑 pytest；`npm run check` = lint + typecheck + test + py:test + build。
-- E2E：`npm run test:e2e`（Playwright 以 `.venv` Python 執行 `server.e2e_setup` 建立全新 data/e2e.db 與測試帳號，再以 uvicorn 正式模式啟動）；`loginViaUi(page, E2E_USERS.admin, '/路徑')`（tests/helpers/e2e.ts）；帳號 admin / member；newbie 僅供 core 冒煙測試。
+- E2E：`npm run test:e2e`（Playwright 以 `.venv` Python 執行 `server.e2e_setup` 建立全新 data/e2e.db 與測試帳號，再以 uvicorn 正式模式啟動）；`loginViaUi(page, E2E_USERS.admin, '/路徑')`（tests/helpers/e2e.ts）；帳號 admin（root）/ manager（manager）/ member（user）；權限判斷用前端 `useCan(capability)`（src/web/lib/permissions.ts）與後端 `require(capability)`（server/app/permissions.py），見 docs/permissions.md；newbie 僅供 core 冒煙測試。
 - 登入 API 的 POST 即使無 body 也要帶 Content-Type: application/json。
 
 ## 前端 src/web/lib

@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { AdminUser } from '../../../shared/admin.ts';
+import { isLastActiveRoot } from '../../../shared/admin.ts';
 import {
+  canManageUser,
   filterUsers,
+  roleChoices,
   hasFilters,
   lockTooltip,
   readFilters,
@@ -18,7 +21,7 @@ const u = (over: Partial<AdminUser> = {}): AdminUser => {
     id: seq,
     username: `user${seq}`,
     displayName: `成員${seq}`,
-    role: 'member',
+    role: 'user',
     isActive: true,
     mustChangePassword: false,
     lockedUntil: null,
@@ -46,12 +49,19 @@ describe('URL 篩選', () => {
 });
 
 describe('排序與過濾', () => {
-  it('啟用在前、停用在後；同組內管理員優先，再依名稱', () => {
-    const off = u({ displayName: 'A', isActive: false, role: 'admin' });
+  it('啟用在前、停用在後；同組內 root > manager > user，再依名稱', () => {
+    const off = u({ displayName: 'A', isActive: false, role: 'root' });
     const m1 = u({ displayName: 'B' });
     const m2 = u({ displayName: 'A' });
-    const adm = u({ displayName: 'Z', role: 'admin' });
-    expect(sortUsers([off, m1, m2, adm]).map((x) => x.id)).toEqual([adm.id, m2.id, m1.id, off.id]);
+    const mgr = u({ displayName: 'Y', role: 'manager' });
+    const adm = u({ displayName: 'Z', role: 'root' });
+    expect(sortUsers([off, m1, mgr, m2, adm]).map((x) => x.id)).toEqual([
+      adm.id,
+      mgr.id,
+      m2.id,
+      m1.id,
+      off.id,
+    ]);
   });
   it('關鍵字比對名稱與帳號，不分大小寫；狀態篩選', () => {
     const a = u({ displayName: '王小明', username: 'wang' });
@@ -60,6 +70,30 @@ describe('排序與過濾', () => {
     expect(filterUsers([a, b], { q: '大華', state: 'all' })).toEqual([b]);
     expect(filterUsers([a, b], { q: '', state: 'disabled' })).toEqual([b]);
     expect(filterUsers([a, b], { q: '', state: 'active' })).toEqual([a]);
+  });
+});
+
+describe('角色規則', () => {
+  const disabled = (o: { canAssignRoot: boolean; lockRoot: boolean }) =>
+    roleChoices(o)
+      .filter((c) => c.disabled)
+      .map((c) => c.value);
+  it('manager 不能選 root；最後一位 root 不能降級', () => {
+    expect(disabled({ canAssignRoot: false, lockRoot: false })).toEqual(['root']);
+    expect(disabled({ canAssignRoot: true, lockRoot: false })).toEqual([]);
+    expect(disabled({ canAssignRoot: true, lockRoot: true })).toEqual(['manager', 'user']);
+  });
+  it('root 帳號只有超級管理員能操作', () => {
+    expect(canManageUser({ role: 'root' }, false)).toBe(false);
+    expect(canManageUser({ role: 'root' }, true)).toBe(true);
+    expect(canManageUser({ role: 'manager' }, false)).toBe(true);
+  });
+  it('isLastActiveRoot：只看啟用中的 root', () => {
+    const a = (id: number, role: string, isActive = true) => ({ id, role, isActive });
+    expect(isLastActiveRoot(a(1, 'root'), [a(1, 'root'), a(2, 'manager')])).toBe(true);
+    expect(isLastActiveRoot(a(1, 'root'), [a(1, 'root'), a(2, 'root', false)])).toBe(true);
+    expect(isLastActiveRoot(a(1, 'root'), [a(1, 'root'), a(2, 'root')])).toBe(false);
+    expect(isLastActiveRoot(a(2, 'manager'), [a(1, 'root'), a(2, 'manager')])).toBe(false);
   });
 });
 

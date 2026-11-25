@@ -40,7 +40,7 @@ def create_user(
     username: str,
     password: str,
     display_name: str | None = None,
-    role: str = "member",
+    role: str = "user",
     must_change_password: bool = True,
     actor_id: int | None = None,
     now: int | None = None,
@@ -70,13 +70,13 @@ def ensure_admin(
     password: str | None = None,
     log: Callable[[str], None] = print,
 ) -> sqlite3.Row | None:
-    """首次啟動（尚無任何帳號）時建立預設管理員（預設 admin / password，可由
+    """首次啟動（尚無任何帳號）時建立預設管理員（角色 root；預設 admin / password，可由
     ADMIN_USERNAME / ADMIN_PASSWORD 覆寫）。首次登入強制重設帳號與密碼。"""
     if db.scalar("SELECT count(*) FROM users") > 0:
         return None
     name = username or DEFAULT_ADMIN_USERNAME
     pw = password or DEFAULT_ADMIN_PASSWORD
-    user = create_user(db, username=name, display_name="管理員", password=pw, role="admin")
+    user = create_user(db, username=name, display_name="管理員", password=pw, role="root")
     if password and password != DEFAULT_ADMIN_PASSWORD:
         log(f"[auth] 已建立預設管理員 {name}（密碼取自 ADMIN_PASSWORD），首次登入須重設帳號與密碼")
     else:

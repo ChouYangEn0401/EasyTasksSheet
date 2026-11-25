@@ -50,7 +50,7 @@ def test_default_admin_change_username_and_password():
     assert body["user"]["username"] == "boss.lin"
     assert body["user"]["mustChangePassword"] is False
     assert body["mustChangeUsername"] is False
-    assert body["user"]["role"] == "admin"
+    assert body["user"]["role"] == "root"
     # 目前 session 保留、其他 session 撤銷
     assert a.get("/api/auth/me").json()["user"]["username"] == "boss.lin"
     assert b.get("/api/auth/me").status_code == 401
@@ -133,7 +133,7 @@ def test_regular_user_cannot_change_username():
 def test_admin_username_without_must_change_is_normal():
     """名為 admin 但已完成首次重設（must_change_password=0）：一般改密碼，不可改帳號"""
     t = TestApp()
-    user = create_test_user(t.db, username="admin", role="admin")
+    user = create_test_user(t.db, username="admin", role="root")
     api = login_as(t, user)
     assert api.get("/api/auth/me").json()["mustChangeUsername"] is False
     res = api.request(
@@ -183,10 +183,10 @@ def _user(path: str, username: str):
 def test_cli_user_add_with_password(cli_db, capsys):
     assert cli.main(["user-add", "Alice", "--name", "愛麗絲", "--password", "alice-pass-1", "--db", cli_db]) == 0
     out = capsys.readouterr().out
-    assert "已建立一般成員帳號 alice" in out and "首次登入後須立即變更密碼" in out
+    assert "已建立成員（user）帳號 alice" in out and "首次登入後須立即變更密碼" in out
     assert "alice-pass-1" not in out
     row = _user(cli_db, "alice")
-    assert row["role"] == "member" and row["display_name"] == "愛麗絲" and row["must_change_password"] == 1
+    assert row["role"] == "user" and row["display_name"] == "愛麗絲" and row["must_change_password"] == 1
     assert verify_password(row["password_hash"], "alice-pass-1")
 
 
@@ -195,14 +195,35 @@ def test_cli_user_add_random_password(cli_db, capsys):
     out = capsys.readouterr().out
     password = re.search(r"隨機初始密碼：(\S+?)（", out).group(1)  # type: ignore[union-attr]
     row = _user(cli_db, "bob")
-    assert row["role"] == "member" and row["must_change_password"] == 1 and row["display_name"] == "bob"
+    assert row["role"] == "user" and row["must_change_password"] == 1 and row["display_name"] == "bob"
     assert verify_password(row["password_hash"], password)
 
 
-def test_cli_user_add_admin(cli_db, capsys):
+def test_cli_user_add_admin_alias(cli_db, capsys):
+    """--admin 為舊寫法：等同 --role root，並提示新寫法"""
     assert cli.main(["user-add", "carol", "--admin", "--password", "carol-pass-1", "--db", cli_db]) == 0
-    assert "已建立管理員帳號 carol" in capsys.readouterr().out
-    assert _user(cli_db, "carol")["role"] == "admin"
+    cap = capsys.readouterr()
+    assert "已建立超級管理員（root）帳號 carol" in cap.out
+    assert "--role root" in cap.err
+    assert _user(cli_db, "carol")["role"] == "root"
+    # 與其他 --role 衝突時拒絕
+    assert cli.main(["user-add", "carl", "--admin", "--role", "user", "--db", cli_db]) == 1
+    assert "衝突" in capsys.readouterr().err
+    assert _user(cli_db, "carl") is None
+
+
+@pytest.mark.parametrize("role", ["root", "manager", "user"])
+def test_cli_user_add_role(cli_db, capsys, role):
+    assert cli.main(["user-add", f"r-{role}", "--role", role, "--password", "role-pass-1", "--db", cli_db]) == 0
+    assert f"（{role}）帳號 r-{role}" in capsys.readouterr().out
+    assert _user(cli_db, f"r-{role}")["role"] == role
+
+
+def test_cli_user_add_invalid_role(cli_db, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["user-add", "frank", "--role", "admin", "--db", cli_db])
+    assert exc.value.code == 2
+    assert "--role" in capsys.readouterr().err
 
 
 def test_cli_user_add_errors(cli_db, capsys):

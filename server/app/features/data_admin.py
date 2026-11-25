@@ -1,4 +1,6 @@
-"""/api/admin/data：資料管理（僅限 role=admin，其餘 403）。
+"""/api/admin/data：資料管理。權限見 server/app/permissions.py（不足時 403）：
+backup = data.backup_db（root）；export = data.export_json、import = data.import_merge（manager 以上）；
+apply 的 mode=replace 另需 data.import_replace（root）。
 
 - GET  /backup          完整 SQLite 快照（VACUUM INTO；含密碼雜湊與 session，屬敏感檔）
 - GET  /export          可攜 JSON（業務資料，不含密碼雜湊 / session / 登入紀錄）
@@ -17,7 +19,7 @@ import threading
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
 from starlette.background import BackgroundTask
@@ -27,7 +29,8 @@ from .. import data_transfer as dt
 from ..backup import BackupError
 from ..config import config
 from ..errors import HttpError, bad_request, pydantic_issues, validation_error
-from .admin import _admin_ctx
+from ..context import Ctx
+from ..permissions import check, require
 
 router = APIRouter()
 
@@ -116,8 +119,7 @@ def _attachment(name: str) -> dict[str, str]:
 
 
 @router.get("/backup")
-async def download_backup(request: Request):
-    ctx = _admin_ctx(request)
+async def download_backup(ctx: Ctx = Depends(require("data.backup_db"))):
     tmp = tempfile.mkdtemp(prefix="tasks-sheets-download-")
     try:
         file = await run_in_threadpool(dt.snapshot, ctx.db, tmp, "backup")
@@ -133,8 +135,7 @@ async def download_backup(request: Request):
 
 
 @router.get("/export")
-async def download_export(request: Request):
-    ctx = _admin_ctx(request)
+async def download_export(ctx: Ctx = Depends(require("data.export_json"))):
     doc = await run_in_threadpool(dt.export_document, ctx.db, ctx.now())
     body = json.dumps(doc, ensure_ascii=False, indent=1)
     return Response(
@@ -151,8 +152,7 @@ def _preview(db: Any, doc: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.post("/import/preview")
-async def import_preview(request: Request):
-    ctx = _admin_ctx(request)
+async def import_preview(request: Request, ctx: Ctx = Depends(require("data.import_merge"))):
     raw = await _read_limited(request)
     try:
         doc = await run_in_threadpool(dt.parse_document, raw)
@@ -179,8 +179,7 @@ class ApplyInput(BaseModel):
 
 
 @router.post("/import/apply")
-async def import_apply(request: Request):
-    ctx = _admin_ctx(request)
+async def import_apply(request: Request, ctx: Ctx = Depends(require("data.import_merge"))):
     raw = await _read_limited(request)
     try:
         json.loads(raw)
@@ -190,6 +189,8 @@ async def import_apply(request: Request):
         data = ApplyInput.model_validate_json(raw, strict=True)
     except ValidationError as e:
         raise validation_error(pydantic_issues(e)) from None
+    if data.mode == "replace":
+        check(ctx, "data.import_replace")
 
     store = _store(request)
     if data.data is not None:

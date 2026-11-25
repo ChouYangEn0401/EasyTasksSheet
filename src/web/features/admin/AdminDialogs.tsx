@@ -1,20 +1,21 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import {
-  adminUsername,
-  isLastActiveAdmin,
-  LAST_ADMIN_MESSAGE,
-  type AdminUser,
-} from '../../../shared/admin.ts';
+import { adminUsername, isLastActiveRoot, LAST_ROOT_MESSAGE, type AdminUser } from '../../../shared/admin.ts';
 import type { UserRole } from '../../../shared/users.ts';
 import { ApiError } from '../../lib/api.ts';
+import { useCan } from '../../lib/permissions.ts';
 import { Alert, Button, Dialog, Field, Input, Select, type SelectOption } from '../../ui/index.ts';
 import { useCreateAdminUser, useResetPassword, useUpdateAdminUser } from './api.ts';
-import { failText, ROLE_LABELS, type Notify } from './model.ts';
+import { failText, ROLE_LABELS, roleChoices, type Notify } from './model.ts';
 
-const roleOptions = (lockAdmin: boolean): SelectOption<UserRole>[] => [
-  { value: 'member', label: ROLE_LABELS.member, disabled: lockAdmin },
-  { value: 'admin', label: ROLE_LABELS.admin },
-];
+/** 三層角色下拉：manager 不能指派 root；最後一位 root 不能降級 */
+const roleOptions = (canAssignRoot: boolean, lockRoot: boolean): SelectOption<UserRole>[] =>
+  roleChoices({ canAssignRoot, lockRoot }).map((c) => ({
+    value: c.value,
+    label: ROLE_LABELS[c.value],
+    disabled: c.disabled,
+  }));
+
+const ROLE_HINT_MANAGER = '只有超級管理員可以指派超級管理員';
 
 // ── 臨時密碼結果面板（新增、重設共用） ─────────────────────────
 
@@ -96,9 +97,10 @@ const DoneButton = ({ onClick }: { onClick: () => void }) => (
 
 export function CreateUserDialog({ onClose }: { onClose: () => void }) {
   const create = useCreateAdminUser();
+  const canAssignRoot = useCan('roles.assign_root');
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [role, setRole] = useState<UserRole>('member');
+  const [role, setRole] = useState<UserRole>('user');
   const [usernameError, setUsernameError] = useState<string>();
   const [formError, setFormError] = useState<string>();
   const [result, setResult] = useState<{ name: string; password: string } | null>(null);
@@ -188,8 +190,8 @@ export function CreateUserDialog({ onClose }: { onClose: () => void }) {
         <Field label="顯示名稱" hint="顯示在任務與頭像上">
           <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
         </Field>
-        <Field label="角色">
-          <Select<UserRole> value={role} onChange={setRole} options={roleOptions(false)} />
+        <Field label="角色" hint={canAssignRoot ? undefined : ROLE_HINT_MANAGER}>
+          <Select<UserRole> value={role} onChange={setRole} options={roleOptions(canAssignRoot, false)} />
         </Field>
         <Alert tone="info">建立後會產生一組臨時密碼，成員首次登入時須自行變更。</Alert>
       </form>
@@ -218,14 +220,17 @@ export function EditUserDialog({
   const [role, setRole] = useState<UserRole>(user.role);
   const [confirming, setConfirming] = useState(false);
   const [formError, setFormError] = useState<string>();
-  const lockAdmin = isLastActiveAdmin(user, all);
+  const canAssignRoot = useCan('roles.assign_root');
+  const lockRoot = isLastActiveRoot(user, all);
 
   const patch: { displayName?: string; role?: UserRole } = {};
   if (displayName.trim() !== user.displayName) patch.displayName = displayName.trim();
   if (role !== user.role) patch.role = role;
   const dirty = Object.keys(patch).length > 0;
   const nameError = displayName.trim() ? undefined : '請輸入顯示名稱';
-  const selfDemote = user.id === meId && patch.role === 'member';
+  // 自己降為 user 即失去成員管理權限
+  const selfDemote = user.id === meId && patch.role === 'user';
+  const roleHint = lockRoot ? LAST_ROOT_MESSAGE : canAssignRoot ? undefined : ROLE_HINT_MANAGER;
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
@@ -278,14 +283,14 @@ export function EditUserDialog({
         <Field label="顯示名稱" error={nameError}>
           <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
         </Field>
-        <Field label="角色" hint={lockAdmin ? LAST_ADMIN_MESSAGE : undefined}>
+        <Field label="角色" hint={roleHint}>
           <Select<UserRole>
             value={role}
             onChange={(v) => {
               setRole(v);
               setConfirming(false);
             }}
-            options={roleOptions(lockAdmin)}
+            options={roleOptions(canAssignRoot, lockRoot)}
           />
         </Field>
         {confirming && <Alert tone="warning">你將失去管理權限，並立即離開此頁面。</Alert>}

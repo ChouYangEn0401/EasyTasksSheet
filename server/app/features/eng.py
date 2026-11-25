@@ -7,6 +7,7 @@
 - 伺服器端不執行任何 git 指令；紀錄與回報的比對只是參考提示（可能遺失 / 未登記）
 - GitHub 連動（選配，需 GITHUB_TOKEN）：「連結」為 GitHub issue 網址時自動解析 repo / 編號；
   同步 / 匯入 / 在 GitHub 建立 / 專案連動設定。GET 不做網路呼叫，過期時由前端呼叫 /issues/sync
+  權限：專案連動設定（PUT /github-links）需 github.manage（manager 以上），其餘全員可用
 
 變更紀錄沿用既有實體類型（前端即時同步已對應到 ['eng']）：問題與回報記為 repo、worktree 紀錄記為 worktree_plan。
 """
@@ -20,16 +21,17 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
 from ..changes import record_change
 from ..config import config
-from ..context import get_ctx
+from ..context import Ctx, get_ctx
 from ..errors import HttpError, bad_request, forbidden, not_found
 from ..github import GitHubClient, GitHubClientProtocol, GitHubError, normalize_repo, parse_issue_url
+from ..permissions import require
 from ..validate import parse_id, present, read_json
 
 router = APIRouter()
@@ -426,9 +428,8 @@ async def sync_issues(request: Request):
 
 
 @router.put("/github-links")
-async def save_github_links(request: Request):
-    """專案連動整批取代：問題的「專案 / Repo」名稱 → GitHub owner/name"""
-    ctx = get_ctx(request)
+async def save_github_links(request: Request, ctx: Ctx = Depends(require("github.manage"))):
+    """專案連動整批取代：問題的「專案 / Repo」名稱 → GitHub owner/name（github.manage，manager 以上）"""
     _github(request)
     data = await read_json(request, GithubLinksInput)
     links: list[tuple[str, str]] = []

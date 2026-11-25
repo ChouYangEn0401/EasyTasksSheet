@@ -2,7 +2,7 @@
 
 import re
 
-from server.app.features.admin import generate_temp_password, is_last_active_admin
+from server.app.features.admin import generate_temp_password, is_last_active_root
 
 from .helpers import MIN, FakeClock, client, create_test_app, create_test_user, login, login_as
 
@@ -10,7 +10,7 @@ from .helpers import MIN, FakeClock, client, create_test_app, create_test_user, 
 def setup():
     clock = FakeClock()
     t = create_test_app(now=clock.now)
-    admin = create_test_user(t.db, role="admin")
+    admin = create_test_user(t.db, role="root")
     member = create_test_user(t.db)
     admin_api = login_as(t, admin)
     return t, t.db, clock, admin, member, admin_api
@@ -29,7 +29,7 @@ def test_member_gets_403_and_anonymous_401():
     calls = [
         api.get("/api/admin/users"),
         api.request("POST", "/api/admin/users", {"username": "x-user", "displayName": "X"}),
-        api.request("PATCH", f"/api/admin/users/{member['id']}", {"role": "admin"}),
+        api.request("PATCH", f"/api/admin/users/{member['id']}", {"role": "root"}),
         api.request("POST", f"/api/admin/users/{member['id']}/reset-password"),
         api.request("POST", f"/api/admin/users/{member['id']}/unlock"),
         api.get("/api/admin/whatever"),
@@ -55,7 +55,7 @@ def test_list_includes_disabled_without_password_hash():
 
 def test_create_returns_temp_password_once():
     t, db, _clock, admin, _member, api = setup()
-    res = api.request("POST", "/api/admin/users", {"username": "  New.User ", "displayName": "李大華", "role": "member"})
+    res = api.request("POST", "/api/admin/users", {"username": "  New.User ", "displayName": "李大華", "role": "user"})
     assert res.status_code == 201
     body = res.json()
     assert body["user"]["username"] == "new.user"
@@ -75,11 +75,11 @@ def test_create_returns_temp_password_once():
     assert body["tempPassword"] not in api.get("/api/admin/users").text
 
 
-def test_create_default_role_member():
+def test_create_default_role_user():
     _t, _db, _clock, _admin, _member, api = setup()
     res = api.request("POST", "/api/admin/users", {"username": "plain", "displayName": "P"})
     assert res.status_code == 201
-    assert res.json()["user"]["role"] == "member"
+    assert res.json()["user"]["role"] == "user"
 
 
 def test_duplicate_username_409_and_bad_format_400():
@@ -110,10 +110,10 @@ def test_update_display_name_and_role():
     _t, db, clock, _admin, member, api = setup()
     before = change_count(db, member["id"])
     clock.advance(5 * MIN)
-    res = api.request("PATCH", f"/api/admin/users/{member['id']}", {"displayName": "新名字", "role": "admin"})
+    res = api.request("PATCH", f"/api/admin/users/{member['id']}", {"displayName": "新名字", "role": "root"})
     assert res.status_code == 200
     body = res.json()
-    assert body["displayName"] == "新名字" and body["role"] == "admin"
+    assert body["displayName"] == "新名字" and body["role"] == "root"
     assert body["updatedAt"] == clock.now()
     assert change_count(db, member["id"]) == before + 1
 
@@ -128,7 +128,7 @@ def test_update_rejects_username_or_unknown_and_404():
 def test_noop_patch_does_not_record_change():
     _t, db, _clock, _admin, member, api = setup()
     before = change_count(db, member["id"])
-    res = api.request("PATCH", f"/api/admin/users/{member['id']}", {"role": "member"})
+    res = api.request("PATCH", f"/api/admin/users/{member['id']}", {"role": "user"})
     assert res.status_code == 200
     assert change_count(db, member["id"]) == before
 
@@ -152,25 +152,25 @@ def test_disable_revokes_sessions_and_reenable():
     assert login(t, member["username"]).status_code == 200
 
 
-def test_last_admin_protection():
+def test_last_root_protection():
     _t, db, _clock, admin, _member, api = setup()
-    create_test_user(db, role="admin", is_active=0)  # 停用中的管理員不算數
-    for patch in ({"isActive": False}, {"role": "member"}):
+    create_test_user(db, role="root", is_active=0)  # 停用中的 root 不算數
+    for patch in ({"isActive": False}, {"role": "user"}):
         res = api.request("PATCH", f"/api/admin/users/{admin['id']}", patch)
         assert res.status_code == 409
-        assert res.json()["error"]["message"] == "至少需保留一位管理員"
+        assert res.json()["error"]["message"] == "至少需保留一位超級管理員"
     row = db.one("SELECT role, is_active FROM users WHERE id = ?", (admin["id"],))
-    assert row["role"] == "admin" and row["is_active"] == 1
+    assert row["role"] == "root" and row["is_active"] == 1
 
-    create_test_user(db, role="admin")
-    demote = api.request("PATCH", f"/api/admin/users/{admin['id']}", {"role": "member"})
+    create_test_user(db, role="root")
+    demote = api.request("PATCH", f"/api/admin/users/{admin['id']}", {"role": "user"})
     assert demote.status_code == 200
     assert api.get("/api/admin/users").status_code == 403
 
 
 def test_disable_self_logs_out():
     _t, db, _clock, admin, _member, api = setup()
-    create_test_user(db, role="admin")
+    create_test_user(db, role="root")
     res = api.request("PATCH", f"/api/admin/users/{admin['id']}", {"isActive": False})
     assert res.status_code == 200
     assert api.get("/api/auth/me").status_code == 401
@@ -226,12 +226,12 @@ def test_locked_until_and_unlock():
     assert login(t, member["username"]).status_code == 200
 
 
-def test_is_last_active_admin():
+def test_is_last_active_root():
     def a(id, role, active=True):
         return {"id": id, "role": role, "isActive": active}
 
-    assert is_last_active_admin(a(1, "admin"), [a(1, "admin"), a(2, "member")])
-    assert is_last_active_admin(a(1, "admin"), [a(1, "admin"), a(2, "admin", False)])
-    assert not is_last_active_admin(a(1, "admin"), [a(1, "admin"), a(2, "admin")])
-    assert not is_last_active_admin(a(2, "member"), [a(1, "admin"), a(2, "member")])
-    assert not is_last_active_admin(a(1, "admin", False), [a(1, "admin", False)])
+    assert is_last_active_root(a(1, "root"), [a(1, "root"), a(2, "user")])
+    assert is_last_active_root(a(1, "root"), [a(1, "root"), a(2, "root", False)])
+    assert not is_last_active_root(a(1, "root"), [a(1, "root"), a(2, "root")])
+    assert not is_last_active_root(a(2, "user"), [a(1, "root"), a(2, "user")])
+    assert not is_last_active_root(a(1, "root", False), [a(1, "root", False)])

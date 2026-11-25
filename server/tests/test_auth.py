@@ -266,7 +266,7 @@ def test_ensure_admin_default_admin_password():
     logs: list[str] = []
     admin = ensure_admin(db, log=logs.append)
     assert admin is not None
-    assert admin["username"] == "admin" and admin["role"] == "admin" and admin["must_change_password"] == 1
+    assert admin["username"] == "admin" and admin["role"] == "root" and admin["must_change_password"] == 1
     assert verify_password(admin["password_hash"], "password")
     assert logs == ["[auth] 已建立預設管理員 admin / password，首次登入須重設帳號與密碼"]
     # 已有帳號時不再建立

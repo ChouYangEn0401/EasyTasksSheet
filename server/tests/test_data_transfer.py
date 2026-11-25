@@ -34,7 +34,7 @@ class Env:
         self.t = TestApp(now=self.clock.now, db=create_test_db(seed=seed))
         self.t.app.state.backup_dir = str(tmp_path / f"backups-{name}")
         self.db = self.t.db
-        self.admin = create_test_user(self.db, username=f"admin-{name}", role="admin")
+        self.admin = create_test_user(self.db, username=f"admin-{name}", role="root")
         self.member = create_test_user(self.db, username="alice", display_name="Alice")
         self.api = login_as(self.t, self.admin)
 
@@ -279,7 +279,7 @@ def test_apply_requires_valid_token(tmp_path):
     assert res.status_code == 400 and res.json()["error"]["code"] == "VALIDATION_ERROR"
     # 其他管理員不可使用別人的 token
     tok = preview(env, export(env))["token"]
-    other = login_as(env.t, create_test_user(env.db, role="admin"))
+    other = login_as(env.t, create_test_user(env.db, role="root"))
     res = other.request("POST", "/api/admin/data/import/apply", {"token": tok})
     assert res.status_code == 400
 
@@ -430,7 +430,7 @@ def test_missing_member_create(tmp_path):
     [created] = result["createdUsers"]
     assert created["username"] == "ghost" and re.fullmatch(r"\S{4}-\S{4}-\S{4}", created["tempPassword"])
     ghost = env.db.one("SELECT * FROM users WHERE username = 'ghost'")
-    assert (ghost["role"], ghost["is_active"], ghost["must_change_password"]) == ("member", 1, 1)
+    assert (ghost["role"], ghost["is_active"], ghost["must_change_password"]) == ("user", 1, 1)
     assert created["tempPassword"] not in ghost["password_hash"]
     assert env.db.scalar("SELECT assignee_id FROM tasks WHERE title = '已刪除的任務'") == ghost["id"]
     lr = login(env.t, "ghost", created["tempPassword"])

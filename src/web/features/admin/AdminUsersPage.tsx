@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { isLastActiveAdmin, LAST_ADMIN_MESSAGE, type AdminUser } from '../../../shared/admin.ts';
+import {
+  isLastActiveRoot,
+  LAST_ROOT_MESSAGE,
+  ROOT_ONLY_MESSAGE,
+  type AdminUser,
+} from '../../../shared/admin.ts';
 import { ApiError } from '../../lib/api.ts';
 import { logout, useCurrentUser } from '../../lib/auth.ts';
+import { ROLE_BADGE_TONES, useCan } from '../../lib/permissions.ts';
 import { FILTER_SEARCH_ATTR } from '../../lib/shortcuts.ts';
 import {
   Alert,
@@ -23,6 +29,7 @@ import {
 import { CreateUserDialog, DisableUserDialog, EditUserDialog, ResetPasswordDialog } from './AdminDialogs.tsx';
 import { useAdminUsers, useUnlockUser, useUpdateAdminUser } from './api.ts';
 import {
+  canManageUser,
   failText,
   filterUsers,
   hasFilters,
@@ -52,7 +59,7 @@ export function NoPermission() {
     <EmptyState
       icon="lock"
       title="沒有權限"
-      description="此頁面僅限管理員使用"
+      description="此頁面僅限管理者以上使用"
       action={
         <Button variant="primary" onClick={() => navigate('/')}>
           回到總覽
@@ -62,17 +69,18 @@ export function NoPermission() {
   );
 }
 
-/** 成員管理（/admin/users，僅 role=admin）。docs/design/admin-users.md */
+/** 成員管理（/admin/users，需 members.manage）。docs/design/admin-users.md、docs/permissions.md */
 export function AdminUsersPage() {
   const me = useCurrentUser();
-  const isAdmin = me?.role === 'admin';
-  const query = useAdminUsers(isAdmin);
+  const allowed = useCan('members.manage');
+  const query = useAdminUsers(allowed);
   if (!me) return null;
-  if (!isAdmin || (query.error instanceof ApiError && query.error.status === 403)) return <NoPermission />;
+  if (!allowed || (query.error instanceof ApiError && query.error.status === 403)) return <NoPermission />;
   return <AdminUsersView meId={me.id} query={query} />;
 }
 
 function AdminUsersView({ meId, query }: { meId: number; query: ReturnType<typeof useAdminUsers> }) {
+  const canAssignRoot = useCan('roles.assign_root');
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = useMemo(() => readFilters(searchParams), [searchParams]);
@@ -129,7 +137,13 @@ function AdminUsersView({ meId, query }: { meId: number; query: ReturnType<typeo
   };
 
   const menuItems = (u: AdminUser): MenuItem[] => {
-    const lastAdmin = isLastActiveAdmin(u, all);
+    // manager 看得到 root，但不能操作（後端同樣 403）
+    if (!canManageUser(u, canAssignRoot))
+      return [
+        { key: 'edit', label: '編輯', disabled: true, onSelect: () => undefined },
+        { key: 'why', content: <p className="adm-menu-hint">{ROOT_ONLY_MESSAGE}</p> },
+      ];
+    const lastAdmin = isLastActiveRoot(u, all);
     const items: MenuItem[] = [
       { key: 'edit', label: '編輯', onSelect: () => setDialog({ type: 'edit', id: u.id }) },
     ];
@@ -147,7 +161,7 @@ function AdminUsersView({ meId, query }: { meId: number; query: ReturnType<typeo
         onSelect: () => setDialog({ type: 'disable', id: u.id }),
       });
       if (lastAdmin)
-        items.push({ key: 'why', content: <p className="adm-menu-hint">{LAST_ADMIN_MESSAGE}</p> });
+        items.push({ key: 'why', content: <p className="adm-menu-hint">{LAST_ROOT_MESSAGE}</p> });
     } else {
       items.push({ key: 'enable', label: '啟用', onSelect: () => runInline(u, 'enable') });
     }
@@ -212,7 +226,7 @@ function AdminUsersView({ meId, query }: { meId: number; query: ReturnType<typeo
                   </div>
                 </td>
                 <td>
-                  <Badge tone={u.role === 'admin' ? 'accent' : 'neutral'}>{ROLE_LABELS[u.role]}</Badge>
+                  <Badge tone={ROLE_BADGE_TONES[u.role]}>{ROLE_LABELS[u.role]}</Badge>
                 </td>
                 <td>
                   <div className="adm-states">

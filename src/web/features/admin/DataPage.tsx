@@ -12,6 +12,7 @@ import {
 } from '../../../shared/dataTransfer.ts';
 import { ApiError, errorMessage } from '../../lib/api.ts';
 import { useCurrentUser } from '../../lib/auth.ts';
+import { useCan } from '../../lib/permissions.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { Alert, Badge, Button, Dialog, Field, Input, Select } from '../../ui/index.ts';
 import { NoPermission } from './AdminUsersPage.tsx';
@@ -35,22 +36,29 @@ import {
 } from './dataModel.ts';
 import './admin.css';
 
-/** 資料管理（/admin/data，僅 role=admin）。docs/design/data-export.md */
+/**
+ * 資料管理（/admin/data）。docs/design/data-export.md、docs/permissions.md：
+ * JSON 匯出、合併匯入為 manager 以上；完整備份下載、取代全部只對 root（data.backup_db / data.import_replace）顯示。
+ */
 export function DataPage() {
   const me = useCurrentUser();
+  const canExport = useCan('data.export_json');
+  const canBackup = useCan('data.backup_db');
+  const canImport = useCan('data.import_merge');
+  const canReplace = useCan('data.import_replace');
   if (!me) return null;
-  if (me.role !== 'admin') return <NoPermission />;
+  if (!canExport && !canImport) return <NoPermission />;
   return (
     <div className="adm-page dat-page">
-      <ExportSection />
-      <ImportSection />
+      {canExport && <ExportSection canBackup={canBackup} />}
+      {canImport && <ImportSection canReplace={canReplace} />}
     </div>
   );
 }
 
 // ── 匯出 ────────────────────────────────────────────────────
 
-function ExportSection() {
+function ExportSection({ canBackup }: { canBackup: boolean }) {
   const [confirmBackup, setConfirmBackup] = useState(false);
   return (
     <section className="dat-card" aria-labelledby="dat-export-title">
@@ -61,18 +69,22 @@ function ExportSection() {
         <strong>JSON 匯出檔</strong>：全部任務、專案、狀態、自訂欄位、問題回饋、個人清單、工程追蹤與 GitHub
         連動設定，可匯入另一套系統；不含密碼與登入紀錄。
       </p>
-      <p className="dat-desc">
-        <strong>完整備份（.db）</strong>：資料庫原樣快照，
-        <span className="dat-warn">含密碼雜湊與登入 session，屬敏感檔案</span>
-        ，請妥善保管。
-      </p>
+      {canBackup && (
+        <p className="dat-desc">
+          <strong>完整備份（.db）</strong>：資料庫原樣快照，
+          <span className="dat-warn">含密碼雜湊與登入 session，屬敏感檔案</span>
+          ，請妥善保管（僅超級管理員可下載）。
+        </p>
+      )}
       <div className="dat-actions">
         <Button variant="primary" icon="inbox" onClick={() => startDownload(DATA_EXPORT_URL)}>
           下載 JSON 匯出檔
         </Button>
-        <Button variant="secondary" icon="lock" onClick={() => setConfirmBackup(true)}>
-          下載完整備份
-        </Button>
+        {canBackup && (
+          <Button variant="secondary" icon="lock" onClick={() => setConfirmBackup(true)}>
+            下載完整備份
+          </Button>
+        )}
       </div>
       {confirmBackup && (
         <Dialog
@@ -113,7 +125,7 @@ function ExportSection() {
 
 type Applying = { mode: ImportMode } | null;
 
-function ImportSection() {
+function ImportSection({ canReplace }: { canReplace: boolean }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState('');
   const [error, setError] = useState<{ message: string; details: string[] } | null>(null);
@@ -251,37 +263,39 @@ function ImportSection() {
         )}
       </section>
 
-      <section className="dat-card dat-card--danger" aria-labelledby="dat-replace-title">
-        <h2 id="dat-replace-title" className="dat-title">
-          取代全部資料
-        </h2>
-        <p className="dat-desc">
-          先刪除本機所有任務、專案、狀態、自訂欄位、問題回饋、個人清單與工程追蹤資料，再匯入檔案內容（成員帳號保留）。
-          此操作會先自動備份，但仍請謹慎使用。
-        </p>
-        {preview ? (
-          <div className="dat-replace">
-            <Field label={`請輸入「${REPLACE_CONFIRM_TEXT}」以確認`}>
-              <Input
-                value={replaceText}
-                onChange={(e) => setReplaceText(e.target.value)}
-                aria-label="取代確認字樣"
-                autoComplete="off"
-              />
-            </Field>
-            <Button
-              variant="danger"
-              disabled={replaceText.trim() !== REPLACE_CONFIRM_TEXT}
-              loading={applyMut.isPending && confirming?.mode === 'replace'}
-              onClick={() => setConfirming({ mode: 'replace' })}
-            >
-              取代並匯入
-            </Button>
-          </div>
-        ) : (
-          <p className="dat-empty">請先在上方選擇匯出檔並完成預覽</p>
-        )}
-      </section>
+      {canReplace && (
+        <section className="dat-card dat-card--danger" aria-labelledby="dat-replace-title">
+          <h2 id="dat-replace-title" className="dat-title">
+            取代全部資料
+          </h2>
+          <p className="dat-desc">
+            先刪除本機所有任務、專案、狀態、自訂欄位、問題回饋、個人清單與工程追蹤資料，再匯入檔案內容（成員帳號保留）。
+            此操作會先自動備份，但仍請謹慎使用。
+          </p>
+          {preview ? (
+            <div className="dat-replace">
+              <Field label={`請輸入「${REPLACE_CONFIRM_TEXT}」以確認`}>
+                <Input
+                  value={replaceText}
+                  onChange={(e) => setReplaceText(e.target.value)}
+                  aria-label="取代確認字樣"
+                  autoComplete="off"
+                />
+              </Field>
+              <Button
+                variant="danger"
+                disabled={replaceText.trim() !== REPLACE_CONFIRM_TEXT}
+                loading={applyMut.isPending && confirming?.mode === 'replace'}
+                onClick={() => setConfirming({ mode: 'replace' })}
+              >
+                取代並匯入
+              </Button>
+            </div>
+          ) : (
+            <p className="dat-empty">請先在上方選擇匯出檔並完成預覽</p>
+          )}
+        </section>
+      )}
 
       {confirming && preview && (
         <Dialog

@@ -11,6 +11,7 @@ from starlette.concurrency import run_in_threadpool
 from ..changes import record_change
 from ..context import Ctx, get_ctx
 from ..errors import HttpError, bad_request, unauthorized
+from ..permissions import capabilities_of
 from ..schemas import ChangePasswordInput, LoginInput
 from ..security import (
     SessionRow,
@@ -57,6 +58,8 @@ def must_change_username(ctx: Ctx, user: Any) -> bool:
 def me(ctx: Ctx, user: Any, session: SessionRow) -> dict[str, Any]:
     return {
         "user": to_public_user(user),
+        # 前端依此顯示 / 隱藏功能（後端仍逐一以 permissions.require 強制）
+        "capabilities": capabilities_of(user),
         "session": session_info(session, ctx.settings),
         "mustChangeUsername": must_change_username(ctx, user),
     }

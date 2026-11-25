@@ -1,8 +1,26 @@
 import type { AdminUser } from '../../../shared/admin.ts';
-import type { UserRole } from '../../../shared/users.ts';
+import { ROLE_RANK, USER_ROLES, type UserRole } from '../../../shared/users.ts';
 import { errorMessage } from '../../lib/api.ts';
 
-export const ROLE_LABELS: Record<UserRole, string> = { admin: '管理員', member: '成員' };
+export { ROLE_LABELS } from '../../../shared/users.ts';
+
+/**
+ * 角色下拉的選項：root 只有具 roles.assign_root（超級管理員）才能選；
+ * 目標為最後一位 root 時不可降級（user / manager 停用）。
+ */
+export function roleChoices(opts: {
+  canAssignRoot: boolean;
+  lockRoot: boolean;
+}): { value: UserRole; disabled: boolean }[] {
+  return USER_ROLES.map((value) => ({
+    value,
+    disabled: value === 'root' ? !opts.canAssignRoot : opts.lockRoot,
+  }));
+}
+
+/** 目前登入者能否操作此成員（root 帳號只有超級管理員能動） */
+export const canManageUser = (target: Pick<AdminUser, 'role'>, canAssignRoot: boolean) =>
+  target.role !== 'root' || canAssignRoot;
 
 /** 頁面提示列的回報函式（成功 / 失敗文案由頁面組合） */
 export type Notify = (tone: 'success' | 'danger', message: string) => void;
@@ -55,12 +73,12 @@ export function lockTooltip(u: AdminUser, now: number): string {
   return `${base}，約 ${minutes} 分鐘後自動解除`;
 }
 
-/** 排序：啟用中在前、停用在後；同組內管理員優先，再依顯示名稱 */
+/** 排序：啟用中在前、停用在後；同組內角色高者優先（root > manager > user），再依顯示名稱 */
 export function sortUsers(list: readonly AdminUser[]): AdminUser[] {
   return [...list].sort(
     (a, b) =>
       Number(b.isActive) - Number(a.isActive) ||
-      Number(b.role === 'admin') - Number(a.role === 'admin') ||
+      ROLE_RANK[b.role] - ROLE_RANK[a.role] ||
       a.displayName.localeCompare(b.displayName, 'zh-Hant') ||
       a.id - b.id,
   );

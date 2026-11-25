@@ -49,16 +49,20 @@ def test_users_statuses_projects():
 
 
 def test_projects_create_update():
-    _t, _clock, _alice, _bob, a, _b, change_count = setup()
+    t, _clock, _alice, _bob, a, _b, change_count = setup()
     before = change_count()
+    # 建立專案：一般成員（user）即可
     created = a.request("POST", "/api/projects", {"name": "新專案", "color": "teal"})
     assert created.status_code == 201
     p = created.json()
     assert p["name"] == "新專案" and p["color"] == "teal" and p["sortOrder"] == 2
     assert a.request("POST", "/api/projects", {"name": "x", "color": "#ff0000"}).status_code == 400
-    patched = a.request("PATCH", f"/api/projects/{p['id']}", {"isArchived": True}).json()
+    # 改名 / 封存：需 projects.manage（manager 以上）
+    assert a.request("PATCH", f"/api/projects/{p['id']}", {"isArchived": True}).status_code == 403
+    m = login_as(t, create_test_user(t.db, role="manager"))
+    patched = m.request("PATCH", f"/api/projects/{p['id']}", {"isArchived": True}).json()
     assert patched["name"] == "新專案" and patched["isArchived"] is True
-    assert a.request("PATCH", "/api/projects/999", {"name": "y"}).status_code == 404
+    assert m.request("PATCH", "/api/projects/999", {"name": "y"}).status_code == 404
     assert change_count() == before + 2
 
 

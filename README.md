@@ -29,7 +29,8 @@ python main.py                             # 啟動，開啟 http://localhost:30
 - **問題回饋**：回饋清單，集中收集成員回報的問題。
 - **個人頁**：我的任務、釘選項目。
 - **工程追蹤**：手動記錄問題與 worktree 狀態；可選擇讓各人電腦自動回報 worktree（見「工程追蹤的使用方式」）。
-- **成員管理**：管理員新增成員（臨時密碼、首次登入強制改密碼）、停用 / 啟用、重設密碼、調整角色、解除登入鎖定。
+- **成員管理**：管理者以上新增成員（臨時密碼、首次登入強制改密碼）、停用 / 啟用、重設密碼、調整角色、解除登入鎖定。
+- **角色與權限**：三層 `root`（超級管理員）> `manager`（管理者）> `user`（成員）；成員管理、狀態 / 專案設定、GitHub 連動、JSON 匯出與合併匯入需 manager 以上，完整 .db 備份下載、匯入「取代全部」與指派 root 僅限 root。完整對照表見 [docs/permissions.md](docs/permissions.md)。
 - **安全**：Argon2 密碼雜湊、session 絕對期限與閒置逾時、登入失敗鎖定、CSRF（Origin 檢查 + SameSite cookie）。
 
 技術：後端 Python 3.11+（FastAPI、uvicorn、標準庫 `sqlite3`，WAL 模式）；前端 React + Vite（TypeScript）。
@@ -64,7 +65,7 @@ npm run dev                   # 後端 uvicorn :3000（自動重載）+ Vite :51
 | `npm run build`                                          | 建置前端到 `dist/web`                                      |
 | `npm run dev:py`                                         | 只啟動後端（`python -m server.app --reload`）              |
 | `python -m server.app`                                   | 以 `.env` 的 `HOST` / `PORT` 啟動後端（正式模式同時提供前端） |
-| `python -m server.cli user-add <帳號> [--password 密碼]` | 從命令列新增一般帳號（`--admin` 為管理員；未給密碼則隨機產生並顯示一次；首次登入須改密碼） |
+| `python -m server.cli user-add <帳號> [--role root\|manager\|user] [--password 密碼]` | 從命令列新增帳號（預設 `user`；`--admin` 為舊寫法，等同 `--role root`；未給密碼則隨機產生並顯示一次；首次登入須改密碼） |
 | `python -m server.cli backup`                            | 備份資料庫（見「備份與還原」）                             |
 
 > `python` 指 `.venv` 內的 Python：Linux / macOS 為 `.venv/bin/python`，Windows 為 `.venv\Scripts\python.exe`（或先啟用 venv）。所有指令都在專案根目錄執行，會讀取該目錄的 `.env`。
@@ -226,12 +227,12 @@ docker compose -f deploy/docker-compose.yml exec app python -m server.cli backup
 
 ## 預設管理員與首次改密碼
 
-- 資料庫中**還沒有任何帳號**時，第一次啟動會建立預設管理員：帳號 **`admin`**、密碼 **`password`**（可用 `.env` 的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 覆寫，留空即用預設值）。主控台會印出一行提示。
+- 資料庫中**還沒有任何帳號**時，第一次啟動會建立預設管理員（角色 `root`，超級管理員）：帳號 **`admin`**、密碼 **`password`**（可用 `.env` 的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 覆寫，留空即用預設值）。主控台會印出一行提示。
 - 以預設管理員第一次登入時，會進入「請設定新帳號與新密碼」頁面，必須**同時設定新帳號與新密碼**才能繼續：
   - 新帳號不可再是 `admin`（或覆寫的 `ADMIN_USERNAME`），須為 3–32 個英文字母、數字或 `. _ -`，且不可與他人重複。
   - 新密碼至少 8 個字元，不可與目前密碼相同，也不可使用 `password`。
   - 完成後原帳號 `admin` 就不存在了，之後請用新帳號登入；其他裝置上的登入會被登出。
-- 其他成員由管理員在「成員管理」頁新增（給臨時密碼，對方首次登入只需改密碼），或在主機上用指令建立一般帳號：
+- 其他成員由管理者以上在「成員管理」頁新增（給臨時密碼，對方首次登入只需改密碼；只有超級管理員能指派超級管理員），或在主機上用指令建立帳號：
 
   ```bash
   cd /opt/tasks-sheets
@@ -241,7 +242,7 @@ docker compose -f deploy/docker-compose.yml exec app python -m server.cli backup
   sudo -u tasks-sheets .venv/bin/python -m server.cli user-add <帳號> --name 顯示名稱
   ```
 
-  預設建立一般成員，加 `--admin` 則為管理員。兩種情況對方首次登入都必須立刻改密碼；帳號已存在時會顯示錯誤並以非零 exit code 結束。完整說明見 `python -m server.cli user-add --help`。
+  預設建立 `user`（成員），以 `--role root|manager|user` 指定角色（`--admin` 為舊寫法，等同 `--role root`，會印出提示）。兩種情況對方首次登入都必須立刻改密碼；帳號已存在時會顯示錯誤並以非零 exit code 結束。完整說明見 `python -m server.cli user-add --help`。
 
 ## 備份與還原
 
@@ -289,7 +290,7 @@ docker compose -f deploy/docker-compose.yml exec app python -m server.cli backup
 
 ## 資料匯出與匯入
 
-管理員在側邊導覽「資料管理」（`/admin/data`）可以：
+管理者以上在側邊導覽「資料管理」（`/admin/data`）可以（其中「下載完整備份」與「取代全部資料」僅超級管理員可見可用）：
 
 - **下載 JSON 匯出檔**：全部業務資料（任務含軟刪除、專案、狀態、自訂欄位、問題回饋、個人清單、工程問題、worktree 紀錄、GitHub 連動設定、成員基本資料），**不含**密碼雜湊、登入 session、登入紀錄與變更流水。關聯以穩定識別碼 uid（成員以帳號）表示，可匯入另一套系統。
 - **下載完整備份（.db）**：資料庫原樣快照（`VACUUM INTO`）。**含密碼雜湊與 session，屬敏感檔**，下載前會再確認；還原仍用上節的 `python -m server.cli restore <檔> --yes`。
@@ -365,7 +366,7 @@ token 權限：fine-grained token 選定相關 repo，**Issues：Read-only** 即
 `APP_ORIGIN` 必須與瀏覽器網址列的來源完全相同（含 `https://`、不含結尾 `/`、非預設連接埠要寫出來）。不確定時可先留空。
 
 **Q：忘記管理員密碼？**
-由另一位管理員在成員管理頁重設；若沒有其他管理員，在主機上 `.venv/bin/python -m server.cli user-add <新帳號> --admin` 建立新管理員再處理。
+由管理者或超級管理員在成員管理頁重設（超級管理員的密碼只有其他超級管理員能重設）；若沒有其他超級管理員，在主機上 `.venv/bin/python -m server.cli user-add <新帳號> --role root` 建立新的超級管理員再處理。
 
 **Q：首次啟動後要用什麼登入？**
 帳號 `admin`、密碼 `password`（若 `.env` 有覆寫 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 則以其為準）。登入後須立即重設帳號與密碼。

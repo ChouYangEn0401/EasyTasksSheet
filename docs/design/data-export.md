@@ -1,7 +1,9 @@
 # 設計規格 — feat/data-export（資料匯出與匯入，輕量）
 
-管理員把整個資料庫帶走，或把另一套系統的資料匯入並處理衝突。頁面 `/admin/data`（側邊導覽「資料管理」，僅 role=admin 顯示；
-非管理員進入顯示「沒有權限」，API 回 403）。只用 core-shell 的 token 與基礎元件（`Button`、`Alert`、`Dialog`、`Field`、`Input`、`Select`、`Badge`）。
+管理者以上把資料帶走，或把另一套系統的資料匯入並處理衝突。頁面 `/admin/data`（側邊導覽「資料管理」，依 capability 顯示；
+權限見 `docs/permissions.md`：JSON 匯出 `data.export_json`、合併匯入 `data.import_merge` 為 manager 以上；
+「下載完整備份」`data.backup_db` 與「取代全部資料」`data.import_replace` 僅 root，其他角色不顯示該按鈕 / 卡片。
+成員（user）進入顯示「沒有權限」，API 回 403）。只用 core-shell 的 token 與基礎元件（`Button`、`Alert`、`Dialog`、`Field`、`Input`、`Select`、`Badge`）。
 
 ## 1. 版面
 
@@ -43,11 +45,11 @@
 - keep_newer：匯入檔 updatedAt 較新才採用，同時間保留本機。
 - 套用：先 `VACUUM INTO` 備份到 `BACKUP_DIR`（`<db>-pre-import-<時間>.db`），再單一 transaction 寫入並 record_change；
   任何錯誤全數回滾。取代模式先刪除全部業務資料（成員保留）。
-- 自動建立的成員：啟用中的一般成員、隨機臨時密碼、首次登入須改密碼。略過時：指派類欄位留空，個人清單（必須有擁有者）略過。
+- 自動建立的成員：啟用中的 user（成員）、隨機臨時密碼、首次登入須改密碼。略過時：指派類欄位留空，個人清單（必須有擁有者）略過。
 
 ## 4. 給實作者的檢查清單
 
-- [ ] 非管理員：導覽無入口、頁面「沒有權限」、API 403
+- [ ] 成員（user）：導覽無入口、頁面「沒有權限」、API 403；管理者（manager）看不到完整備份與取代全部（API 403）
 - [ ] 完整備份下載前一定經過敏感性確認
 - [ ] 取代模式需輸入確認字樣（前後端都檢查）
 - [ ] 臨時密碼只在結果畫面出現，mutation 不留快取（gcTime 0）

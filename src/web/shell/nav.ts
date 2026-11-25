@@ -1,3 +1,4 @@
+import type { Capability } from '../../shared/permissions.ts';
 import type { IconName } from '../ui/Icon.tsx';
 
 export type NavEntry = {
@@ -5,11 +6,12 @@ export type NavEntry = {
   label: string;
   to: string;
   icon: IconName;
-  adminOnly?: boolean;
+  /** 需要的權限（有設定者歸在分隔線下方的「管理」區，無此權限時不顯示） */
+  capability?: Capability;
   children?: { key: string; label: string; to: string }[];
 };
 
-/** 側邊導覽：所有頁面入口（成員管理、資料管理僅 role=admin 顯示） */
+/** 側邊導覽：所有頁面入口（成員管理、資料管理依 capability 顯示，見 docs/permissions.md） */
 export const NAV_ENTRIES: NavEntry[] = [
   { key: 'overview', label: '總覽', to: '/', icon: 'dashboard' },
   {
@@ -26,8 +28,14 @@ export const NAV_ENTRIES: NavEntry[] = [
   { key: 'feedback', label: '問題回饋', to: '/feedback', icon: 'chat' },
   { key: 'me', label: '個人清單', to: '/me', icon: 'user' },
   { key: 'eng', label: '工程追蹤', to: '/eng', icon: 'branch' },
-  { key: 'admin', label: '成員管理', to: '/admin/users', icon: 'usersCog', adminOnly: true },
-  { key: 'admin-data', label: '資料管理', to: '/admin/data', icon: 'inbox', adminOnly: true },
+  { key: 'admin', label: '成員管理', to: '/admin/users', icon: 'usersCog', capability: 'members.manage' },
+  {
+    key: 'admin-data',
+    label: '資料管理',
+    to: '/admin/data',
+    icon: 'inbox',
+    capability: 'data.export_json',
+  },
 ];
 
 export const TASK_VIEWS = ['list', 'kanban', 'gantt'] as const;

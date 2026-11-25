@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { collectErrors, E2E_USERS, loginViaUi } from '../helpers/e2e.ts';
 
 // T7 成員管理：權限、列出 / 搜尋、新增（臨時密碼 → 強制改密碼）、停用使 session 失效、啟用、
-// 重設密碼、編輯、解除登入鎖定、最後一位管理員保護。只操作本 spec 自建的帳號，不影響其他 spec。
+// 重設密碼、編輯、解除登入鎖定、最後一位 root 保護。只操作本 spec 自建的帳號，不影響其他 spec。
 test.describe.configure({ mode: 'serial' });
 
 const stamp = Date.now().toString(36);
@@ -22,7 +22,7 @@ test('一般成員：側邊導覽無入口、頁面顯示沒有權限、API 回 
   await expect(page.getByRole('navigation', { name: '主要導覽' }).getByText('成員管理')).toHaveCount(0);
   await page.goto('/admin/users');
   await expect(page.getByText('沒有權限')).toBeVisible();
-  await expect(page.getByText('此頁面僅限管理員使用')).toBeVisible();
+  await expect(page.getByText('此頁面僅限管理者以上使用')).toBeVisible();
   expect((await page.request.get('/api/admin/users')).status()).toBe(403);
   await page.getByRole('button', { name: '回到總覽' }).click();
   await expect(page).toHaveURL(/\/$/);
@@ -41,7 +41,7 @@ test('管理員：新增 → 首次登入改密碼 → 停用即登出 → 啟�
   const me = row(page, E2E_USERS.admin.username);
   await expect(me).toBeVisible();
   await expect(me.getByText('你', { exact: true })).toBeVisible();
-  await expect(me.locator('td').nth(1)).toHaveText('管理員');
+  await expect(me.locator('td').nth(1)).toHaveText('超級管理員');
   const rowCount = await page.locator('tbody tr').count();
   await expect(page.locator('tbody tr td.adm-col-updated time')).toHaveCount(rowCount);
 
@@ -170,15 +170,22 @@ test('管理員：新增 → 首次登入改密碼 → 停用即登出 → 啟�
   });
   expect(relogin.status()).toBe(200);
 
-  // 最後一位管理員：停用選項停用並說明原因；編輯時「成員」選項停用
+  // 最後一位 root：停用選項停用並說明原因；編輯時「成員」「管理者」選項停用
   const menu = await openMenu(page, E2E_USERS.admin.displayName);
   await expect(menu.getByRole('menuitem', { name: '停用' })).toHaveAttribute('aria-disabled', 'true');
-  await expect(menu.getByText('至少需保留一位管理員')).toBeVisible();
+  await expect(menu.getByText('至少需保留一位超級管理員')).toBeVisible();
   await menu.getByRole('menuitem', { name: '編輯' }).click();
   const editMe = page.getByRole('dialog', { name: '編輯成員' });
-  await expect(editMe.getByText('至少需保留一位管理員')).toBeVisible();
+  await expect(editMe.getByText('至少需保留一位超級管理員')).toBeVisible();
   await editMe.getByRole('button', { name: '角色' }).click();
-  await expect(page.getByRole('option', { name: '成員' })).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.getByRole('option', { name: '成員', exact: true })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
+  await expect(page.getByRole('option', { name: '管理者', exact: true })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
   await page.keyboard.press('Escape');
   await editMe.getByRole('button', { name: '取消' }).click();
   // 後端同樣拒絕

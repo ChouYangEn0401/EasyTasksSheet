@@ -374,7 +374,8 @@ UserItem = create_model(
     __config__=_STRICT,
     username=(UsernameRef, ...),
     displayName=(Annotated[str, StringConstraints(max_length=100)], ...),
-    role=(Literal["admin", "member"], "member"),
+    # admin / member 為 0006_roles 之前的舊匯出檔；匯入建立的成員一律為 user，不沿用此值
+    role=(Literal["root", "manager", "user", "admin", "member"], "user"),
     isActive=(bool, True),
     createdAt=(Optional[_Int], None),
     updatedAt=(Optional[_Int], None),
@@ -884,7 +885,7 @@ def _create_missing_users(w: _Writer, missing: list[dict[str, Any]]) -> list[dic
         temp = generate_temp_password()
         cur = w.conn.execute(
             "INSERT INTO users (username, display_name, password_hash, role, is_active, must_change_password, "
-            "created_at, updated_at) VALUES (?, ?, ?, 'member', 1, 1, ?, ?)",
+            "created_at, updated_at) VALUES (?, ?, ?, 'user', 1, 1, ?, ?)",
             (m["username"], (m["displayName"] or m["username"])[:100], hash_password(temp), w.now, w.now),
         )
         uid = int(cur.lastrowid)  # type: ignore[arg-type]

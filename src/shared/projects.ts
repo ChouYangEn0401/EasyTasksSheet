@@ -43,3 +43,16 @@ export const status = z.object({
   ...timestamps,
 });
 export type Status = z.infer<typeof status>;
+
+/** POST /api/statuses（statuses.manage，manager 以上）；color 預設 gray、category 預設 todo、排在最後 */
+export const statusCreateInput = z.object({
+  name: z.string().trim().min(1).max(100),
+  color: color.optional(),
+  category: statusCategory.optional(),
+  sortOrder: z.number().optional(),
+});
+export type StatusCreateInput = z.infer<typeof statusCreateInput>;
+
+/** PATCH /api/statuses/:id；DELETE 時仍有任務（含已刪除任務）使用則 409 */
+export const statusUpdateInput = statusCreateInput.partial();
+export type StatusUpdateInput = z.infer<typeof statusUpdateInput>;

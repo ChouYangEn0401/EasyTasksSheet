@@ -57,6 +57,24 @@ class ProjectUpdateInput(_Input):
     sortOrder: float = None  # type: ignore[assignment]
 
 
+# ── statuses ──
+StatusCategory = Literal["todo", "doing", "done"]
+
+
+class StatusCreateInput(_Input):
+    name: Name100
+    color: TagColor = None  # type: ignore[assignment]
+    category: StatusCategory = None  # type: ignore[assignment]
+    sortOrder: float = None  # type: ignore[assignment]
+
+
+class StatusUpdateInput(_Input):
+    name: Name100 = None  # type: ignore[assignment]
+    color: TagColor = None  # type: ignore[assignment]
+    category: StatusCategory = None  # type: ignore[assignment]
+    sortOrder: float = None  # type: ignore[assignment]
+
+
 # ── tasks ──
 class TaskUpdateInput(_Input):
     title: Title = None  # type: ignore[assignment]

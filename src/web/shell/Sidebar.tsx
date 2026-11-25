@@ -1,5 +1,5 @@
 import { Link, NavLink, useLocation } from 'react-router';
-import { useCurrentUser } from '../lib/auth.ts';
+import { useCapabilities } from '../lib/permissions.ts';
 import { readStorage } from '../lib/storage.ts';
 import { Button, Icon, Tooltip } from '../ui/index.ts';
 import { LAST_TASK_VIEW_KEY, NAV_ENTRIES, TASK_VIEWS, type NavEntry } from './nav.ts';
@@ -72,10 +72,9 @@ export function Sidebar({
   onToggle: () => void;
   toggleLabel: string;
 }) {
-  const user = useCurrentUser();
-  const isAdmin = user?.role === 'admin';
-  const main = NAV_ENTRIES.filter((e) => !e.adminOnly);
-  const admin = NAV_ENTRIES.filter((e) => e.adminOnly);
+  const caps = useCapabilities();
+  const main = NAV_ENTRIES.filter((e) => !e.capability);
+  const admin = NAV_ENTRIES.filter((e) => e.capability && caps.has(e.capability));
   return (
     <aside className="sidebar" data-collapsed={collapsed || undefined}>
       <div className="sidebar-brand">
@@ -90,7 +89,7 @@ export function Sidebar({
             <NavItemLink key={e.key} entry={e} collapsed={collapsed} />
           ),
         )}
-        {isAdmin && (
+        {admin.length > 0 && (
           <>
             <div className="sidebar-sep" role="separator" />
             {admin.map((e) => (

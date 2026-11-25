@@ -32,9 +32,11 @@ export type SessionInfo = z.infer<typeof sessionInfo>;
 /**
  * GET /api/auth/me、POST /api/auth/login 的回應。
  * mustChangeUsername：預設管理員首次登入，須同時設定新帳號與新密碼。
+ * capabilities：登入者具備的權限（src/shared/permissions.ts），前端據此顯示 / 隱藏功能。
  */
 export const meResponse = z.object({
   user: publicUser,
+  capabilities: z.array(z.string()),
   session: sessionInfo,
   mustChangeUsername: z.boolean(),
 });

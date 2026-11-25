@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { QuickAdd } from '../features/tasks/QuickAdd.tsx';
 import { logout, useCurrentUser } from '../lib/auth.ts';
+import { ROLE_BADGE_TONES, ROLE_LABELS } from '../lib/permissions.ts';
 import { Avatar, Badge, Button, Icon, Menu } from '../ui/index.ts';
 import { ChangePasswordDialog } from './ChangePasswordDialog.tsx';
 
@@ -54,7 +55,9 @@ export function Header({
                 <div className="user-menu-info">
                   <span className="flex items-center gap-2">
                     <span className="truncate font-medium">{user.displayName}</span>
-                    {user.role === 'admin' && <Badge tone="accent">管理員</Badge>}
+                    {user.role !== 'user' && (
+                      <Badge tone={ROLE_BADGE_TONES[user.role]}>{ROLE_LABELS[user.role]}</Badge>
+                    )}
                   </span>
                   <span className="text-xs text-tertiary">@{user.username}</span>
                 </div>
