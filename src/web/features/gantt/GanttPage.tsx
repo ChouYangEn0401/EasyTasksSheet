@@ -9,31 +9,33 @@ import {
 import { useSearchParams } from 'react-router';
 import type { Task } from '../../../shared/tasks.ts';
 import { errorMessage } from '../../lib/api.ts';
-import { statusStyle, statusTone } from '../../lib/colors.ts';
+import { statusTone } from '../../lib/colors.ts';
 import { hasActiveFilters } from '../../lib/filters.ts';
 import { todayString } from '../../lib/format.ts';
 import { useStatusesById, useTasks, useUpdateTask, useUsers, useUsersById } from '../../lib/hooks.ts';
-import { openTask } from '../../lib/openTask.ts';
+import { useCan } from '../../lib/permissions.ts';
 import { isEditableTarget } from '../../lib/shortcuts.ts';
 import { readStorage, writeStorage } from '../../lib/storage.ts';
+import { newUndoGroup } from '../../lib/taskUndo.ts';
+import { toast, truncate } from '../../lib/toast.ts';
+import { performUndo, undoManager } from '../../lib/undo.ts';
 import { useTaskFilters } from '../../lib/useTaskFilters.ts';
 import { NoFilterResults } from '../../shell/FilterBar.tsx';
 import { ViewTabsActions } from '../../shell/ViewTabs.tsx';
-import {
-  Alert,
-  Avatar,
-  Badge,
-  Button,
-  EmptyState,
-  ErrorState,
-  Icon,
-  Select,
-  Skeleton,
-  UpdatedAt,
-} from '../../ui/index.ts';
+import { Alert, Badge, Button, EmptyState, ErrorState, Icon, Select, Skeleton } from '../../ui/index.ts';
 import { DatePopover, type DatePopoverState } from './DatePopover.tsx';
-import { Gantt, type DatePatch, type GanttHandle } from './Gantt.tsx';
+import { Gantt, type GanttHandle } from './Gantt.tsx';
 import { GROUP_OPTIONS, parseGroupBy, type GroupBy } from './grouping.ts';
+import {
+  formatScheduleRange,
+  scheduleBefore,
+  scheduleFieldNote,
+  schedulePatch,
+  scheduleUndoLabel,
+  type ScheduleTarget,
+} from './scheduleDrop.ts';
+import { ScheduleDnd, UnscheduledRow } from './ScheduleDnd.tsx';
+import { useScheduleDnd } from './useScheduleDnd.ts';
 import { autoScale, isScheduled, parseScale, SCALE_LABEL, SCALES, type Scale } from './timeline.ts';
 import './gantt.css';
 
@@ -41,8 +43,11 @@ const UNSCHEDULED_KEY = 'gantt.unscheduled.collapsed';
 const SCALE_KEY = 'gantt.scale';
 const ERROR_HIDE_MS = 8000;
 const FLASH_MS = 1500;
+const SCHEDULED_TOAST_MS = 5000;
 
-type SaveError = { task: Task; patch: DatePatch; message: string };
+/** 樂觀更新的覆寫欄位（拖曳改日期 / 拖曳排程） */
+type TaskOverride = Partial<Pick<Task, 'startDate' | 'dueDate' | 'assigneeId' | 'projectId'>>;
+type SaveError = { task: Task; patch: TaskOverride; message: string };
 
 /** Gantt 檢視（/tasks/gantt）：分組、日 / 週 / 月刻度、拖曳改日期、未排程區 */
 export function GanttPage() {
@@ -71,10 +76,13 @@ export function GanttPage() {
   const ganttRef = useRef<GanttHandle>(null);
 
   // 樂觀更新：送出期間以覆寫值顯示新日期
-  const [overrides, setOverrides] = useState<Map<number, DatePatch>>(() => new Map());
+  const [overrides, setOverrides] = useState<Map<number, TaskOverride>>(() => new Map());
   const [saveError, setSaveError] = useState<SaveError | null>(null);
   const [popover, setPopover] = useState<DatePopoverState | null>(null);
   const pendingScrollId = useRef<number | null>(null);
+  /** 鍵盤拖曳排程放下後，焦點移到新長條所在列 */
+  const pendingFocus = useRef(false);
+  const canEdit = useCan('tasks.edit');
   const [unscheduledCollapsed, setUnscheduledCollapsed] = useState(
     () => readStorage(UNSCHEDULED_KEY) === '1',
   );
@@ -97,6 +105,8 @@ export function GanttPage() {
 
   const scheduled = useMemo(() => tasks.filter(isScheduled), [tasks]);
   const unscheduled = useMemo(() => tasks.filter((t) => !isScheduled(t)), [tasks]);
+  // 未排程任務可拖到時間軸排程：需 tasks.edit，且時間軸已顯示（全部未排程時只能用「排入日期」）
+  const dragEnabled = canEdit && scheduled.length > 0;
   const unscheduledByAssignee = useMemo(() => {
     const m = new Map<number, number>();
     for (const t of unscheduled)
@@ -159,7 +169,7 @@ export function GanttPage() {
   }, [users.data, filters.assignee]);
 
   const changeDates = useCallback(
-    (task: Task, patch: DatePatch) => {
+    (task: Task, patch: TaskOverride) => {
       setSaveError(null);
       setOverrides((m) => new Map(m).set(task.id, { ...m.get(task.id), ...patch }));
       update.mutate(
@@ -184,15 +194,67 @@ export function GanttPage() {
     return () => window.clearTimeout(t);
   }, [saveError]);
 
-  // 排入日期後捲到該長條
+  // 排入日期 / 拖曳排程後捲到該長條並標示 1.5 秒
   useEffect(() => {
     const id = pendingScrollId.current;
     if (id != null && scheduled.some((t) => t.id === id)) {
       pendingScrollId.current = null;
       ganttRef.current?.scrollToTask(id);
       ganttRef.current?.flashTask(id);
+      if (pendingFocus.current) ganttRef.current?.focusTask(id);
+      pendingFocus.current = false;
     }
   }, [scheduled]);
+
+  /** 未排程任務拖到時間軸放下：樂觀更新 + PATCH（日期與依分組的欄位），一次放下 = 一筆復原紀錄 */
+  const scheduleDrop = useCallback(
+    (task: Task, target: ScheduleTarget, keyboard: boolean) => {
+      const patch = schedulePatch(target);
+      const title = truncate(task.title);
+      const label = scheduleUndoLabel(title, target.start, target.end);
+      const note = scheduleFieldNote(target);
+      pendingScrollId.current = task.id;
+      pendingFocus.current = keyboard;
+      ganttRef.current?.expandGroup(target.groupKey);
+      setSaveError(null);
+      setOverrides((m) => new Map(m).set(task.id, { ...m.get(task.id), ...patch }));
+      // mutateAsync：連續放下多筆時每一筆的成功 / 失敗處理都會執行（mutate 的回呼只保留最後一次）
+      update
+        .mutateAsync({
+          id: task.id,
+          ...patch,
+          undo: { group: newUndoGroup('gantt'), label, before: scheduleBefore(task) },
+        })
+        .then(
+          () =>
+            toast({
+              tone: 'success',
+              title: `已排程『${title}』：${formatScheduleRange(target.start, target.end)}`,
+              description: note ?? undefined,
+              action: {
+                label: '復原',
+                onClick: () => {
+                  if (undoManager.getSnapshot().nextUndoLabel === label) void performUndo('undo');
+                },
+              },
+              duration: SCHEDULED_TOAST_MS,
+            }),
+          (err: unknown) => {
+            if (pendingScrollId.current === task.id) pendingScrollId.current = null;
+            setSaveError({ task, patch, message: errorMessage(err) });
+          },
+        )
+        .finally(() =>
+          setOverrides((m) => {
+            const next = new Map(m);
+            next.delete(task.id);
+            return next;
+          }),
+        );
+    },
+    [update],
+  );
+  const schedDnd = useScheduleDnd({ ganttRef, onDrop: scheduleDrop });
 
   const openPopover = (task: Task, anchor: HTMLElement | null) => {
     if (!anchor) return;
@@ -309,104 +371,78 @@ export function GanttPage() {
         </Alert>
       )}
 
-      <div className="gantt-stack">
-        {scheduled.length === 0 ? (
-          <EmptyState
-            icon="gantt"
-            title="尚無已排程的任務"
-            description="設定開始日與到期日後會顯示在這裡"
-            action={
-              <Button variant="secondary" onClick={revealUnscheduled}>
-                查看未排程（{unscheduled.length}）
-              </Button>
-            }
-          />
-        ) : (
-          <Gantt
-            tasks={scheduled}
-            groupBy={groupBy}
-            scale={scale}
-            today={today}
-            members={members}
-            onChangeDates={changeDates}
-            onRequestDates={requestDates}
-            onScaleChange={changeScale}
-            handleRef={ganttRef}
-            unscheduledCountByAssignee={unscheduledByAssignee}
-            onShowUnscheduled={showUnscheduledOf}
-          />
-        )}
+      <ScheduleDnd dnd={schedDnd}>
+        <div className="gantt-stack">
+          {scheduled.length === 0 ? (
+            <EmptyState
+              icon="gantt"
+              title="尚無已排程的任務"
+              description="設定開始日與到期日後會顯示在這裡"
+              action={
+                <Button variant="secondary" onClick={revealUnscheduled}>
+                  查看未排程（{unscheduled.length}）
+                </Button>
+              }
+            />
+          ) : (
+            <Gantt
+              tasks={scheduled}
+              groupBy={groupBy}
+              scale={scale}
+              today={today}
+              members={members}
+              onChangeDates={changeDates}
+              onRequestDates={requestDates}
+              onScaleChange={changeScale}
+              handleRef={ganttRef}
+              unscheduledCountByAssignee={unscheduledByAssignee}
+              onShowUnscheduled={showUnscheduledOf}
+              scheduleDrag={schedDnd.drag}
+              onScheduleTarget={schedDnd.onScheduleTarget}
+            />
+          )}
 
-        {unscheduled.length > 0 && (
-          <section className="gantt-unscheduled" aria-label="未排程">
-            <div className="gantt-unscheduled-head">
-              <button
-                ref={unscheduledHeadRef}
-                type="button"
-                className="gantt-unscheduled-toggle"
-                aria-expanded={!unscheduledCollapsed}
-                onClick={() => setUnscheduledOpen(unscheduledCollapsed)}
-              >
-                <Icon name={unscheduledCollapsed ? 'chevronRight' : 'chevronDown'} size={16} />
-                未排程
-                <Badge count>{unscheduled.length}</Badge>
-              </button>
-              <span className="gantt-unscheduled-desc">尚未設定日期，不會出現在時間軸</span>
-            </div>
-            {!unscheduledCollapsed && (
-              <div className="gantt-unscheduled-list">
-                {unscheduled.map((t) => {
-                  const status = statusesById.get(t.statusId);
-                  const name =
-                    t.assigneeId == null ? '未指派' : (usersById.get(t.assigneeId)?.displayName ?? '—');
-                  return (
-                    <div
-                      key={t.id}
-                      className={`gantt-unscheduled-row${
-                        flashAssignee != null && flashAssignee === t.assigneeId ? ' is-flash' : ''
-                      }`}
-                      data-testid={`unscheduled-${t.id}`}
-                      data-assignee={t.assigneeId ?? 'none'}
-                    >
-                      <div className="gantt-unscheduled-main">
-                        <span
-                          className="gantt-status-dot"
-                          style={statusStyle(status ? statusTone(status) : 'todo')}
-                          title={status?.name}
-                        />
-                        <button
-                          type="button"
-                          className="gantt-unscheduled-title"
-                          onClick={() => openTask(t.id)}
-                          title={t.title}
-                        >
-                          {t.title}
-                        </button>
-                      </div>
-                      <div className="gantt-unscheduled-rest">
-                        <span className="gantt-unscheduled-assignee">
-                          <Avatar userId={t.assigneeId} size="sm" />
-                          <span className="gantt-unscheduled-assignee-name">{name}</span>
-                        </span>
-                        <UpdatedAt at={t.updatedAt} by={t.updatedBy} prefix="更新於" />
-                        <Button
-                          className="gantt-unscheduled-action"
-                          variant="secondary"
-                          size="sm"
-                          onClick={(e) => openPopover(t, e.currentTarget)}
-                          aria-haspopup="dialog"
-                        >
-                          排入日期
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
+          {unscheduled.length > 0 && (
+            <section className="gantt-unscheduled" aria-label="未排程">
+              <div className="gantt-unscheduled-head">
+                <button
+                  ref={unscheduledHeadRef}
+                  type="button"
+                  className="gantt-unscheduled-toggle"
+                  aria-expanded={!unscheduledCollapsed}
+                  onClick={() => setUnscheduledOpen(unscheduledCollapsed)}
+                >
+                  <Icon name={unscheduledCollapsed ? 'chevronRight' : 'chevronDown'} size={16} />
+                  未排程
+                  <Badge count>{unscheduled.length}</Badge>
+                </button>
+                <span className="gantt-unscheduled-desc">尚未設定日期，不會出現在時間軸</span>
               </div>
-            )}
-          </section>
-        )}
-      </div>
+              {!unscheduledCollapsed && (
+                <div className="gantt-unscheduled-list">
+                  {unscheduled.map((t) => {
+                    const status = statusesById.get(t.statusId);
+                    const name =
+                      t.assigneeId == null ? '未指派' : (usersById.get(t.assigneeId)?.displayName ?? '—');
+                    return (
+                      <UnscheduledRow
+                        key={t.id}
+                        task={t}
+                        tone={status ? statusTone(status) : 'todo'}
+                        statusName={status?.name}
+                        assigneeName={name}
+                        flash={flashAssignee != null && flashAssignee === t.assigneeId}
+                        draggable={dragEnabled}
+                        onRequestDates={(anchor) => openPopover(t, anchor)}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+        </div>
+      </ScheduleDnd>
 
       {popover && (
         <DatePopover

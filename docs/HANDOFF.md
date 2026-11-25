@@ -30,6 +30,8 @@ TasksSheets 是給實驗室內部用的多人任務 / 專案管理網站。本�
 | 任務 `/tasks/list` `kanban` `gantt`   | 清單（就地編輯、快速新增、自訂欄位、詳情抽屜）、看板（拖曳改狀態與排序）、甘特圖；可直接管理狀態與專案；抽屜內可建立相關任務（`task_relations`，0013）與複製任務（`features/task_relations.py`，規格見 [design/task-list.md §13](design/task-list.md)） |
 | 任務 `/tasks/list` `kanban` `gantt`   | 清單（就地編輯、快速新增、自訂欄位、詳情抽屜含待辦清單 checklist（`task_checklist_items` 0014，列表 / 看板顯示 ☑ 3/5 徽章，[design/task-list.md §16](design/task-list.md)）、拖曳列換群組 / 排序）、看板（拖曳改狀態與排序）、甘特圖；可直接管理狀態與專案。詳情抽屜下方有討論區（討論串、@提及、未讀徽章）與描述鎖定（[task-discussion.md](design/task-discussion.md)） |
 | 延遲鏈 `/tasks/delay-link`          | 任務依賴（前置任務 → 等待中的任務，禁止循環）、看板琥珀色「等待中 · 預計延後 N 天」、整條依賴鏈與最長延遲路徑（[design/delay-link.md](design/delay-link.md)） |
+| 任務 `/tasks/list` `kanban` `gantt`   | 清單（就地編輯、快速新增、自訂欄位、詳情抽屜、拖曳列換群組 / 排序）、看板（拖曳改狀態與排序）、甘特圖；可直接管理狀態與專案               |
+| 甘特圖拖曳排程 `/tasks/gantt`         | 未排程任務拖到時間軸即排程（預設天數依預估工時、拖到別人的列同時改指派、鍵盤拖曳、可復原；純前端，沿用 `PATCH /api/tasks/:id`；規格見 [design/gantt-overview.md §A7](design/gantt-overview.md)） |
 | 問題回饋 `/feedback`                  | 回饋 / 問題清單與月曆排程（拖曳排程）                                                                                |
 | 個人清單 `/me`                        | 我的任務、釘選、自由待辦（含延後 / 取消等小狀態）；「產生匯報報告」依日期區間彙整完成事項（`personal_report.py`、`personal_items.done_at` 0020，規格見 [design/personal.md §10](design/personal.md)） |
 | 個人設定 `/settings`                  | 改顯示名稱、帳號、密碼（改密碼後其他裝置登出）                                                                       |

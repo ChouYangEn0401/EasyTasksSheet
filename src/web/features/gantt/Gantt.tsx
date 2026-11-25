@@ -23,9 +23,24 @@ import { readStorage, writeStorage } from '../../lib/storage.ts';
 import { Avatar, Badge, ColorDot, Icon, Tooltip } from '../../ui/index.ts';
 import { buildGroups, groupSpan, type GanttGroup, type GroupBy } from './grouping.ts';
 import {
+  dayAtClientX,
+  defaultScheduleDays,
+  formatScheduleBubble,
+  groupFields,
+  growExtent,
+  moveKeyboardTarget,
+  ownGroupKey,
+  rangeWithExtent,
+  rowAtClientY,
+  scheduleFieldNote,
+  spanFrom,
+  type Extent,
+  type KeyboardMove,
+  type ScheduleTarget,
+} from './scheduleDrop.ts';
+import {
   applyDrag,
   barGeometry,
-  computeRange,
   DAY_WIDTH,
   datePatch,
   formatDateRange,
@@ -56,7 +71,21 @@ export type GanttHandle = {
   scrollToTask: (id: number) => void;
   /** 該任務列以 accent-soft 底標示 1.5 秒 */
   flashTask: (id: number) => void;
+  /** 聚焦該任務列（鍵盤拖曳放下後） */
+  focusTask: (id: number) => void;
+  /** 展開群組（放到收合的群組列時） */
+  expandGroup: (key: string) => void;
+  /* ── 未排程任務拖曳排程（§A7）── */
+  /** 拿起時呼叫：鍵盤拖曳以今天 + 自己的分組列為起點；指標拖曳等指標進入時間軸才有落點 */
+  scheduleBegin: (task: Task, keyboard: boolean) => void;
+  /** 指標移動（client 座標） */
+  schedulePointer: (x: number, y: number) => void;
+  /** 鍵盤拖曳：←→ 日期、↑↓ 分組列 */
+  scheduleKey: (key: KeyboardMove, shift: boolean) => void;
 };
+
+/** 未排程任務拖曳中（由 GanttPage 的 DndContext 提供） */
+export type ScheduleDrag = { task: Task; keyboard: boolean };
 
 export type GanttProps = {
   tasks: Task[];
@@ -80,11 +109,28 @@ export type GanttProps = {
   unscheduledCountByAssignee?: Map<number, number>;
   /** 點空分組摘要列中的成員：展開未排程區並標示該成員 */
   onShowUnscheduled?: (assigneeId: number) => void;
+  /** 未排程任務拖曳排程中（compact 忽略） */
+  scheduleDrag?: ScheduleDrag | null;
+  /** 拖曳排程的落點變動（null = 不在時間軸上，放開即取消） */
+  onScheduleTarget?: (target: ScheduleTarget | null) => void;
 };
 
 type Row =
-  | { type: 'group'; key: string; group: GanttGroup<Task>; collapsed: boolean }
-  | { type: 'task'; key: string; task: Task; grouped: boolean };
+  | { type: 'group'; key: string; group: GanttGroup<Task>; collapsed: boolean; placeholder?: boolean }
+  | { type: 'task'; key: string; task: Task; grouped: boolean; groupKey: string };
+
+type SchedPos = { day: number; rowKey: string };
+
+const ALL_GROUP = { kind: 'all', refId: null, label: '全部任務' } as const;
+
+/** 左欄（sticky）寬 */
+const leftWidthOf = (el: HTMLElement | null) =>
+  (el?.querySelector('.gantt-head-corner') as HTMLElement | null)?.offsetWidth ?? 0;
+
+/** 拖曳排程時在邊緣區停留多久才開始自動捲動 */
+const EDGE_DWELL_MS = 250;
+/** 拖曳排程時貼近邊緣的自動捲動速度（px / frame） */
+const edgeSpeed = (depth: number) => Math.min(24, 4 + Math.max(0, depth) * 0.5);
 
 type DragState = {
   taskId: number;
@@ -132,8 +178,13 @@ export function Gantt({
   ariaLabel = '甘特圖',
   unscheduledCountByAssignee,
   onShowUnscheduled,
+  scheduleDrag,
+  onScheduleTarget,
 }: GanttProps) {
   const editable = !compact && !!onChangeDates;
+  const schedTask = editable && scheduleDrag ? scheduleDrag.task : null;
+  const schedKeyboard = !!schedTask && !!scheduleDrag?.keyboard;
+  const schedOwnKey = schedTask ? ownGroupKey(schedTask, groupBy) : null;
   const statusesById = useStatusesById();
   const usersById = useUsersById();
   const projects = useProjects().data;
@@ -168,9 +219,11 @@ export function Gantt({
   const [viewW, setViewW] = useState(0);
   const dw = DAY_WIDTH[scale];
   const minDays = viewW > 0 ? Math.ceil(viewW / dw) : 0;
+  // 拖曳排程經過的日期範圍（只增不減，放下後保留 → 範圍重算穩定不跳動）
+  const [extent, setExtent] = useState<Extent | null>(null);
   const computedRange = useMemo(
-    () => computeRange(tasks, today, scale, minDays),
-    [tasks, today, scale, minDays],
+    () => rangeWithExtent(tasks, today, scale, minDays, extent),
+    [tasks, today, scale, minDays, extent],
   );
   const [dragRange, setDragRange] = useState<Range | null>(null);
   const range = dragRange ?? computedRange;
@@ -195,27 +248,59 @@ export function Gantt({
       }),
     [tasks, groupBy, members, projects, usersById],
   );
-  // 沒有已排程任務的成員不佔列，集中到摘要列
+  // 沒有已排程任務的成員不佔列，集中到摘要列（拖曳排程中，被拖任務自己的分組改為暫時的空白列）
   const emptyGroups = useMemo(
-    () => groups.filter((g) => g.kind === 'user' && g.tasks.length === 0),
-    [groups],
+    () => groups.filter((g) => g.kind === 'user' && g.tasks.length === 0 && g.key !== schedOwnKey),
+    [groups, schedOwnKey],
   );
 
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
+    let ownShown = false;
     for (const g of groups) {
       if (g.kind === 'all') {
-        for (const t of g.tasks) out.push({ type: 'task', key: `t${t.id}`, task: t, grouped: false });
+        for (const t of g.tasks)
+          out.push({ type: 'task', key: `t${t.id}`, task: t, grouped: false, groupKey: g.key });
         continue;
       }
-      if (g.tasks.length === 0) continue;
+      if (g.key === schedOwnKey) ownShown = true;
+      if (g.tasks.length === 0) {
+        if (g.key === schedOwnKey)
+          out.push({ type: 'group', key: g.key, group: g, collapsed: false, placeholder: true });
+        continue;
+      }
       const isCollapsed = collapsed.has(g.key);
       out.push({ type: 'group', key: g.key, group: g, collapsed: isCollapsed });
       if (!isCollapsed)
-        for (const t of g.tasks) out.push({ type: 'task', key: `t${t.id}`, task: t, grouped: true });
+        for (const t of g.tasks)
+          out.push({ type: 'task', key: `t${t.id}`, task: t, grouped: true, groupKey: g.key });
+    }
+    // 拖曳排程：被拖任務自己的分組（負責人 / 專案）尚無已排程任務時，暫時補一列空白列，放這裡不改負責人 / 專案
+    if (schedTask && schedOwnKey && groupBy !== 'none' && !ownShown) {
+      const group: GanttGroup<Task> =
+        groupBy === 'project'
+          ? {
+              key: schedOwnKey,
+              kind: 'project',
+              label:
+                projects?.find((p) => p.id === schedTask.projectId)?.name ?? `專案 #${schedTask.projectId}`,
+              refId: schedTask.projectId,
+              color: projects?.find((p) => p.id === schedTask.projectId)?.color,
+              tasks: [],
+            }
+          : schedTask.assigneeId == null
+            ? { key: schedOwnKey, kind: 'unassigned', label: '未指派', refId: null, tasks: [] }
+            : {
+                key: schedOwnKey,
+                kind: 'user',
+                label: usersById.get(schedTask.assigneeId)?.displayName ?? `成員 #${schedTask.assigneeId}`,
+                refId: schedTask.assigneeId,
+                tasks: [],
+              };
+      out.push({ type: 'group', key: schedOwnKey, group, collapsed: false, placeholder: true });
     }
     return out;
-  }, [groups, collapsed]);
+  }, [groups, collapsed, schedTask, schedOwnKey, groupBy, projects, usersById]);
 
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const focusIndex = Math.max(
@@ -228,8 +313,7 @@ export function Gantt({
   const [scrolledX, setScrolledX] = useState(false);
   const [edge, setEdge] = useState<'left' | 'right' | null>(null);
 
-  const leftWidth = () =>
-    (scrollRef.current?.querySelector('.gantt-head-corner') as HTMLElement | null)?.offsetWidth ?? 0;
+  const leftWidth = () => leftWidthOf(scrollRef.current);
   const visibleWidth = useCallback(() => {
     const el = scrollRef.current;
     return el ? Math.max(0, el.clientWidth - leftWidth()) : 0;
@@ -309,6 +393,145 @@ export function Gantt({
   }, []);
   useEffect(() => () => window.clearTimeout(flashTimer.current), []);
 
+  /* ── 未排程任務拖曳排程（§A7） ─────────────── */
+  const [schedPos, setSchedPos] = useState<SchedPos | null>(null);
+  const activeSched = schedTask ? schedPos : null;
+  const schedPointer = useRef<{ x: number; y: number } | null>(null);
+  const schedDays = useRef(1);
+  // 事件處理器 / rAF 中讀取最新的範圍與列（不放進依賴，避免重建監聽）
+  const live = useRef({ range, dw, rows });
+  useLayoutEffect(() => {
+    live.current = { range, dw, rows };
+  });
+
+  /** 指標 → 落點（日 + 列）；不在時間軸列區（表頭、左欄、容器外、列以外的空白）回傳 null */
+  const hitSchedule = useCallback((x: number, y: number): SchedPos | null => {
+    const el = scrollRef.current;
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const headBottom =
+      (el.querySelector('.gantt-head') as HTMLElement | null)?.getBoundingClientRect().bottom ?? r.top;
+    if (y < Math.max(r.top, headBottom) || y >= r.top + el.clientHeight) return null;
+    const { range: rg, dw: w } = live.current;
+    const day = dayAtClientX(x, {
+      left: r.left + el.clientLeft,
+      leftWidth: leftWidthOf(el),
+      clientWidth: el.clientWidth,
+      scrollLeft: el.scrollLeft,
+      rangeStart: rg.start,
+      dw: w,
+    });
+    if (day == null) return null;
+    const rowEls = [...el.querySelectorAll<HTMLElement>('.gantt-body > .gantt-row')];
+    const i = rowAtClientY(
+      y,
+      rowEls.map((n) => {
+        const b = n.getBoundingClientRect();
+        return { top: b.top, bottom: b.bottom };
+      }),
+    );
+    const rowKey = i >= 0 ? rowEls[i]!.dataset.rowKey : undefined;
+    return rowKey ? { day, rowKey } : null;
+  }, []);
+
+  const schedPosRef = useRef<SchedPos | null>(null);
+  const setSched = useCallback((next: SchedPos | null) => {
+    schedPosRef.current = next;
+    setSchedPos((prev) => (prev?.day === next?.day && prev?.rowKey === next?.rowKey ? prev : next));
+    // 落點超出目前範圍時延伸（沿用 computeRange 的邊界規則）
+    if (next) setExtent((e) => growExtent(e, spanFrom(next.day, schedDays.current)));
+  }, []);
+
+  const recomputeSchedule = useCallback(() => {
+    const p = schedPointer.current;
+    setSched(p ? hitSchedule(p.x, p.y) : null);
+  }, [hitSchedule, setSched]);
+
+  /** 鍵盤拖曳可停的列：有分組時為各群組列，不分組時為各任務列 */
+  const scheduleAnchors = () =>
+    live.current.rows
+      .filter((r) => (groupBy === 'none' ? r.type === 'task' : r.type === 'group'))
+      .map((r) => r.key);
+
+  const pointerScheduling = !!schedTask && !schedKeyboard;
+  // 指標拖曳：貼近時間軸邊緣時自動捲動；已到範圍盡頭則延伸範圍
+  useEffect(() => {
+    if (!pointerScheduling) return;
+    let raf = 0;
+    /** 指標進入邊緣區的時間：停留超過 EDGE_DWELL_MS 才捲動（只是路過不捲） */
+    let edgeSince: number | null = null;
+    const tick = (now: number) => {
+      raf = window.requestAnimationFrame(tick);
+      const el = scrollRef.current;
+      const p = schedPointer.current;
+      if (!el || !p) return;
+      const r = el.getBoundingClientRect();
+      const timeLeft = r.left + leftWidthOf(el);
+      const right = r.left + el.clientWidth;
+      const bottom = r.top + el.clientHeight;
+      const headH = (el.querySelector('.gantt-head') as HTMLElement | null)?.offsetHeight ?? 0;
+      let dx = 0;
+      let dy = 0;
+      // 邊緣區只算時間軸可視區內側（從左欄 / 未排程區拖進來時不會誤觸）
+      if (p.x >= timeLeft && p.x <= right && p.y >= r.top + headH && p.y <= bottom) {
+        if (p.x > right - EDGE) dx = edgeSpeed(p.x - (right - EDGE));
+        else if (p.x < timeLeft + EDGE) dx = -edgeSpeed(timeLeft + EDGE - p.x);
+        if (p.y < r.top + headH + EDGE) dy = -edgeSpeed(r.top + headH + EDGE - p.y);
+        else if (p.y > bottom - EDGE) dy = edgeSpeed(p.y - (bottom - EDGE));
+      }
+      if (!dx && !dy) {
+        edgeSince = null;
+        return;
+      }
+      edgeSince ??= now;
+      if (now - edgeSince < EDGE_DWELL_MS) return;
+      const rg = live.current.range;
+      if (dx > 0 && el.scrollLeft >= el.scrollWidth - el.clientWidth - 1)
+        setExtent((e) => growExtent(e, { start: rg.end, end: rg.end }));
+      else if (dx < 0 && el.scrollLeft <= 0)
+        setExtent((e) => growExtent(e, { start: rg.start - 1, end: rg.start - 1 }));
+      else el.scrollLeft += dx;
+      if (dy) el.scrollTop += dy;
+      recomputeSchedule();
+    };
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [pointerScheduling, recomputeSchedule]);
+
+  // 鍵盤拖曳：落點保持在可視範圍內（在範圍效果之後執行）
+  useLayoutEffect(() => {
+    if (!schedKeyboard || !activeSched) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const x = (activeSched.day - range.start) * dw;
+    const vis = visibleWidth();
+    if (x < el.scrollLeft || x + dw > el.scrollLeft + vis) el.scrollLeft = Math.max(0, x - vis / 3);
+    el.querySelector(`[data-row-key="${activeSched.rowKey}"]`)?.scrollIntoView?.({ block: 'nearest' });
+  }, [schedKeyboard, activeSched, range.start, dw, visibleWidth]);
+
+  const groupByKey = useMemo(() => {
+    const m = new Map<string, GanttGroup<Task>>();
+    for (const r of rows) if (r.type === 'group') m.set(r.key, r.group);
+    return m;
+  }, [rows]);
+
+  /** 目前落點 → 起訖與分組欄位 */
+  const schedInfo = useMemo<ScheduleTarget | null>(() => {
+    if (!schedTask || !activeSched) return null;
+    const row = rows.find((r) => r.key === activeSched.rowKey);
+    if (!row) return null;
+    const groupKey = row.type === 'group' ? row.key : row.groupKey;
+    const g = groupKey === 'all' ? ALL_GROUP : groupByKey.get(groupKey);
+    if (!g) return null;
+    const group = { kind: g.kind, refId: g.refId, label: g.label };
+    const span = spanFrom(activeSched.day, defaultScheduleDays(schedTask.estimateHours));
+    return { ...span, groupKey, group, fields: groupFields(group, schedTask) };
+  }, [schedTask, activeSched, rows, groupByKey]);
+
+  useEffect(() => {
+    onScheduleTarget?.(schedInfo);
+  }, [schedInfo, onScheduleTarget]);
+
   useImperativeHandle(
     handleRef,
     () => ({
@@ -323,8 +546,46 @@ export function Gantt({
       },
       scrollToTask,
       flashTask,
+      focusTask: (id) => {
+        const el = scrollRef.current?.querySelector<HTMLElement>(`[data-row-key="t${id}"]`);
+        if (!el) return;
+        setFocusKey(`t${id}`);
+        el.focus({ preventScroll: true });
+      },
+      expandGroup: (key) => {
+        if (collapsed.has(key)) toggleGroup(key);
+      },
+      scheduleBegin: (task, keyboard) => {
+        schedPointer.current = null;
+        schedDays.current = defaultScheduleDays(task.estimateHours);
+        if (!keyboard) return setSched(null);
+        const own = ownGroupKey(task, groupBy);
+        const first = live.current.rows.find((r) => r.type === 'task')?.key;
+        const rowKey = groupBy === 'none' ? first : own;
+        setSched(rowKey ? { day: todayDay, rowKey } : null);
+      },
+      schedulePointer: (x, y) => {
+        schedPointer.current = { x, y };
+        recomputeSchedule();
+      },
+      scheduleKey: (key, shift) => {
+        const prev = schedPosRef.current;
+        if (prev) setSched(moveKeyboardTarget(prev, key, scheduleAnchors(), shift));
+      },
     }),
-    [scrollToToday, scrollToTask, visibleWidth, flashTask],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- scheduleAnchors 只讀 live ref
+    [
+      scrollToToday,
+      scrollToTask,
+      visibleWidth,
+      flashTask,
+      collapsed,
+      toggleGroup,
+      groupBy,
+      todayDay,
+      setSched,
+      recomputeSchedule,
+    ],
   );
 
   /* ── 拖曳 ─────────────────────────────── */
@@ -559,12 +820,36 @@ export function Gantt({
 
   const userLabel = (id: number | null) => (id == null ? '未指派' : (usersById.get(id)?.displayName ?? '—'));
 
+  // 拖曳排程的預覽：半透明長條 + 日期氣泡（畫在落點那一列的時間軸格內）
+  const schedNote = schedInfo ? scheduleFieldNote(schedInfo) : null;
+  const dropGroupKey = schedInfo && groupBy !== 'none' ? schedInfo.groupKey : null;
+  const renderSchedPreview = (rowKey: string, idx: number) =>
+    schedInfo && schedTask && activeSched?.rowKey === rowKey ? (
+      <span
+        className={`gantt-sched-slot${idx === 0 ? ' is-first' : ''}`}
+        style={{
+          left: (schedInfo.start - range.start) * dw,
+          width: (schedInfo.end - schedInfo.start + 1) * dw,
+        }}
+        aria-hidden="true"
+      >
+        <span className="gantt-sched-bar" data-testid="gantt-sched-preview">
+          <span className="gantt-sched-title">{schedTask.title}</span>
+        </span>
+        <span className="gantt-sched-bubble" data-testid="gantt-sched-bubble">
+          <span>{formatScheduleBubble(schedInfo.start, schedInfo.end)}</span>
+          {schedNote && <span className="gantt-sched-note">{schedNote}</span>}
+        </span>
+      </span>
+    ) : null;
+
   return (
     <div
       className={[
         'gantt',
         compact && 'gantt--compact',
         drag?.moved && 'gantt--dragging',
+        schedTask && 'gantt--scheduling',
         scrolledX && 'is-scrolled-x',
       ]
         .filter(Boolean)
@@ -573,7 +858,14 @@ export function Gantt({
       onKeyDown={onRootKeyDown}
       data-scale={scale}
     >
-      <div className="gantt-scroll" ref={scrollRef} onScroll={syncScroll}>
+      <div
+        className="gantt-scroll"
+        ref={scrollRef}
+        onScroll={() => {
+          syncScroll();
+          if (pointerScheduling) recomputeSchedule();
+        }}
+      >
         <div className="gantt-inner">
           <div className="gantt-head">
             <div className="gantt-head-corner">
@@ -641,6 +933,12 @@ export function Gantt({
             <div className="gantt-overlay" aria-hidden="true">
               {gridLines}
               {todayInRange && <span className="gantt-today-line" style={{ left: todayX }} />}
+              {schedInfo && activeSched && (
+                <span
+                  className="gantt-sched-col"
+                  style={{ left: (activeSched.day - range.start) * dw, width: dw }}
+                />
+              )}
             </div>
 
             {rows.map((row, idx) => {
@@ -653,7 +951,13 @@ export function Gantt({
                   <div
                     key={row.key}
                     data-row-key={row.key}
-                    className="gantt-row gantt-row--group"
+                    className={[
+                      'gantt-row gantt-row--group',
+                      row.placeholder && 'gantt-row--placeholder',
+                      dropGroupKey === row.key && 'is-drop-target',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
                     role="treeitem"
                     aria-level={1}
                     aria-expanded={!row.collapsed}
@@ -661,7 +965,12 @@ export function Gantt({
                     tabIndex={tabIndex}
                     onFocus={() => setFocusKey(row.key)}
                   >
-                    <div className="gantt-cell-left" onClick={() => toggleGroup(row.key)}>
+                    <div
+                      className="gantt-cell-left"
+                      onClick={() => {
+                        if (!row.placeholder) toggleGroup(row.key);
+                      }}
+                    >
                       <Icon
                         name={row.collapsed ? 'chevronRight' : 'chevronDown'}
                         size={16}
@@ -675,9 +984,13 @@ export function Gantt({
                         <Avatar user={null} size="sm" tooltip={false} />
                       )}
                       <span className="gantt-group-name">{g.label}</span>
-                      <Tooltip content={`${g.tasks.length} 筆已排程任務`}>
-                        <Badge count>{g.tasks.length}</Badge>
-                      </Tooltip>
+                      {row.placeholder ? (
+                        <span className="gantt-group-hint">尚無排程</span>
+                      ) : (
+                        <Tooltip content={`${g.tasks.length} 筆已排程任務`}>
+                          <Badge count>{g.tasks.length}</Badge>
+                        </Tooltip>
+                      )}
                       {overdueCount > 0 && (
                         <span className="gantt-group-overdue">
                           <Badge tone="danger">逾期 {overdueCount}</Badge>
@@ -723,6 +1036,7 @@ export function Gantt({
                           </span>
                         </>
                       )}
+                      {renderSchedPreview(row.key, idx)}
                     </div>
                   </div>
                 );
@@ -754,6 +1068,7 @@ export function Gantt({
                     'gantt-row gantt-row--task',
                     selectedId === t.id && 'is-selected',
                     flashId === t.id && 'is-flash',
+                    dropGroupKey != null && dropGroupKey === row.groupKey && 'is-drop-target',
                   ]
                     .filter(Boolean)
                     .join(' ')}
@@ -881,6 +1196,7 @@ export function Gantt({
                         }}
                       />
                     )}
+                    {renderSchedPreview(row.key, idx)}
                   </div>
                 </div>
               );

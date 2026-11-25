@@ -843,6 +843,184 @@
     outline-offset: 2px;
   }
 
+  /* ── 未排程任務拖曳排程（gantt-overview.md §A7） ── */
+  .gantt-unscheduled-main {
+    position: relative;
+  }
+  .gantt-unscheduled-row.is-draggable {
+    cursor: grab;
+    user-select: none;
+  }
+  .gantt-unscheduled-row.is-dragging {
+    opacity: 0.45;
+  }
+  .gantt-sched-handle {
+    position: absolute;
+    left: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-tertiary);
+    cursor: grab;
+    opacity: 0;
+    touch-action: none;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+  .gantt-unscheduled-row:hover .gantt-sched-handle,
+  .gantt-sched-handle:focus-visible,
+  .gantt-unscheduled-row.is-dragging .gantt-sched-handle {
+    opacity: 1;
+  }
+  .gantt-sched-handle:hover {
+    color: var(--color-text);
+    background: var(--color-surface-active);
+  }
+  .gantt-sched-handle:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--color-accent);
+  }
+  body[data-gantt-scheduling] {
+    cursor: grabbing;
+    user-select: none;
+  }
+  body[data-gantt-scheduling] .gantt-sched-handle,
+  body[data-gantt-scheduling] .gantt-unscheduled-row {
+    cursor: grabbing;
+  }
+  /* 拖曳中跟隨指標的浮層（指標不在時間軸上時才顯示） */
+  .gantt-sched-overlay {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    max-width: 360px;
+    height: 32px;
+    padding: 0 var(--space-3) 0 var(--space-2);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    font-size: var(--text-sm);
+    color: var(--color-text);
+    white-space: nowrap;
+    cursor: grabbing;
+  }
+  .gantt-sched-overlay-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .gantt-sched-overlay-hint {
+    flex: none;
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+  }
+  /* 時間軸：落點分組列淡底、游標所在日欄、半透明預覽長條 + 日期氣泡 */
+  .gantt-row.is-drop-target > .gantt-cell-time {
+    background-color: var(--color-accent-soft);
+  }
+  .gantt-row.is-drop-target > .gantt-cell-left {
+    box-shadow: inset 3px 0 0 var(--color-accent);
+  }
+  .gantt-row--placeholder > .gantt-cell-left,
+  .gantt-row--placeholder > .gantt-cell-time {
+    background: repeating-linear-gradient(
+      -45deg,
+      var(--color-bg),
+      var(--color-bg) 6px,
+      var(--color-surface) 6px,
+      var(--color-surface) 12px
+    );
+  }
+  .gantt-row--placeholder.is-drop-target > .gantt-cell-time {
+    background: var(--color-accent-soft);
+  }
+  .gantt-group-hint {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+  }
+  .gantt-sched-col {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: var(--color-accent);
+    opacity: 0.12;
+  }
+  /* 不設 z-index（不建立堆疊環境），讓氣泡能蓋過其他列的長條 */
+  .gantt-sched-slot {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    pointer-events: none;
+    transition: left var(--duration-fast) var(--ease-standard);
+  }
+  .gantt-sched-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: var(--gantt-bar-h);
+    transform: translateY(-50%);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    overflow: hidden;
+    border-radius: var(--radius-sm);
+    background: var(--color-accent-soft);
+    border: 1.5px dashed var(--color-accent);
+    opacity: 0.85;
+    font-size: var(--text-xs);
+    color: var(--color-accent-text);
+    white-space: nowrap;
+  }
+  .gantt-sched-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .gantt-sched-bubble {
+    position: absolute;
+    left: 0;
+    bottom: calc(50% + var(--gantt-bar-h) / 2 + 6px);
+    z-index: 3;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 8px;
+    border-radius: var(--radius-md);
+    background: var(--color-text);
+    color: var(--color-surface);
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    box-shadow: var(--shadow-md);
+  }
+  .gantt-sched-slot.is-first .gantt-sched-bubble {
+    bottom: auto;
+    top: calc(50% + var(--gantt-bar-h) / 2 + 6px);
+  }
+  .gantt-sched-note {
+    font-weight: var(--font-semibold);
+    color: var(--color-warning-soft);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .gantt-sched-slot,
+    .gantt-sched-handle {
+      transition: none;
+    }
+  }
+
   /* 日期 Popover */
   .gantt-popover {
     position: fixed;
@@ -929,6 +1107,15 @@
     .gantt-unscheduled-desc,
     .gantt-unscheduled-assignee-name {
       display: none;
+    }
+    /* 窄螢幕：拖曳把手常駐 */
+    .gantt-sched-handle {
+      opacity: 1;
+    }
+  }
+  @media (hover: none) {
+    .gantt-sched-handle {
+      opacity: 1;
     }
   }
   @media (max-width: 767px) {
