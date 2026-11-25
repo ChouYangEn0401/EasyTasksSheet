@@ -1,4 +1,4 @@
-"""總覽彙總（純函式，方便以固定資料測試；對應 src/server/features/overview/compute.ts）。
+"""總覽彙總（純函式，方便以固定資料測試）。
 
 定義（docs/design/gantt-overview.md §B4）：
 - 目前無任務：category doing 的任務數為 0
@@ -13,36 +13,10 @@
 from __future__ import annotations
 
 import math
-from datetime import date, datetime, timedelta, timezone, tzinfo
+from datetime import date, datetime, timedelta
 from typing import Any, Iterable
 
-#: 沒有 IANA 時區資料庫（Windows 未裝 tzdata）時的固定位移備援（皆無日光節約時間）
-_FIXED_OFFSETS = {
-    "Asia/Taipei": 8,
-    "Asia/Shanghai": 8,
-    "Asia/Hong_Kong": 8,
-    "Asia/Singapore": 8,
-    "Asia/Tokyo": 9,
-    "UTC": 0,
-    "Etc/UTC": 0,
-}
-
-
-def get_zone(name: str) -> tzinfo:
-    try:
-        from zoneinfo import ZoneInfo
-
-        return ZoneInfo(name)
-    except Exception:
-        hours = _FIXED_OFFSETS.get(name)
-        if hours is None:
-            raise
-        return timezone(timedelta(hours=hours), name)
-
-
-def date_in_zone(ms: int, time_zone: str) -> str:
-    """某時區下的日期字串 YYYY-MM-DD"""
-    return datetime.fromtimestamp(ms / 1000, tz=get_zone(time_zone)).date().isoformat()
+from ..timeutil import get_zone, local_midnight_ms
 
 
 def week_of(now: int, time_zone: str) -> dict[str, Any]:
@@ -52,16 +26,12 @@ def week_of(now: int, time_zone: str) -> dict[str, Any]:
     start = today - timedelta(days=today.weekday())  # 週一 = 0
     end = start + timedelta(days=6)
     nxt = start + timedelta(days=7)
-
-    def local_midnight(d: date) -> int:
-        return int(datetime(d.year, d.month, d.day, tzinfo=zone).timestamp() * 1000)
-
     return {
         "today": today.isoformat(),
         "start": start.isoformat(),
         "end": end.isoformat(),
-        "startMs": local_midnight(start),
-        "endMs": local_midnight(nxt),
+        "startMs": local_midnight_ms(start, zone),
+        "endMs": local_midnight_ms(nxt, zone),
     }
 
 
@@ -95,10 +65,6 @@ def activity_weeks(now: int, time_zone: str, weeks: int) -> list[dict[str, Any]]
     zone = get_zone(time_zone)
     cur = week_of(now, time_zone)
     start0 = date.fromisoformat(cur["start"])
-
-    def local_midnight(d: date) -> int:
-        return int(datetime(d.year, d.month, d.day, tzinfo=zone).timestamp() * 1000)
-
     out = []
     for back in range(weeks - 1, -1, -1):
         s = start0 - timedelta(days=7 * back)
@@ -106,8 +72,8 @@ def activity_weeks(now: int, time_zone: str, weeks: int) -> list[dict[str, Any]]
             {
                 "start": s.isoformat(),
                 "end": (s + timedelta(days=6)).isoformat(),
-                "startMs": local_midnight(s),
-                "endMs": local_midnight(s + timedelta(days=7)),
+                "startMs": local_midnight_ms(s, zone),
+                "endMs": local_midnight_ms(s + timedelta(days=7), zone),
                 "current": back == 0,
             }
         )

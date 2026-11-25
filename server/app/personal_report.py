@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 
 from .errors import bad_request
-from .features._overview_compute import date_in_zone, get_zone
+from .timeutil import date_in_zone, get_zone, local_midnight_ms
 
 MAX_DAYS = 366
 INCLUDE_KEYS = ("doing", "deferred", "cancelled", "created")
@@ -50,10 +50,6 @@ def parse_include(raw: str | None) -> set[str]:
             raise bad_request(f"include 不支援「{part}」")
         out.add(part)
     return out
-
-
-def _midnight_ms(d: date, tz: str) -> int:
-    return int(datetime(d.year, d.month, d.day, tzinfo=get_zone(tz)).timestamp() * 1000)
 
 
 _TASK_SELECT = (
@@ -101,8 +97,9 @@ def build_report(
     include: set[str],
     tz: str,
 ) -> dict[str, Any]:
-    start_ms = _midnight_ms(start, tz)
-    end_ms = _midnight_ms(end + timedelta(days=1), tz)  # 不含
+    zone = get_zone(tz)
+    start_ms = local_midnight_ms(start, zone)
+    end_ms = local_midnight_ms(end + timedelta(days=1), zone)  # 不含
 
     user = conn.execute("SELECT id, display_name FROM users WHERE id = ?", (user_id,)).fetchone()
 

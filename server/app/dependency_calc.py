@@ -24,10 +24,12 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any, Iterable, Iterator, Mapping
 
+from .timeutil import date_in_zone
+
+
 def today_local(now_ms: int, time_zone: str | None = None) -> str:
     """unix ms → 伺服器設定時區（config.TZ，預設 Asia/Taipei）的日期字串；與總覽 / 報告的「今天」一致"""
-    from . import config as _config
-    from .features._overview_compute import date_in_zone
+    from . import config as _config  # 延後載入：本模組其餘部分是純函式，不必讀環境變數
 
     return date_in_zone(now_ms, time_zone or _config.config.TZ)
 
