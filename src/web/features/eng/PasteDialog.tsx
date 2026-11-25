@@ -11,6 +11,7 @@ import {
   Dialog,
   Field,
   Input,
+  Select,
   Spinner,
   Textarea,
   Tooltip,
@@ -19,6 +20,7 @@ import { usePasteApply, usePastePreview } from './api.ts';
 import { NameList } from './bits.tsx';
 import { StatusSelect } from './EngStatus.tsx';
 import { MACHINE_STORAGE_KEY } from './model.ts';
+import { NONE, useUserOptions } from './userOptions.ts';
 import {
   defaultPicked,
   DEFAULT_PASTE_MACHINE,
@@ -42,10 +44,13 @@ const PREVIEW_DELAY_MS = 350;
  */
 export function PasteDialog({
   machineNames,
+  defaultOwnerId,
   onClose,
   onDone,
 }: {
   machineNames: string[];
+  /** 負責人預設（目前登入者） */
+  defaultOwnerId: number;
   onClose: () => void;
   /** 登記完成：帶回電腦名稱（工作樹分頁據此套用電腦篩選） */
   onDone: (machine: string) => void;
@@ -56,6 +61,8 @@ export function PasteDialog({
   const [repo, setRepo] = useState('');
   const [repoEdited, setRepoEdited] = useState(false);
   const [status, setStatus] = useState('active');
+  const [ownerId, setOwnerId] = useState(defaultOwnerId);
+  const ownerOptions = useUserOptions(ownerId).filter((o) => o.value !== NONE);
   const [updateExisting, setUpdateExisting] = useState(false);
   const [preview, setPreview] = useState<PastePreview | null>(null);
   const [picked, setPicked] = useState<ReadonlySet<number>>(pickNone);
@@ -101,6 +108,7 @@ export function PasteDialog({
         selected: lines,
         updateExisting,
         status,
+        ownerId,
       },
       {
         onSuccess: (res) => {
@@ -183,6 +191,9 @@ export function PasteDialog({
                 setRepoEdited(true);
               }}
             />
+          </Field>
+          <Field label="負責人" hint="新登記的紀錄會歸給這位成員（預設是你）">
+            <Select options={ownerOptions} value={ownerId} onChange={setOwnerId} aria-label="登記的負責人" />
           </Field>
         </div>
 

@@ -180,7 +180,8 @@ test('(C) 回報空清單被攔住、舊資料仍在；不同電腦依識別碼�
     db.close();
   }
 
-  await loginViaUi(page, E2E_USERS.member, '/eng?tab=worktrees');
+  // 回報來的電腦與未登記項目沒有負責人，集中在「全部成員」的「未指派」卡片
+  await loginViaUi(page, E2E_USERS.member, '/eng?tab=worktrees&user=all');
   const section = page.getByRole('region', { name: `電腦 ${machine}` });
   await expect(section.getByText('可疑回報待確認')).toBeVisible();
   await expect(section.getByTestId('pending-report')).toContainText(

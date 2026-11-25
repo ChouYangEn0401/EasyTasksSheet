@@ -18,7 +18,7 @@ from ..errors import bad_request
 from ..permissions import require
 from ..validate import read_json
 from .. import worktree_paste as wp
-from .eng import _same_machine, path_key
+from .eng import _same_machine, check_active_owner, path_key
 from .eng_status import check_value, default_key
 
 router = APIRouter()
@@ -43,6 +43,8 @@ class ApplyInput(_PasteBase):
     selected: Annotated[list[int | Annotated[str, StringConstraints(max_length=1000)]], Field(max_length=wp.MAX_ENTRIES)]
     updateExisting: bool = False
     status: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)] | None = None
+    #: 新登記紀錄的負責人（選填；預設為呼叫者；必須存在且啟用）
+    ownerId: Annotated[int, Field(ge=1)] | None = None
 
 
 def _parse(text: str) -> wp.ParseResult:
@@ -152,6 +154,8 @@ async def paste_apply(request: Request, ctx: Ctx = Depends(require("eng.edit")))
         if data.status is not None:
             check_value(conn, "worktree", data.status)
         status = data.status or default_key(conn, "worktree")
+        owner_id = data.ownerId if data.ownerId is not None else uid
+        check_active_owner(conn, owner_id)
         repo = data.repo or result.repo
         items = plan(conn, machine, result.entries)
         for it in items:
@@ -164,9 +168,12 @@ async def paste_apply(request: Request, ctx: Ctx = Depends(require("eng.edit")))
             if it["action"] == "new":
                 cur = conn.execute(
                     "INSERT INTO worktree_records (machine, machine_id, path, branch, status, note, repo, head_sha, "
-                    "source, created_by, updated_by, created_at, updated_at) "
-                    "VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'paste', ?, ?, ?, ?)",
-                    (machine, it["path"][:500], (it["branch"] or "")[:200], status, note, repo, it["sha"], uid, uid, t, t),
+                    "source, owner_id, created_by, updated_by, created_at, updated_at) "
+                    "VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'paste', ?, ?, ?, ?, ?)",
+                    (
+                        machine, it["path"][:500], (it["branch"] or "")[:200], status, note, repo, it["sha"],
+                        owner_id, uid, uid, t, t,
+                    ),
                 )
                 record_change(conn, "worktree_plan", int(cur.lastrowid), "create", uid, t)  # type: ignore[arg-type]
                 created += 1

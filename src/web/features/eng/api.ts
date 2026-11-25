@@ -202,7 +202,7 @@ export function useScanApply() {
   const qc = useQueryClient();
   return useMutation({
     meta: { errorToast: false },
-    mutationFn: (input: { path: string; machine?: string; paths: string[] }) =>
+    mutationFn: (input: { path: string; machine?: string; paths: string[]; ownerId?: number }) =>
       api.post<ScanApplyResult>('/eng/worktrees/scan/apply', input),
     onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.worktrees() }),
   });
@@ -229,6 +229,7 @@ export function usePasteApply() {
       selected: number[];
       updateExisting?: boolean;
       status?: string;
+      ownerId?: number;
     }) => api.post<PasteApplyResult>('/eng/worktrees/paste/apply', input),
     onSuccess: () => qc.invalidateQueries({ queryKey: engKeys.worktrees() }),
   });

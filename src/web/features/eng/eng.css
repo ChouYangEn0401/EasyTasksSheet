@@ -1342,4 +1342,94 @@
       flex-wrap: wrap;
     }
   }
+
+  /* ── 檢視成員（工作樹分頁：每人一份，沿用個人清單的檢視切換） ── */
+  .eng-viewbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+  }
+  .eng-viewbar-note {
+    flex: 1 1 360px;
+    min-width: 0;
+  }
+  .eng-viewbar-switch {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+  .eng-viewbar-select {
+    width: 200px;
+  }
+  .eng-link {
+    color: var(--color-accent-text);
+    font-weight: var(--font-medium);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .eng-unassigned-note {
+    margin: 0;
+  }
+
+  /* ── 成員卡片（第一層）；內含電腦（第二層） ── */
+  .eng-owner-card {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .eng-owner-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+  }
+  .eng-owner-card[data-collapsed] .eng-owner-head {
+    border-bottom-color: transparent;
+  }
+  .eng-owner-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-md);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .eng-owner-toggle--static {
+    cursor: default;
+  }
+  .eng-owner-chevron {
+    width: 1em;
+    color: var(--color-text-tertiary);
+  }
+  .eng-owner-name-title {
+    margin: 0;
+    font-size: var(--text-base);
+    font-weight: var(--font-semibold);
+  }
+  .eng-owner-count {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+  .eng-owner-summary {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+  .eng-owner-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    min-width: 0;
+  }
 }

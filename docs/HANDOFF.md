@@ -35,7 +35,7 @@ TasksSheets 是給實驗室內部用的多人任務 / 專案管理網站。本�
 | 問題回饋 `/feedback`                  | 回饋 / 問題清單與月曆排程（拖曳排程）                                                                                |
 | 個人清單 `/me`                        | 我的任務、釘選、自由待辦（含延後 / 取消等小狀態）；「產生匯報報告」依日期區間彙整完成事項（`personal_report.py`、`personal_items.done_at` 0020，規格見 [design/personal.md §10](design/personal.md)） |
 | 個人設定 `/settings`                  | 改顯示名稱、帳號、密碼（改密碼後其他裝置登出）                                                                       |
-| 工程追蹤 `/eng`                       | 問題（含附件圖片 / 影片 / 檔案、連結預覽、選配 GitHub 連動）、工作樹（worktree）紀錄、自訂狀態、掃描本機專案、貼上 `git worktree list` 快速登記、回收區 |
+| 工程追蹤 `/eng`                       | 問題（含附件圖片 / 影片 / 檔案、連結預覽、選配 GitHub 連動）、工作樹（worktree）紀錄、自訂狀態、掃描本機專案、貼上 `git worktree list` 快速登記、回收區；工作樹分頁「每人一份」（`?user=<id|all>` 檢視切換，唯讀他人，負責人預設自己，見 [design/eng-tracking.md §15](design/eng-tracking.md)） |
 | 成員管理 `/admin/users`               | 新增 / 停用 / 重設密碼 / 角色 / 解鎖（`members.manage`）                                                             |
 | 資料管理 `/admin/data`                | JSON 匯出 / 匯入（預覽、衝突策略）、完整 .db 備份下載（root）                                                        |
 | 資料同步 `/admin/data/sync`           | 多台電腦 sync-push 的來源金鑰與待確認衝突                                                                            |

@@ -229,6 +229,17 @@ def _check_user(conn: sqlite3.Connection, uid: int | None, label: str) -> None:
         raise bad_request(f"{label}不存在")
 
 
+def check_active_owner(conn: sqlite3.Connection, uid: int | None, label: str = "負責人") -> None:
+    """批次登記（掃描 / 貼上）指定的負責人：必須存在且啟用"""
+    if uid is None:
+        return
+    row = conn.execute("SELECT is_active FROM users WHERE id = ?", (uid,)).fetchone()
+    if row is None:
+        raise bad_request(f"{label}不存在")
+    if not row["is_active"]:
+        raise bad_request(f"{label}已停用")
+
+
 # ── 問題 ──
 
 _ISSUE_COLUMNS = {
@@ -1166,6 +1177,8 @@ class ScanInput(_Input):
 class ScanApplyInput(ScanInput):
     #: 要登記 / 更新路徑的 worktree 路徑（預覽中勾選者）
     paths: Annotated[list[Annotated[str, StringConstraints(max_length=1000)]], Field(max_length=ws.MAX_WORKTREES)]
+    #: 新登記紀錄的負責人（選填；預設為呼叫者；必須存在且啟用）
+    ownerId: Annotated[int, Field(ge=1)] | None = None
 
 
 def _scan_roots(request: Request) -> list[Any] | None:
@@ -1230,6 +1243,7 @@ def apply_scan(
     repo: str,
     uid: int | None,
     t: int,
+    owner_id: int | None = None,
 ) -> dict[str, int]:
     """登記勾選的項目：new → 新增紀錄（來源 scan）；moved → 更新該紀錄的路徑；existing → 更新分支與 HEAD"""
     created = moved = updated = 0
@@ -1244,8 +1258,9 @@ def apply_scan(
             status = "merged" if it["isMerged"] and merged_ok else default
             cur = conn.execute(
                 "INSERT INTO worktree_records (machine, machine_id, path, branch, status, repo, head_sha, source, "
-                "created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'scan', ?, ?, ?, ?)",
-                (machine, machine_id, it["path"], it["branch"] or "", status, repo, it["headSha"], uid, uid, t, t),
+                "owner_id, created_by, updated_by, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 'scan', ?, ?, ?, ?, ?)",
+                (machine, machine_id, it["path"], it["branch"] or "", status, repo, it["headSha"], owner_id, uid, uid, t, t),
             )
             record_change(conn, "worktree_plan", int(cur.lastrowid), "create", uid, t)  # type: ignore[arg-type]
             created += 1
@@ -1318,6 +1333,8 @@ async def scan_apply(request: Request, ctx: Ctx = Depends(require("eng.scan"))):
     uid = ctx.user["id"]
     t = ctx.now()
     with ctx.db.tx() as conn:
+        owner_id = data.ownerId if data.ownerId is not None else uid
+        check_active_owner(conn, owner_id)
         items = plan_scan(conn, machine, machine_id, result)
-        out = apply_scan(conn, items, selected, machine, machine_id, result.repo, uid, t)
+        out = apply_scan(conn, items, selected, machine, machine_id, result.repo, uid, t, owner_id)
     return {"ok": True, "machine": machine, "repo": result.repo, **out}

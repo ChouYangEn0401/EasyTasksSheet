@@ -1,4 +1,5 @@
 import { useId, useMemo, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router';
 import type {
   MachineGroup,
   MachineRepo,
@@ -7,7 +8,8 @@ import type {
   WorktreesOverview,
 } from '../../../shared/engManual.ts';
 import { errorMessage } from '../../lib/api.ts';
-import { useUsersById } from '../../lib/hooks.ts';
+import { useCurrentUser } from '../../lib/auth.ts';
+import { useUsers, useUsersById } from '../../lib/hooks.ts';
 import { useCan } from '../../lib/permissions.ts';
 import { notifySuccess } from '../../lib/toast.ts';
 import { readStorage, writeStorage } from '../../lib/storage.ts';
@@ -24,13 +26,14 @@ import {
   Input,
   Menu,
   Select,
+  type SelectOption,
   Skeleton,
   Textarea,
   Tooltip,
   UpdatedAt,
   type MenuItem,
 } from '../../ui/index.ts';
-import { useDeleteRecord, usePendingReport, useSaveRecord } from './api.ts';
+import { useDeleteRecord, usePendingReport, useSaveRecord, useTrash } from './api.ts';
 import { EngIcon, MoreIcon, NameList } from './bits.tsx';
 import { ManageStatusesButton, StatusSelect } from './EngStatus.tsx';
 import { useStatusList } from './statusHooks.ts';
@@ -44,8 +47,22 @@ import {
   MACHINE_STORAGE_KEY,
   reportFor,
   reportSummary,
+  statusView,
   unregisteredReports,
 } from './model.ts';
+import {
+  countByStatus,
+  extrasCount,
+  groupByOwner,
+  inView,
+  readPersonView,
+  unassignedCount,
+  VIEW_ALL,
+  VIEW_PARAM,
+  writePersonView,
+  type MachineSlice,
+  type OwnerBucket,
+} from './personView.ts';
 
 type Draft = {
   machine: string;
@@ -68,19 +85,19 @@ const trimDraft = (d: Draft) => ({
 });
 
 /** 新增時 status 留空 → 由後端套用預設狀態 */
-const blank = (machine = ''): Draft => ({
+const blank = (machine = '', ownerId: number | null = null): Draft => ({
   machine,
   path: '',
   branch: '',
-  ownerId: null,
+  ownerId,
   purpose: '',
   status: '',
   note: '',
 });
 
 /** 頂部的新增表單：電腦 + 路徑即可送出；電腦名稱記在本機供下次預填 */
-function AddRecordForm({ machineListId }: { machineListId: string }) {
-  const [form, setForm] = useState(() => blank(readStorage(MACHINE_STORAGE_KEY) ?? ''));
+function AddRecordForm({ machineListId, defaultOwnerId }: { machineListId: string; defaultOwnerId: number }) {
+  const [form, setForm] = useState(() => blank(readStorage(MACHINE_STORAGE_KEY) ?? '', defaultOwnerId));
   const [error, setError] = useState<string | null>(null);
   const [pathError, setPathError] = useState<string | null>(null);
   const save = useSaveRecord({ silent: true });
@@ -341,9 +358,11 @@ function PathCell({ branch, path, sub }: { branch: string | null; path: string; 
 function HintCell({
   record,
   report,
+  readOnly,
 }: {
   record: MachineGroup['records'][number];
   report: WorktreeReport | undefined;
+  readOnly: boolean;
 }) {
   const save = useSaveRecord();
   if (record.hint === 'moved' && record.moveTo) {
@@ -356,16 +375,18 @@ function HintCell({
             → {to}
           </span>
         </Tooltip>
-        <Button
-          size="sm"
-          variant="secondary"
-          loading={save.isPending}
-          onClick={() =>
-            save.mutate({ id: record.id, path: to }, { onSuccess: () => notifySuccess('已更新路徑') })
-          }
-        >
-          更新路徑
-        </Button>
+        {!readOnly && (
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={save.isPending}
+            onClick={() =>
+              save.mutate({ id: record.id, path: to }, { onSuccess: () => notifySuccess('已更新路徑') })
+            }
+          >
+            更新路徑
+          </Button>
+        )}
       </div>
     );
   }
@@ -384,15 +405,18 @@ function HintCell({
 function RecordRow({
   record,
   group,
+  readOnly,
   onEdit,
   onDelete,
 }: {
   record: MachineGroup['records'][number];
   group: MachineGroup;
+  readOnly: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   const byId = useUsersById();
+  const statusList = useStatusList('worktree');
   const save = useSaveRecord();
   const owner = record.ownerId != null ? byId.get(record.ownerId) : undefined;
   const name = record.branch || record.path;
@@ -417,15 +441,21 @@ function RecordRow({
   return (
     <tr className="eng-wt-row" data-kind="record" data-hint={record.hint ?? undefined}>
       <td>
-        <span className="eng-status-select">
-          <StatusSelect
-            kind="worktree"
-            badge
-            value={record.status}
-            onChange={(status) => save.mutate({ id: record.id, status })}
-            label={`「${name}」的狀態`}
-          />
-        </span>
+        {readOnly ? (
+          <Badge tone={statusView(statusList, 'worktree', record.status).color} dot>
+            {statusView(statusList, 'worktree', record.status).label}
+          </Badge>
+        ) : (
+          <span className="eng-status-select">
+            <StatusSelect
+              kind="worktree"
+              badge
+              value={record.status}
+              onChange={(status) => save.mutate({ id: record.id, status })}
+              label={`「${name}」的狀態`}
+            />
+          </span>
+        )}
       </td>
       <td className="eng-col-path">
         <PathCell branch={record.branch} path={record.path} sub={sub || undefined} />
@@ -448,35 +478,46 @@ function RecordRow({
         )}
       </td>
       <td>
-        <HintCell record={record} report={reportFor(group, record.path)} />
+        <HintCell record={record} report={reportFor(group, record.path)} readOnly={readOnly} />
       </td>
       <td>
         <UpdatedAt at={record.updatedAt} by={record.updatedBy} />
       </td>
       <td className="eng-col-action">
-        <Menu
-          align="end"
-          label={`「${name}」的操作`}
-          items={items}
-          trigger={(p) => (
-            <Button
-              {...p}
-              variant="ghost"
-              size="sm"
-              iconOnly
-              icon={<MoreIcon />}
-              aria-label={`「${name}」的操作`}
-            />
-          )}
-        />
+        {!readOnly && (
+          <Menu
+            align="end"
+            label={`「${name}」的操作`}
+            items={items}
+            trigger={(p) => (
+              <Button
+                {...p}
+                variant="ghost"
+                size="sm"
+                iconOnly
+                icon={<MoreIcon />}
+                aria-label={`「${name}」的操作`}
+              />
+            )}
+          />
+        )}
       </td>
     </tr>
   );
 }
 
 /** 回報有、紀錄沒有：標「未登記」，一鍵登記為紀錄（帶入電腦識別碼與 HEAD） */
-function UnregisteredRow({ report, group }: { report: WorktreeReport; group: MachineGroup }) {
+function UnregisteredRow({
+  report,
+  group,
+  readOnly,
+}: {
+  report: WorktreeReport;
+  group: MachineGroup;
+  readOnly: boolean;
+}) {
   const save = useSaveRecord();
+  const me = useCurrentUser();
   return (
     <tr className="eng-wt-row" data-kind="report" data-hint="unregistered">
       <td>
@@ -500,25 +541,28 @@ function UnregisteredRow({ report, group }: { report: WorktreeReport; group: Mac
         <UpdatedAt at={report.reportedAt} prefix="回報於" />
       </td>
       <td className="eng-col-action">
-        <Button
-          size="sm"
-          variant="secondary"
-          loading={save.isPending}
-          onClick={() =>
-            save.mutate({
-              machine: group.machine,
-              machineId: report.machineId ?? group.machineId ?? undefined,
-              path: report.path,
-              branch: report.branch ?? '',
-              repo: report.repo,
-              headSha: report.headSha,
-              source: 'report',
-              ...(report.isMerged ? { status: 'merged' } : {}),
-            })
-          }
-        >
-          登記
-        </Button>
+        {!readOnly && (
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={save.isPending}
+            onClick={() =>
+              save.mutate({
+                machine: group.machine,
+                machineId: report.machineId ?? group.machineId ?? undefined,
+                path: report.path,
+                branch: report.branch ?? '',
+                repo: report.repo,
+                headSha: report.headSha,
+                source: 'report',
+                ...(me ? { ownerId: me.id } : {}),
+                ...(report.isMerged ? { status: 'merged' } : {}),
+              })
+            }
+          >
+            登記
+          </Button>
+        )}
       </td>
     </tr>
   );
@@ -529,7 +573,7 @@ const PENDING_TEXT = (r: MachineRepo) =>
     ? `「${r.repo || '（未命名 repo）'}」最新回報為空清單（先前 ${r.pending.previous} 筆），已保留舊資料。`
     : `「${r.repo || '（未命名 repo）'}」回報筆數驟減（${r.pending?.previous} → ${r.pending?.count}），已保留舊資料。`;
 
-function PendingNotice({ repo }: { repo: MachineRepo }) {
+function PendingNotice({ repo, readOnly }: { repo: MachineRepo; readOnly: boolean }) {
   const act = usePendingReport();
   const canEdit = useCan('eng.edit');
   return (
@@ -541,7 +585,7 @@ function PendingNotice({ repo }: { repo: MachineRepo }) {
           {repo.pending && <span className="eng-text-secondary">（{ago(repo.pending.at)}）</span>}
           確認是真的清掉了才採用；採用後不見的項目只會標示「回報中找不到」，紀錄不會被刪除。
         </span>
-        {canEdit && (
+        {canEdit && !readOnly && (
           <span className="eng-pending-actions">
             <Button
               size="sm"
@@ -572,20 +616,23 @@ function PendingNotice({ repo }: { repo: MachineRepo }) {
 }
 
 function MachineSection({
-  group,
+  slice,
   showDone,
+  readOnly,
   onEdit,
   onDelete,
 }: {
-  group: MachineGroup;
+  slice: MachineSlice;
   showDone: boolean;
+  readOnly: boolean;
   onEdit: (r: WorktreeRecord) => void;
   onDelete: (r: WorktreeRecord) => void;
 }) {
+  const { group } = slice;
   const statuses = useStatusList('worktree');
-  const unregistered = unregisteredReports(group);
-  const records = showDone ? group.records : group.records.filter((r) => !isDoneRecord(statuses, r.status));
-  const pending = group.repos.filter((r) => r.pending);
+  const unregistered = slice.extras ? unregisteredReports(group) : [];
+  const records = showDone ? slice.records : slice.records.filter((r) => !isDoneRecord(statuses, r.status));
+  const pending = slice.extras ? group.repos.filter((r) => r.pending) : [];
   return (
     <section
       className="eng-card eng-machine"
@@ -593,14 +640,14 @@ function MachineSection({
       data-stale={group.stale || undefined}
     >
       <header className="eng-machine-head">
-        <h3 className="eng-machine-name">
+        <h4 className="eng-machine-name">
           {group.machine}
           {group.machineId && (
             <span className="eng-machine-id" title={`電腦識別碼 ${group.machineId}`}>
               #{group.machineId.slice(0, 6)}
             </span>
           )}
-        </h3>
+        </h4>
         {pending.length > 0 && <Badge tone="danger">可疑回報待確認</Badge>}
         {group.stale && group.reportedAt != null && (
           <Badge tone="warning">未回報（最後看到 {ago(group.reportedAt)}）</Badge>
@@ -614,11 +661,11 @@ function MachineSection({
         </span>
       </header>
       {pending.map((r) => (
-        <PendingNotice key={r.sourceId} repo={r} />
+        <PendingNotice key={r.sourceId} repo={r} readOnly={readOnly} />
       ))}
       {records.length + unregistered.length === 0 ? (
         <p className="eng-help eng-machine-empty">
-          {group.records.length > 0 ? '這台電腦的紀錄都已結束（勾選「顯示已清理」查看）' : '沒有紀錄'}
+          {slice.records.length > 0 ? '這台電腦的紀錄都已結束（勾選「顯示已清理」查看）' : '沒有紀錄'}
         </p>
       ) : (
         <div>
@@ -642,12 +689,13 @@ function MachineSection({
                   key={`rec-${r.id}`}
                   record={r}
                   group={group}
+                  readOnly={readOnly}
                   onEdit={() => onEdit(r)}
                   onDelete={() => onDelete(r)}
                 />
               ))}
               {unregistered.map((r) => (
-                <UnregisteredRow key={`rep-${r.id}`} report={r} group={group} />
+                <UnregisteredRow key={`rep-${r.id}`} report={r} group={group} readOnly={readOnly} />
               ))}
             </tbody>
           </table>
@@ -657,13 +705,120 @@ function MachineSection({
   );
 }
 
-/** 工作樹分頁：新增表單在最上面；下方依電腦分組，並列手動紀錄與回報快照（僅供參考） */
+function OwnerTitle({ owner, title }: { owner: Parameters<typeof Avatar>[0]['user']; title: string }) {
+  return (
+    <>
+      <Avatar user={owner} size="sm" tooltip={false} />
+      <h3 className="eng-owner-name-title">{title}</h3>
+    </>
+  );
+}
+
+/** 成員卡片：第一層是成員（負責人），內含以電腦分組的第二層；全部成員檢視時可摺疊 */
+function OwnerCard({
+  bucket,
+  me,
+  showDone,
+  readOnly,
+  collapsible,
+  collapsed,
+  onToggle,
+  onEdit,
+  onDelete,
+}: {
+  bucket: OwnerBucket;
+  me: number;
+  showDone: boolean;
+  readOnly: boolean;
+  collapsible: boolean;
+  collapsed: boolean;
+  onToggle: () => void;
+  onEdit: (r: WorktreeRecord) => void;
+  onDelete: (r: WorktreeRecord) => void;
+}) {
+  const byId = useUsersById();
+  const statuses = useStatusList('worktree');
+  const bodyId = useId();
+  const owner = bucket.ownerId != null ? byId.get(bucket.ownerId) : undefined;
+  const title =
+    bucket.ownerId == null
+      ? '未指派'
+      : bucket.ownerId === me
+        ? '我自己'
+        : (owner?.displayName ?? `使用者 ${bucket.ownerId}`);
+  const summary = countByStatus(bucket.slices.flatMap((s) => s.records));
+  return (
+    <section
+      className="eng-card eng-owner-card"
+      aria-label={`成員 ${title}`}
+      data-owner={bucket.key}
+      data-collapsed={collapsed || undefined}
+    >
+      <header className="eng-owner-head">
+        {collapsible ? (
+          <button
+            type="button"
+            className="eng-owner-toggle"
+            aria-expanded={!collapsed}
+            aria-controls={bodyId}
+            onClick={onToggle}
+          >
+            <span className="eng-owner-chevron" aria-hidden="true">
+              {collapsed ? '▸' : '▾'}
+            </span>
+            <OwnerTitle owner={owner ?? null} title={title} />
+          </button>
+        ) : (
+          <span className="eng-owner-toggle eng-owner-toggle--static">
+            <OwnerTitle owner={owner ?? null} title={title} />
+          </span>
+        )}
+        <span className="eng-owner-count tabular-nums" data-testid="owner-count">
+          {bucket.count} 筆
+        </span>
+        <span className="eng-owner-summary">
+          {summary.map((c) => (
+            <Badge key={c.status} tone={statusView(statuses, 'worktree', c.status).color} dot>
+              {statusView(statuses, 'worktree', c.status).label} {c.count}
+            </Badge>
+          ))}
+        </span>
+      </header>
+      {!collapsed && (
+        <div className="eng-owner-body" id={bodyId}>
+          {bucket.slices.length === 0 ? (
+            <p className="eng-help eng-machine-empty">沒有紀錄</p>
+          ) : (
+            bucket.slices.map((s) => (
+              <MachineSection
+                key={s.group.key}
+                slice={s}
+                showDone={showDone}
+                readOnly={readOnly}
+                onEdit={onEdit}
+                onDelete={onDelete}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * 工作樹分頁：「檢視」切換成員（?user=<id|all>，預設我自己）。
+ * 第一層是成員（負責人）、第二層是電腦；檢視他人時為唯讀（只是前端模式，權限仍由 eng.edit 決定）。
+ */
 export function WorktreesTab({
   query,
 }: {
   query: { data?: WorktreesOverview; error: unknown; refetch: () => void };
 }) {
   const machineListId = useId();
+  const me = useCurrentUser();
+  const users = useUsers();
+  const [sp, setSp] = useSearchParams();
   const [editing, setEditing] = useState<WorktreeRecord | null>(null);
   const [deleting, setDeleting] = useState<WorktreeRecord | null>(null);
   const [showDone, setShowDone] = useState(false);
@@ -672,10 +827,14 @@ export function WorktreesTab({
   /** 電腦篩選（'' = 全部）；貼上登記後自動套用 */
   const [machineFilter, setMachineFilter] = useState('');
   const [trashOpen, setTrashOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const canScan = useCan('eng.scan');
   const canEdit = useCan('eng.edit');
   const statuses = useStatusList('worktree');
   const data = query.data;
+  const meId = me?.id ?? 0;
+  const view = readPersonView(sp.get(VIEW_PARAM), meId);
+  const trash = useTrash(view.kind === 'user');
   const allMachines = useMemo(() => data?.machines ?? [], [data]);
   const filterKey = machineFilter.trim().toLowerCase();
   const machines = useMemo(
@@ -689,15 +848,131 @@ export function WorktreesTab({
     ],
     [allMachines],
   );
-  const doneCount = machines.reduce(
-    (n, g) => n + g.records.filter((r) => isDoneRecord(statuses, r.status)).length,
+  const nameById = useMemo(() => new Map((users.data ?? []).map((u) => [u.id, u.displayName])), [users.data]);
+  const nameOf = (id: number) => nameById.get(id) ?? `使用者 ${id}`;
+  const buckets =
+    view.kind === 'invalid'
+      ? []
+      : groupByOwner(machines, view.kind === 'all' ? { kind: 'all' } : view, meId, nameOf);
+  const viewOptions = useMemo<SelectOption<string>[]>(() => {
+    if (!me) return [];
+    const others = (users.data ?? [])
+      .filter((u) => u.isActive && u.id !== me.id)
+      .sort((a, b) => a.displayName.localeCompare(b.displayName, 'zh-Hant'));
+    return [
+      { value: String(me.id), label: '我自己', leading: <Avatar user={me} size="xs" tooltip={false} /> },
+      ...others.map((u) => ({
+        value: String(u.id),
+        label: u.displayName,
+        leading: <Avatar user={u} size="xs" tooltip={false} />,
+      })),
+      { value: VIEW_ALL, label: '全部成員' },
+    ];
+  }, [me, users.data]);
+
+  if (!me) return null;
+
+  const otherId = view.kind === 'user' && view.id !== me.id ? view.id : null;
+  const other = otherId != null ? users.data?.find((u) => u.id === otherId) : undefined;
+  const notFound =
+    view.kind === 'invalid' || (otherId != null && users.data != null && (!other || !other.isActive));
+  const readOnly = otherId != null;
+  const switchTo = (value: string) => setSp(writePersonView(sp, value, me.id));
+
+  if (notFound) {
+    return (
+      <section className="eng-section" aria-label="工作樹">
+        <div className="eng-card">
+          <EmptyState
+            icon="user"
+            title="找不到此成員"
+            action={
+              <Button variant="secondary" onClick={() => switchTo(String(me.id))}>
+                回到我自己
+              </Button>
+            }
+          />
+        </div>
+      </section>
+    );
+  }
+
+  const doneCount = buckets.reduce(
+    (n, b) =>
+      n + b.slices.reduce((m, s) => m + s.records.filter((r) => isDoneRecord(statuses, r.status)).length, 0),
     0,
   );
+  const scopeTotal = buckets.reduce((n, b) => n + b.count, 0);
+  const selfView = view.kind === 'user' && view.id === me.id;
+  const unassigned = data ? unassignedCount(allMachines) : 0;
+  const extras = data ? extrasCount(allMachines) : 0;
+  const trashCount =
+    view.kind === 'user'
+      ? trash.data
+        ? inView(trash.data.records, view).length
+        : undefined
+      : data?.trashCount;
+  const viewLabel =
+    view.kind === 'all' ? '全部成員' : otherId != null ? (other?.displayName ?? '…') : '我自己';
+  const hrefOf = (value: string) => `?${writePersonView(sp, value, me.id).toString()}`;
 
   return (
     <section className="eng-section" aria-label="工作樹">
       <NameList id={machineListId} names={allMachines.map((m) => m.machine)} />
-      <AddRecordForm machineListId={machineListId} />
+      <div className="eng-viewbar">
+        {readOnly && (
+          <Alert
+            tone="info"
+            className="eng-viewbar-note"
+            action={
+              <a
+                href={hrefOf(String(me.id))}
+                className="eng-link"
+                onClick={(e) => {
+                  e.preventDefault();
+                  switchTo(String(me.id));
+                }}
+              >
+                回到我自己
+              </a>
+            }
+          >
+            <span data-testid="readonly-note">正在檢視 {other?.displayName ?? '…'} 的工作樹（唯讀）</span>
+          </Alert>
+        )}
+        <div className="eng-viewbar-switch">
+          <span className="eng-viewbar-label" aria-hidden="true">
+            檢視：
+          </span>
+          <Select
+            aria-label="檢視成員的工作樹"
+            className="eng-viewbar-select"
+            align="end"
+            placeholder={viewLabel}
+            options={viewOptions}
+            value={view.kind === 'all' ? VIEW_ALL : String(view.kind === 'user' ? view.id : me.id)}
+            onChange={switchTo}
+          />
+        </div>
+      </div>
+      {selfView && (unassigned > 0 || extras > 0) && (
+        <p className="eng-help eng-unassigned-note" data-testid="unassigned-note">
+          {unassigned > 0 && <>有 {unassigned} 筆未指派的工作樹</>}
+          {unassigned > 0 && extras > 0 && '，'}
+          {extras > 0 && <>另有 {extras} 筆未登記 / 待確認的回報</>}。{' '}
+          <a
+            href={hrefOf(VIEW_ALL)}
+            className="eng-link"
+            onClick={(e) => {
+              e.preventDefault();
+              switchTo(VIEW_ALL);
+            }}
+          >
+            前往「全部成員」
+          </a>
+        </p>
+      )}
+      {!readOnly && <AddRecordForm machineListId={machineListId} defaultOwnerId={me.id} />}
 
       <div className="eng-toolbar">
         <Checkbox
@@ -715,22 +990,27 @@ export function WorktreesTab({
             />
           </span>
         )}
+        {data && (
+          <span className="eng-help tabular-nums" data-testid="scope-total">
+            共 {scopeTotal} 筆
+          </span>
+        )}
         <span className="eng-toolbar-end">
-          <ManageStatusesButton kind="worktree" />
+          {!readOnly && <ManageStatusesButton kind="worktree" />}
           <Button
             variant="ghost"
             size="sm"
             icon={<EngIcon name="trash" />}
             onClick={() => setTrashOpen(true)}
           >
-            回收區{data ? `（${data.trashCount}）` : ''}
+            回收區{trashCount != null ? `（${trashCount}）` : ''}
           </Button>
-          {canEdit && (
+          {canEdit && !readOnly && (
             <Button variant="secondary" size="sm" icon="plus" onClick={() => setPasteOpen(true)}>
               貼上 git worktree list
             </Button>
           )}
-          {canScan && (
+          {canScan && !readOnly && (
             <Button variant="secondary" size="sm" icon="refresh" onClick={() => setScanOpen(true)}>
               掃描本機專案
             </Button>
@@ -752,28 +1032,44 @@ export function WorktreesTab({
 
       {!data && query.error ? (
         <ErrorState error={query.error} onRetry={query.refetch} />
-      ) : !data ? (
+      ) : !data || (otherId != null && !users.data) ? (
         <div className="eng-card eng-machine" aria-busy="true">
           <Skeleton height={160} />
         </div>
-      ) : machines.length === 0 ? (
+      ) : buckets.every((b) => b.slices.length === 0) ? (
         <div className="eng-card">
           <EmptyState
             icon="branch"
-            title="尚未記錄任何 worktree"
+            title={
+              readOnly ? `${other?.displayName ?? '此成員'} 尚未記錄任何 worktree` : '尚未記錄任何 worktree'
+            }
             description={
-              canEdit
-                ? '在上方填入電腦與路徑，或按「貼上 git worktree list」一次登記'
-                : '在上方填入電腦與路徑即可新增'
+              readOnly
+                ? undefined
+                : canEdit
+                  ? '在上方填入電腦與路徑，或按「貼上 git worktree list」一次登記'
+                  : '在上方填入電腦與路徑即可新增'
             }
           />
         </div>
       ) : (
-        machines.map((g) => (
-          <MachineSection
-            key={g.key}
-            group={g}
+        buckets.map((b) => (
+          <OwnerCard
+            key={b.key}
+            bucket={b}
+            me={me.id}
             showDone={showDone}
+            readOnly={readOnly}
+            collapsible={view.kind === 'all'}
+            collapsed={view.kind === 'all' && collapsed.has(b.key)}
+            onToggle={() =>
+              setCollapsed((prev) => {
+                const next = new Set(prev);
+                if (next.has(b.key)) next.delete(b.key);
+                else next.add(b.key);
+                return next;
+              })
+            }
             onEdit={setEditing}
             onDelete={setDeleting}
           />
@@ -786,12 +1082,20 @@ export function WorktreesTab({
       {pasteOpen && (
         <PasteDialog
           machineNames={allMachines.map((m) => m.machine)}
+          defaultOwnerId={me.id}
           onClose={() => setPasteOpen(false)}
           onDone={(m) => setMachineFilter(m.trim().toLowerCase())}
         />
       )}
-      {scanOpen && data && <ScanDialog scan={data.scan} onClose={() => setScanOpen(false)} />}
-      {trashOpen && <TrashDialog onClose={() => setTrashOpen(false)} />}
+      {scanOpen && data && (
+        <ScanDialog scan={data.scan} defaultOwnerId={me.id} onClose={() => setScanOpen(false)} />
+      )}
+      {trashOpen && (
+        <TrashDialog
+          view={view.kind === 'user' ? view : { kind: 'all' }}
+          onClose={() => setTrashOpen(false)}
+        />
+      )}
     </section>
   );
 }

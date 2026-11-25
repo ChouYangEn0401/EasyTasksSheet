@@ -3,7 +3,8 @@ import type { ScanAction, ScanItem, ScanPreview, WorktreesOverview } from '../..
 import { errorMessage } from '../../lib/api.ts';
 import { readStorage, writeStorage } from '../../lib/storage.ts';
 import { notifySuccess } from '../../lib/toast.ts';
-import { Alert, Badge, Button, Dialog, Field, Input } from '../../ui/index.ts';
+import { Alert, Badge, Button, Dialog, Field, Input, Select } from '../../ui/index.ts';
+import { NONE, useUserOptions } from './userOptions.ts';
 import { useScanApply, useScanPreview } from './api.ts';
 import { NameList } from './bits.tsx';
 import { pathKey, rememberPath, reportSummary, SCAN_PATHS_KEY } from './model.ts';
@@ -25,11 +26,22 @@ function readPaths(): string[] {
 }
 
 /** 掃描本機專案：輸入資料夾 → 預覽（新增 / 已存在 / 可能搬動）→ 勾選後登記。需 eng.scan */
-export function ScanDialog({ scan, onClose }: { scan: WorktreesOverview['scan']; onClose: () => void }) {
+export function ScanDialog({
+  scan,
+  defaultOwnerId,
+  onClose,
+}: {
+  scan: WorktreesOverview['scan'];
+  /** 負責人預設（目前登入者） */
+  defaultOwnerId: number;
+  onClose: () => void;
+}) {
   const listId = useId();
   const [recent, setRecent] = useState(readPaths);
   const [path, setPath] = useState(() => recent[0] ?? '');
   const [machine, setMachine] = useState(scan.machine ?? '');
+  const [ownerId, setOwnerId] = useState(defaultOwnerId);
+  const ownerOptions = useUserOptions(ownerId).filter((o) => o.value !== NONE);
   const [preview, setPreview] = useState<ScanPreview | null>(null);
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const run = useScanPreview();
@@ -69,6 +81,7 @@ export function ScanDialog({ scan, onClose }: { scan: WorktreesOverview['scan'];
         path: path.trim(),
         machine: machine.trim() || undefined,
         paths: preview.items.filter((i) => picked.has(pathKey(i.path))).map((i) => i.path),
+        ownerId,
       },
       {
         onSuccess: (res) => {
@@ -152,6 +165,9 @@ export function ScanDialog({ scan, onClose }: { scan: WorktreesOverview['scan'];
                 setPreview(null);
               }}
             />
+          </Field>
+          <Field label="負責人" hint="新登記的紀錄會歸給這位成員（預設是你）">
+            <Select options={ownerOptions} value={ownerId} onChange={setOwnerId} aria-label="登記的負責人" />
           </Field>
           <p className="eng-help">只會讀取 git 資訊（不 fetch、不執行 hook），預覽不會寫入任何資料。</p>
         </form>

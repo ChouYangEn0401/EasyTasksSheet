@@ -362,3 +362,16 @@ def test_apply_all_or_nothing_on_bad_status():
     t, _u, api = setup()
     assert apply(api, [1, 5], status="missing").status_code == 400
     assert records(t) == []
+
+
+def test_apply_owner_defaults_to_caller_and_validates():
+    t, u, api = setup()
+    assert apply(api, [1]).json()["created"] == 1
+    assert records(t)[0]["owner_id"] == u["id"]  # 預設為呼叫者
+    other = create_test_user(t.db, role="user")
+    assert apply(api, [2], ownerId=other["id"]).status_code == 200
+    assert records(t)[1]["owner_id"] == other["id"]
+    gone = create_test_user(t.db, role="user", is_active=0)
+    assert apply(api, [1], machine="PC-Z", ownerId=gone["id"]).status_code == 400
+    assert apply(api, [1], machine="PC-Z", ownerId=99999).status_code == 400
+    assert len(records(t)) == 2  # 驗證失敗不寫入

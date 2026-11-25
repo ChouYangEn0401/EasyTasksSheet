@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { errorMessage } from '../../lib/api.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { useUsersById } from '../../lib/hooks.ts';
@@ -6,16 +6,24 @@ import { useCan } from '../../lib/permissions.ts';
 import { notifySuccess } from '../../lib/toast.ts';
 import { Alert, Badge, Button, Dialog, EmptyState, Skeleton } from '../../ui/index.ts';
 import { usePurgeTrash, useRestoreRecord, useTrash } from './api.ts';
+import { inView } from './personView.ts';
 
 /** 回收區：移到回收區的 worktree 紀錄（可還原；超過保留天數只標示，不會自動清除；清空需 eng.trash.purge） */
-export function TrashDialog({ onClose }: { onClose: () => void }) {
+export function TrashDialog({
+  view,
+  onClose,
+}: {
+  /** 檢視範圍：單一成員只列負責人為該成員的紀錄 */
+  view: { kind: 'user'; id: number } | { kind: 'all' };
+  onClose: () => void;
+}) {
   const trash = useTrash(true);
   const restore = useRestoreRecord();
   const purge = usePurgeTrash();
   const canPurge = useCan('eng.trash.purge');
   const byId = useUsersById();
   const [confirming, setConfirming] = useState(false);
-  const records = trash.data?.records ?? [];
+  const records = useMemo(() => inView(trash.data?.records ?? [], view), [trash.data, view]);
   const days = trash.data?.retentionDays ?? 30;
 
   return (

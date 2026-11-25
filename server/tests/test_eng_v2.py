@@ -507,6 +507,7 @@ def test_scan_preview_and_apply(tmp_path, repo):
     assert res.json()["created"] == 1 and res.json()["moved"] == 1
     rows = {Path(r["path"]).name: r for r in t.db.all("SELECT * FROM worktree_records")}
     assert rows["wt-detached"]["source"] == "scan" and rows["wt-detached"]["repo"] == "proj"
+    assert rows["wt-detached"]["owner_id"] == _u["id"]  # 掃描登記的負責人預設為呼叫者
     assert rows["wt-detached"]["head_sha"] == act["wt-detached"]["headSha"]
     assert "wt-m" in rows and "place" not in rows  # 搬動：更新路徑，而不是一筆遺失 + 一筆新增
     assert "wt-gone" not in rows  # 未勾選
