@@ -119,7 +119,7 @@ def test_relation_count_aggregated():
     c = counts(a)
     assert [c[i] for i in ids] == [3, 2, 2, 1, 0]
     # 既有欄位不受影響；篩選時計數仍以全部關聯計算
-    one = a.get(f"/api/tasks?q=任務4").json()[0]
+    one = a.get("/api/tasks?q=任務4").json()[0]
     assert one["title"] == "任務4" and one["relationCount"] == 0 and "custom" in one
     assert counts(a, q="任務0") == {ids[0]: 3}
 

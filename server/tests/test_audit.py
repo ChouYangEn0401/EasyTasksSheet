@@ -541,7 +541,7 @@ def test_permission_matrix(env):
 
 
 def test_list_filters_and_cursor(env):
-    t, member, other, manager, clock = env["t"], env["member"], env["other"], env["manager"], env["clock"]
+    member, other, manager, clock = env["member"], env["other"], env["manager"], env["clock"]
     a = new_task(member, title="甲")
     clock.advance(1000)
     new_task(other, title="乙")
@@ -574,7 +574,7 @@ def test_list_filters_and_cursor(env):
 
 
 def test_task_history_paging_and_changes(env):
-    t, member = env["t"], env["member"]
+    member = env["member"]
     task = new_task(member, description="一")
     for d in ("二", "三", "四"):
         member.request("PATCH", f"/api/tasks/{task['id']}", {"description": d})
