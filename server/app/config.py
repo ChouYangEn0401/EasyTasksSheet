@@ -21,7 +21,7 @@ class ConfigError(ValueError):
 @dataclass(frozen=True)
 class Config:
     NODE_ENV: str = "development"
-    HOST: str = "0.0.0.0"
+    HOST: str = "127.0.0.1"
     PORT: int = 3000
     WEB_PORT: int = 5173
     APP_ORIGIN: str | None = None
