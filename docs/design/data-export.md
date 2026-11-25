@@ -37,8 +37,18 @@
 
 ## 3. 資料規則（後端 `server/app/data_transfer.py`，CLI 共用）
 
-- 匯出：users（不含密碼雜湊）、statuses、projects、propertyDefs、tasks（含軟刪除，帶 deletedAt）、feedbackItems、
-  personalItems、manualIssues、worktreeRecords、engGithubLinks、taskDependencies（任務依賴，以兩端任務 uid 表示；成環者匯入時略過，見 delay-link.md）。不含 sessions、login_attempts、changes 與快取 / 快照表。
+- 格式版本 `schemaVersion` = 2（加入待辦清單、關聯、依賴、討論區、描述鎖定欄位、成員 inOverview、個人清單 doneAt）。
+  匯入同時接受 1 與 2：版本 1 的舊檔缺少的鍵 / 欄位以預設值匯入；比系統新的版本會被拒絕並提示「請先更新系統」。
+- 匯出：users（不含密碼雜湊；含 inOverview）、statuses、projects、propertyDefs、tasks（含軟刪除，帶 deletedAt；含描述鎖定
+  descriptionLocked / lockedByUsername / lockedAt）、taskChecklistItems（任務待辦清單，以任務 uid 關聯）、feedbackItems、
+  personalItems、manualIssues、worktreeRecords、engGithubLinks、taskRelations（相關任務，以兩端任務 uid 表示）、
+  taskDependencies（任務依賴，以兩端任務 uid 表示；成環者匯入時略過並列出原因，見 delay-link.md）、
+  taskComments（任務討論區，見 task-discussion.md；父留言須同任務且為根訊息、replyTo 須同串，違規者略過並列出原因；
+  更新既有留言不改其所屬任務與討論串）、attachments（只有元資料，匯入時忽略）。
+  不含 sessions、login_attempts、changes 與快取 / 快照表。
+- 成員 inOverview 只套用到匯入時**新建立**的帳號（缺漏依角色預設），既有帳號不覆寫。描述鎖定旗標由匯入帶入
+  （匯入需 manager 權限，屬有權限者執行）；sync-push 則不得改變鎖定，見 [sync.md](../sync.md)。
+- sync-push（多台電腦同步）只涵蓋 SPECS 內的類別（含 taskChecklistItems），不含 taskRelations、taskDependencies、taskComments。
   關聯以 uid（`0005_uid` migration，trigger 自動產生）表示；成員以 username、GitHub 連動以 project 為自然鍵。
 - 對應：同 uid 為同一筆；狀態與專案 uid 對不到時以「名稱相同且唯一」對應（新安裝的預設資料不重複）。
 - 相同：createdAt / updatedAt / updatedByUsername 以外欄位都相同。衝突：兩邊都有且內容不同。

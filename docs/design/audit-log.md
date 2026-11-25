@@ -63,7 +63,7 @@
 | 狀態「改移並刪除」 | 一筆狀態摘要＋每筆被改移任務一筆（出現在任務活動歷史） | ✗ |
 | 自訂欄位定義新增 / 修改 / 刪除 | | ✓（刪除 → 以原編號重建，任務上的值仍在） |
 | 成員新增 | 帳號、顯示名稱、角色 | ✗（帳號無法刪除，可停用） |
-| 成員停用 / 啟用 / 角色 / 顯示名稱 | | ✓（不可讓系統沒有啟用中的 root；涉及 root 需 `roles.assign_root`；還原為停用時撤銷 session） |
+| 成員停用 / 啟用 / 角色 / 顯示名稱 / 列入總覽統計（`inOverview`） | | ✓（不可讓系統沒有啟用中的 root；涉及 root 需 `roles.assign_root`；還原為停用時撤銷 session） |
 | 成員重設密碼 / 解除鎖定 | 只記事件，不存密碼 | ✗ |
 | 個人設定帳號 / 顯示名稱 | | ✗（需由本人修改） |
 | 權限設定變更 / 還原預設 | 前後矩陣差異（`role:capability`） | ✓（還原為前一版；需 `permissions.configure`，即 root） |
@@ -77,6 +77,11 @@
 | 留言發表 / 回覆 / 編輯 / 標記已解決（`comment`） | 只存前 200 字摘要，不存全文 | ✗ |
 | 留言刪除（`comment`） | 摘要與原作者 | 刪除**他人**留言（管理）✓（→ 取消軟刪除，需 `comments.moderate`）；刪除自己的 ✗ |
 
+**留言內容的可見範圍**：留言類紀錄（`entity_type = comment`，含發表、編輯前後、刪除、還原）的前 200 字摘要只在全站稽核頁
+（`GET /api/admin/audit*`，`audit.view`，預設管理者以上）回傳，讓管理者審視或還原誤貼的敏感內容。任務活動歷史
+（`GET /api/tasks/:id/history`，`audit.view_task_history` 預設全員）對這類紀錄**不回傳內容**（`changes` 為空陣列），只顯示摘要句
+（例如「在『X』發表了留言」），避免已刪除或編輯前的留言內容仍可被一般成員讀到。
+
 不記錄：個人待辦、問題回饋、工程追蹤、附件、登入、系統事件。
 
 ## 還原規則
@@ -88,6 +93,8 @@
 3. **欄位更新**：把有變動的欄位設回 before。若某欄位目前值 ≠ 該次的 after（之後又被改過）→ 409 `REVERT_CONFLICT`，`details.conflicts` 列出欄位、目前值、該次 after、要還原成的 before；帶 `force: true` 才覆蓋。
 4. 任務更新但任務目前已刪除 → 需先還原刪除。原本的狀態 / 專案 / 負責人已不存在 → 不可還原。
 5. 成功後：寫一筆新紀錄（`source = revert`、`revert_of = 原 id`、摘要「還原：…」，本身也可再還原），標記原筆 `reverted_by / reverted_at`，並對資料寫 `record_change`。
+   「還原的還原」：還原刪除所產生的 `action = restore` 紀錄可再還原——任務 → 再次軟刪除；管理刪除的留言 → 再次刪除；
+   相關任務 / 依賴 → 再次移除；狀態 / 自訂欄位 → 再次刪除（狀態已有任務使用時同樣不可）。再還原產生的 `delete` 紀錄又可還原，依此類推。
 
 `GET /api/admin/audit/:id` 另回 `revertPreview`（`kind`、要還原的欄位含目前值與 `conflict`、`blocked` 原因），還原對話框據此顯示。
 
@@ -98,7 +105,7 @@
 | `GET /api/admin/audit?from=&to=&actor=&entityType=&action=&taskId=&q=&revertable=&limit=&before=` | `audit.view` | 游標分頁（`before` = 上一頁的 `nextBefore`）；`q` 搜尋摘要與名稱；`revertable=true` 只列可還原且未還原者 |
 | `GET /api/admin/audit/:id` | `audit.view` | 完整前後值、`changes`（含中文欄位名與值）、`revertPreview` |
 | `POST /api/admin/audit/:id/revert` | `audit.revert` | 見上 |
-| `GET /api/tasks/:id/history?limit=&before=` | `audit.view_task_history` | 該任務的活動歷史（含已刪除任務） |
+| `GET /api/tasks/:id/history?limit=&before=` | `audit.view_task_history` | 該任務的活動歷史（含已刪除任務）；留言類紀錄不帶內容（見「留言內容的可見範圍」） |
 
 不提供修改或刪除稽核的 API；只依保留期限修剪。
 

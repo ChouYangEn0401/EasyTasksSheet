@@ -334,5 +334,5 @@
 - **貼上多行**：貼到新增列或編輯中的項目時，辨識 `- [ ] x`、`- [x] x`、`* x`、`1. x`、`☐ x` 與純文字每行一項（保留勾選、忽略空行與縮排、超過 100 項或 500 字會提示並截斷），先顯示「將建立 N 項」確認，建立後 toast 可「復原」。
 - **徽章**：列表標題旁與看板卡片顯示「☑ 3/5」（`checklistTotal > 0` 才顯示；全部完成變綠色勾；Tooltip「待辦清單 3/5 完成」）。≤ 1023px 時徽章移到標題前面，避免被列操作鈕蓋住。
 - **即時更新**：清單查詢鍵在 `['tasks','checklist',id]` 之下，隨 task 變更自動重抓；正在編輯的項目文字不會被覆蓋。
-- **匯出匯入**：`taskChecklistItems` 類別（以任務 uid 關聯、各項 uid 對應、冪等）。**sync-push 目前不同步清單**（已知限制）。
+- **匯出匯入**：`taskChecklistItems` 類別（以任務 uid 關聯、各項 uid 對應、冪等）。**sync-push 也會同步清單**（`taskChecklistItems` 在 SPECS 內；新增 / 冪等 / 衝突規則同其他類別，空白項目略過並列出原因，見 [sync.md](../sync.md)）。
 - 實作檔：後端 `server/app/features/task_checklist.py`；前端 `src/web/features/tasks/Checklist*.tsx`、`checklistModel.ts`、`checklistData.ts`、`checklist.css`。

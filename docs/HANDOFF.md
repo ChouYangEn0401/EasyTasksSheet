@@ -220,7 +220,7 @@ npx prettier --check .
 6. 預設管理員密碼 `password` 很弱，僅靠首次登入強制重設保護（見[第 9 節](#9-安全注意事項)）。
 7. 匯入預覽 token 存在記憶體，服務重啟即失效（重新預覽即可）。
 8. 權限：一般協作權限（`tasks.edit` 等）只限制寫入、不隱藏前端控制項，被收回的人操作時才看到「沒有權限」；授予 user `members.manage` 等於可把自己升為 manager；直接用 SQL 改 `role_permissions` 需重啟才生效；權限設定不在 JSON 匯出入 / 同步範圍。
-9. 附件不隨 JSON 匯入 / sync-push 同步（紀錄與檔案都不會建立）。任務待辦清單（checklist）隨 JSON 匯出入，但 sync-push 目前不同步。
+9. 附件不隨 JSON 匯入 / sync-push 同步（紀錄與檔案都不會建立）。任務待辦清單（checklist）隨 JSON 匯出入，也會被 sync-push 同步（`taskChecklistItems` 在 `data_transfer.SPECS` 內；規則見 [sync.md](sync.md)）。sync-push 不得改變任務的描述鎖定，中央已鎖定的描述也不會被覆寫。
 10. 同步依各電腦時鐘判斷新舊，時鐘誤差大會誤判；同步單向，中央變更不回寫。
 11. 在線感知：多分頁以最後回報為準；重啟後即時狀態全部視為離線。
 12. 匯入「取代全部」後可能留下沒有對應問題的附件檔，用 `python -m server.cli attachments-prune` 清除。

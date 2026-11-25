@@ -109,11 +109,16 @@
 
 - 速率限制：同一使用者每分鐘最多 30 則（429「留言有點太快了，請稍候一分鐘再繼續」）。
 - 變更流水：留言寫入記 `task_comment`（entity_id = 留言 id）；前端 `lib/sync.ts` 對應失效 `['taskComments']` 與任務清單（徽章）。刻意**不**記 `task`，避免他人畫面出現「剛更新了此任務」提示與列高亮；鎖定 / 解鎖屬任務欄位，記 `task`。
-- 匯出 / 匯入：新增類別 `taskComments`（`taskUid`、`parentUid`、`replyToUid`、成員以帳號表示、`mentionUsernames`）；不在 `SPECS` 中，所以 **sync-push 不同步留言**。匯入時同 uid 視為同一則，依策略（updatedAt）決定是否覆寫；所屬任務未匯入時略過；成員不存在時該欄位留空。預覽回應 `taskComments: {total, new, existing, local}`，套用結果 `taskComments: {created, updated, unchanged, skipped}`（資料管理頁尚未顯示這兩組數字）。任務另匯出 `descriptionLocked`、`lockedByUsername`、`lockedAt`（舊檔沒有時視為未鎖定）。
+- 匯出 / 匯入：新增類別 `taskComments`（`taskUid`、`parentUid`、`replyToUid`、成員以帳號表示、`mentionUsernames`）；不在 `SPECS` 中，所以 **sync-push 不同步留言**。匯入時同 uid 視為同一則，依策略（updatedAt）決定是否覆寫；所屬任務未匯入時略過；成員不存在時該欄位留空。預覽回應 `taskComments: {total, new, existing, local}`，套用結果 `taskComments: {created, updated, unchanged, skipped, skippedReasons}`（資料管理頁尚未顯示這兩組數字）。任務另匯出 `descriptionLocked`、`lockedByUsername`、`lockedAt`（舊檔沒有時視為未鎖定）。
 
 ## 9. 已知限制
 
 - sync-push（多台電腦同步）不同步留言與已讀位置。
+- 稽核只存留言前 200 字摘要（發表、編輯前後、刪除）。這些摘要**只在全站稽核頁**（`audit.view`，預設管理者以上）可見，
+  供管理者審視 / 還原誤貼的敏感內容；任務活動歷史（`/api/tasks/:id/history`，預設全員）對留言紀錄只顯示摘要句、不回傳內容，
+  因此已刪除留言與編輯前的內容不會經由任務歷史外流（見 [audit-log.md](audit-log.md)）。
+- 匯入留言時檢查討論串結構：父留言須屬同一任務且本身是根訊息（只有兩層）、`replyToUid` 須在同一串，違規者略過並列在
+  `taskComments.skippedReasons`；更新既有留言不改其所屬任務與討論串。
 - 沒有獨立的通知系統：@提及只反映在未讀徽章。
 - 「與我有關」等篩選只作用在已載入的討論串。
 - 載入過的較早回覆不會隨他人編輯 / 刪除即時更新（重新開啟任務即更新）。

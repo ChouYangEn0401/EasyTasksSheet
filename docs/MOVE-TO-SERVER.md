@@ -328,7 +328,7 @@ sudo -u tasks-sheets .venv/bin/python -m server.cli import /tmp/export.json \
 ## 5. 常見問題
 
 **版本不一致 / migration**
-啟動與所有 CLI 指令都會**自動套用尚未執行的 migration**。把舊版資料庫搬到較新的程式上沒問題，會自動升級（建議搬之前保留一份備份）。反過來——用**較舊**的程式開**較新**版本的資料庫——程式沒有防呆也不保證可用（新欄位 / 新表它不認得），請先把 server 的程式更新到相同或更新的版本。JSON 匯出檔的 `schemaVersion` 比 server 新時會被拒絕，請先更新 server。目前最新 migration 是 `server/migrations/0012_*.sql`。
+啟動與所有 CLI 指令都會**自動套用尚未執行的 migration**。把舊版資料庫搬到較新的程式上沒問題，會自動升級（建議搬之前保留一份備份）。反過來——用**較舊**的程式開**較新**版本的資料庫——程式沒有防呆也不保證可用（新欄位 / 新表它不認得），請先把 server 的程式更新到相同或更新的版本。JSON 匯出檔（與 sync-push 上傳內容）的 `schemaVersion` 比 server 新時會被拒絕並提示先更新 server（目前格式版本為 2，新版仍可匯入版本 1 的舊檔）。最新 migration 請看 `server/migrations/` 中編號最大的檔案（撰寫時為 `0020_*.sql`）。
 
 **還原後 session 與密碼**
 整包搬（A）會帶走密碼雜湊與 session：帳號密碼原樣可用；備份當下仍有效的 session 在還原後也會有效（受 9 小時絕對期限與 60 分鐘閒置限制），不想保留的話請在 server 啟動後讓大家重新登入或改密碼。B、C 不帶密碼，新建立的成員都是隨機臨時密碼，由管理者在「成員管理」重設。
