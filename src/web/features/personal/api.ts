@@ -9,6 +9,7 @@ import type { Task } from '../../../shared/tasks.ts';
 import { api } from '../../lib/api.ts';
 import { useCurrentUser } from '../../lib/auth.ts';
 import { LIST_POLL_MS, queryKeys } from '../../lib/queryClient.ts';
+import { recordTodoCreate, recordTodoDelete, recordTodoUpdate } from '../undo/simpleUndo.ts';
 
 /** 個人清單的查詢鍵：皆以成員 id 區分（檢視他人時使用他人 id） */
 export const personalKeys = {
@@ -56,6 +57,7 @@ export function useCreateTodo() {
     mutationFn: (input: PersonalCreateInput) => api.post<PersonalItem>('/personal', input),
     onSuccess: (item) => {
       qc.setQueryData<PersonalItem[]>(key, (prev) => [item, ...(prev ?? [])]);
+      recordTodoCreate(qc, key, item);
       return qc.invalidateQueries({ queryKey: key });
     },
   });
@@ -95,9 +97,16 @@ export function useUpdateTodo() {
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(key, ctx.prev);
     },
-    onSuccess: (item) => {
+    onSuccess: (item, { id: _id, ...patch }, ctx) => {
       qc.setQueryData<PersonalItem[]>(key, (list) =>
         list?.map((i) => (i.id === item.id ? item : i)).sort(bySort),
+      );
+      recordTodoUpdate(
+        qc,
+        key,
+        ctx?.prev?.find((i) => i.id === item.id),
+        patch,
+        item,
       );
     },
     onSettled: () => qc.invalidateQueries({ queryKey: key }),
@@ -119,6 +128,10 @@ export function useDeleteTodo() {
     },
     onError: (_err, _id, ctx) => {
       if (ctx?.prev) qc.setQueryData(key, ctx.prev);
+    },
+    onSuccess: (_res, id, ctx) => {
+      const item = ctx?.prev?.find((i) => i.id === id);
+      if (item) recordTodoDelete(qc, key, item);
     },
     onSettled: () => qc.invalidateQueries({ queryKey: key }),
   });

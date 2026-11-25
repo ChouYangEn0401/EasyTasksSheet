@@ -10,6 +10,13 @@ import { api } from '../../lib/api.ts';
 import type { TaskFilters } from '../../lib/filters.ts';
 import { enterItem, flashItem, leaveItem, taskFxKey } from '../../lib/motion.ts';
 import { queryKeys } from '../../lib/queryClient.ts';
+import {
+  findCachedTask,
+  recordTaskCreate,
+  recordTaskDelete,
+  recordTaskUpdate,
+  type UndoOption,
+} from '../../lib/taskUndo.ts';
 import { applyPatch, matchesFilters } from './model.ts';
 
 // ── 高亮（剛建立 / 剛因編輯而移動）：共用 lib/motion.ts 的項目效果 ──
@@ -49,8 +56,8 @@ function findTask(qc: QueryClient, id: number): Task | undefined {
 
 // ── 欄位更新（樂觀）────────────────────────────────
 
-type UpdateVars = { id: number; patch: TaskUpdateInput; userId?: number | null };
-type UpdateCtx = { lists: ListEntry[]; detail: Task | undefined };
+type UpdateVars = { id: number; patch: TaskUpdateInput; userId?: number | null; undo?: UndoOption };
+type UpdateCtx = { lists: ListEntry[]; detail: Task | undefined; before: Task | undefined };
 
 /** PATCH 單一欄位：立即套用到所有快取，失敗回復 */
 export function useOptimisticUpdate() {
@@ -61,20 +68,23 @@ export function useOptimisticUpdate() {
       await qc.cancelQueries({ queryKey: queryKeys.tasks.all });
       const lists = listEntries(qc);
       const detail = qc.getQueryData<Task>(queryKeys.tasks.detail(id));
+      // 復原用的前值：樂觀套用前從快取取出（lib/taskUndo.ts）
+      const before = findCachedTask(qc, id);
       const now = Date.now();
       updateLists(qc, (list) => list.map((t) => (t.id === id ? applyPatch(t, patch, now, userId) : t)));
       if (detail) qc.setQueryData(queryKeys.tasks.detail(id), applyPatch(detail, patch, now, userId));
-      return { lists, detail };
+      return { lists, detail, before };
     },
     onError: (_err, { id }, ctx) => {
       if (!ctx) return;
       for (const [key, list] of ctx.lists) qc.setQueryData(key, list);
       if (ctx.detail) qc.setQueryData(queryKeys.tasks.detail(id), ctx.detail);
     },
-    onSuccess: (task) => {
+    onSuccess: (task, { id, patch, undo }, ctx) => {
       qc.setQueryData(queryKeys.tasks.detail(task.id), task);
       // 合併而非取代：PATCH 回應不含清單專用的 relationCount
       updateLists(qc, (list) => list.map((t) => (t.id === task.id ? { ...t, ...task } : t)));
+      recordTaskUpdate(qc, { id, patch, before: ctx?.before, result: task, option: undo });
     },
     onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() }),
   });
@@ -106,6 +116,7 @@ export function useOptimisticCreate() {
           return !f || matchesFilters(task, f) ? [...without, task] : without;
         });
         enterItem(taskFxKey(task.id));
+        recordTaskCreate(qc, task);
         void qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
         return { task, matches: matchesFilters(task, current) };
       } catch (err) {
@@ -123,7 +134,9 @@ export function useDeleteTaskOptimistic() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.delete<{ ok: true }>(`/tasks/${id}`),
-    onSuccess: async (_r, id) => {
+    onMutate: (id) => ({ title: findTask(qc, id)?.title ?? '' }),
+    onSuccess: async (_r, id, ctx) => {
+      recordTaskDelete(qc, { id, title: ctx?.title ?? '' });
       // 清單列先播離場動畫，再從快取移除
       const ms = leaveItem(taskFxKey(id));
       if (ms > 0) await new Promise((r) => window.setTimeout(r, ms));

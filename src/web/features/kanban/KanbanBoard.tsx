@@ -24,6 +24,7 @@ import type { Project, Status } from '../../../shared/projects.ts';
 import type { Task } from '../../../shared/tasks.ts';
 import type { TaskFilters } from '../../lib/filters.ts';
 import { useUpdateTask, useUsersById } from '../../lib/hooks.ts';
+import { newUndoGroup } from '../../lib/taskUndo.ts';
 import { openTask, readTaskParam } from '../../lib/openTask.ts';
 import {
   isRecentRemote,
@@ -205,12 +206,18 @@ export function KanbanBoard({
     );
     setSaveError(null);
     const statusChanged = move.original.get(move.taskId)?.statusId !== move.statusId;
+    // 同一次放下的多筆 PATCH 合併成一筆復原紀錄；快取已先改寫，前值由 move.original 提供
+    const undoGroup = newUndoGroup('kanban');
+    const undoLabel = statusChanged
+      ? `把『${truncate(move.title)}』移到『${truncate(statusName(move.statusId))}』`
+      : `調整『${truncate(move.title)}』的順序`;
     Promise.all(
       move.patches.map((p) =>
         update.mutateAsync({
           id: p.id,
           sortOrder: p.sortOrder,
           ...(p.id === move.taskId && statusChanged ? { statusId: move.statusId } : {}),
+          undo: { group: undoGroup, label: undoLabel, before: move.original.get(p.id) },
         }),
       ),
     ).then(

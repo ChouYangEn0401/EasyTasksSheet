@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { PresenceStack } from '../features/presence/PresenceStack.tsx';
 import { QuickAdd } from '../features/tasks/QuickAdd.tsx';
+import { UndoButtons } from '../features/undo/UndoButtons.tsx';
 import { logout, useCurrentUser } from '../lib/auth.ts';
 import { ROLE_BADGE_TONES, ROLE_LABELS } from '../lib/permissions.ts';
 import { Avatar, Badge, Button, Icon, Menu } from '../ui/index.ts';
 import { ChangePasswordDialog } from './ChangePasswordDialog.tsx';
 
-/** 頂欄：頁面標題、全域 QuickAdd、使用者選單（變更密碼、登出） */
+/** 頂欄：頁面標題、全域 QuickAdd、復原 / 重做、使用者選單（變更密碼、登出） */
 export function Header({
   title,
   onOpenMenu,
@@ -34,6 +35,7 @@ export function Header({
       <div className="header-quickadd">
         <QuickAdd global fullWidth />
       </div>
+      {user && <UndoButtons />}
       {user && <PresenceStack title={title} />}
       {user && (
         <Menu

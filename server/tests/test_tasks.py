@@ -226,6 +226,45 @@ def test_soft_delete():
     assert [r["action"] for r in t.db.all("SELECT action FROM changes ORDER BY id")] == ["create", "delete"]
 
 
+def test_restore_soft_deleted_task():
+    t, clock, _alice, bob, a, b, change_count = setup()
+    task = a.request("POST", "/api/tasks", {"title": "要還原", "description": "內容"}).json()
+    assert a.request("DELETE", f"/api/tasks/{task['id']}").status_code == 200
+    clock.advance(1000)
+    before = change_count()
+    # 其他成員也可還原（tasks.edit）
+    res = b.request("POST", f"/api/tasks/{task['id']}/restore")
+    assert res.status_code == 200
+    restored = res.json()
+    assert restored["deletedAt"] is None
+    assert restored["title"] == "要還原" and restored["description"] == "內容"
+    assert restored["updatedBy"] == bob["id"] and restored["updatedAt"] == clock.now()
+    assert change_count() == before + 1
+    last = t.db.all("SELECT action, actor_id FROM changes ORDER BY id DESC LIMIT 1")[0]
+    assert (last["action"], last["actor_id"]) == ("create", bob["id"])
+    assert a.get(f"/api/tasks/{task['id']}").status_code == 200
+    assert [x["id"] for x in a.get("/api/tasks").json()] == [task["id"]]
+    # 未刪除時冪等：回傳目前資料、不寫變更流水
+    again = a.request("POST", f"/api/tasks/{task['id']}/restore")
+    assert again.status_code == 200 and again.json()["id"] == task["id"]
+    assert change_count() == before + 1
+    # 不存在 → 404
+    assert a.request("POST", "/api/tasks/99999/restore").status_code == 404
+
+
+def test_restore_requires_tasks_edit():
+    t, _clock, _alice, _bob, a, _b, _cc = setup()
+    root = login_as(t, create_test_user(t.db, role="root"))
+    task = a.request("POST", "/api/tasks", {"title": "x"}).json()
+    a.request("DELETE", f"/api/tasks/{task['id']}")
+    # 收回 user 的 tasks.edit → 還原被寫入守門擋下（403）
+    changes = [{"role": "user", "capability": "tasks.edit", "allowed": False}]
+    assert root.request("PUT", "/api/admin/permissions", {"changes": changes}).status_code == 200
+    res = a.request("POST", f"/api/tasks/{task['id']}/restore")
+    assert res.status_code == 403
+    assert t.db.scalar("SELECT deleted_at FROM tasks WHERE id = ?", (task["id"],)) is not None
+
+
 def test_list_filters():
     _t, _clock, alice, bob, a, _b, _cc = setup()
     p2 = a.request("POST", "/api/projects", {"name": "P2"}).json()

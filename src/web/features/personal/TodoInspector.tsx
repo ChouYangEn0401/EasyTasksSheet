@@ -291,7 +291,7 @@ export function TodoInspector({
           </>
         }
       >
-        <p className="m-0">刪除後無法復原。</p>
+        <p className="m-0">刪除後可按 Ctrl+Z 復原。</p>
       </Dialog>
     </>
   );

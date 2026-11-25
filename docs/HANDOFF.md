@@ -37,6 +37,7 @@ TasksSheets 是給實驗室內部用的多人任務 / 專案管理網站。本�
 | 資料同步 `/admin/data/sync`           | 多台電腦 sync-push 的來源金鑰與待確認衝突                                                                            |
 | 權限設定 `/admin/permissions`         | root 調整管理者 / 成員各項權限，即時生效                                                                             |
 | 全站                                  | 即時同步（SSE）、在線感知（頂欄雲朵頭像）、登入逾時與鎖定                                                            |
+| 全站復原 / 重做                       | `Ctrl+Z` / `Ctrl+Shift+Z`（頂欄按鈕）：任務編輯 / 拖曳 / 新增 / 刪除、個人待辦、回饋新增；純記憶體（[design/undo.md](design/undo.md)） |
 
 ## 2. 技術架構與目錄地圖
 

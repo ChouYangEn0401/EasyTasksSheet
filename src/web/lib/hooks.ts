@@ -15,6 +15,13 @@ import { api } from './api.ts';
 import { emptyFilters, toTaskQueryString, type TaskFilters } from './filters.ts';
 import { queryKeys } from './queryClient.ts';
 import { listPollInterval } from './sync.ts';
+import {
+  findCachedTask,
+  recordTaskCreate,
+  recordTaskDelete,
+  recordTaskUpdate,
+  type UndoOption,
+} from './taskUndo.ts';
 
 /*
  * 共用資料 hooks（tasks / users / projects / statuses / properties）。
@@ -46,34 +53,47 @@ export function useTask(id: number | null | undefined) {
 export function useCreateTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: TaskCreateInput) => api.post<Task>('/tasks', input),
-    onSuccess: (task) => {
+    mutationFn: ({ undo: _undo, ...input }: TaskCreateInput & { undo?: UndoOption }) =>
+      api.post<Task>('/tasks', input),
+    onSuccess: (task, { undo }) => {
       qc.setQueryData(queryKeys.tasks.detail(task.id), task);
+      recordTaskCreate(qc, task, undo);
       return qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
     },
   });
 }
 
-/** silentError：呼叫端自行顯示失敗（含重試）時設為 true，不發全域失敗 toast */
+/**
+ * PATCH 任務。成功後自動登記復原（lib/taskUndo.ts）：前值於 onMutate 從快取取出；
+ * 呼叫端若已先樂觀改寫快取，請在 undo.before 帶動作前的值；undo: false 不入堆疊。
+ * silentError：呼叫端自行顯示失敗（含重試）時設為 true，不發全域失敗 toast
+ */
 export function useUpdateTask({ silentError = false }: { silentError?: boolean } = {}) {
   const qc = useQueryClient();
   return useMutation({
     meta: silentError ? { errorToast: false } : undefined,
-    mutationFn: ({ id, ...patch }: TaskUpdateInput & { id: number }) =>
+    mutationFn: ({ id, undo: _undo, ...patch }: TaskUpdateInput & { id: number; undo?: UndoOption }) =>
       api.patch<Task>(`/tasks/${id}`, patch),
-    onSuccess: (task) => {
+    onMutate: ({ id, undo }) => ({
+      before: undo === false ? undefined : (undo?.before ?? findCachedTask(qc, id)),
+    }),
+    onSuccess: (task, { id, undo, ...patch }, ctx) => {
       qc.setQueryData(queryKeys.tasks.detail(task.id), task);
+      recordTaskUpdate(qc, { id, patch, before: ctx?.before, result: task, option: undo });
       return qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
     },
   });
 }
 
-export function useDeleteTask() {
+/** 軟刪除任務；成功後登記復原（undo: false 不入堆疊） */
+export function useDeleteTask({ undo }: { undo?: UndoOption } = {}) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.delete<{ ok: true }>(`/tasks/${id}`),
-    onSuccess: (_res, id) => {
+    onMutate: (id) => ({ title: findCachedTask(qc, id)?.title ?? '' }),
+    onSuccess: (_res, id, ctx) => {
       qc.removeQueries({ queryKey: queryKeys.tasks.detail(id) });
+      recordTaskDelete(qc, { id, title: ctx?.title ?? '' }, undo);
       return qc.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
     },
   });

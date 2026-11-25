@@ -1,7 +1,9 @@
 /**
  * 全域快捷鍵（docs/design/core-shell.md §8）：
  *   N 聚焦 Header 的 QuickAdd；/ 聚焦 FilterBar 搜尋框；G 然後 O/L/K/G/F/M/E 前往頁面；[ 收合 Sidebar
- * focus 在輸入框 / 可編輯區時不觸發；suspendGlobalShortcuts() 可暫停（例如 Kanban 鍵盤拖曳中）。
+ *   Ctrl+Z 復原、Ctrl+Shift+Z / Ctrl+Y 重做（Mac 用 Cmd；docs/design/undo.md）
+ * focus 在輸入框 / 可編輯區時不觸發（保留瀏覽器原生的文字復原）；開著對話框時不觸發；
+ * suspendGlobalShortcuts() 可暫停（例如 Kanban 鍵盤拖曳中）。
  */
 
 /** G 序列對應的路由 */
@@ -36,7 +38,7 @@ export const shortcutsSuspended = () => suspendCount > 0;
 
 /** 事件目標是否為可輸入的元素 */
 export function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
+  if (typeof HTMLElement === 'undefined' || !(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
   const tag = target.tagName;
   if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
@@ -78,4 +80,22 @@ export function resolveShortcut(
     default:
       return { action: null, pendingG: false };
   }
+}
+
+/** 復原 / 重做快捷鍵用到的按鍵資訊（KeyboardEvent 的子集，方便測試） */
+export type UndoKeyInput = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey'> & {
+  target?: EventTarget | null;
+};
+
+/**
+ * 判斷是否為復原 / 重做快捷鍵（純函式）：Ctrl/Cmd+Z 復原；Ctrl/Cmd+Shift+Z、Ctrl/Cmd+Y 重做。
+ * 焦點在可編輯元素（input / textarea / select / contenteditable）時回傳 null，讓瀏覽器處理原生文字復原。
+ */
+export function resolveUndoShortcut(e: UndoKeyInput): 'undo' | 'redo' | null {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return null;
+  if (isEditableTarget(e.target ?? null)) return null;
+  const k = e.key.toLowerCase();
+  if (k === 'z') return e.shiftKey ? 'redo' : 'undo';
+  if (k === 'y' && !e.shiftKey) return 'redo';
+  return null;
 }

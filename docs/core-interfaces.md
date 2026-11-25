@@ -13,7 +13,8 @@
 - 篩選：useTaskFilters() → {filters,setFilters,clearFilters}；TaskFilters={q,project[],assignee[(number|'none')],status[]}；filters.ts 為純函式。
 - `openTask.ts`：openTask(id)/closeTask()/readTaskParam(sp)。
 - `auth.ts`：useMe、useCurrentUser、logout、handleSessionExpired、idleTracker、useIdleSnapshot。
-- `shortcuts.ts`：suspendGlobalShortcuts()、isEditableTarget()；全域鍵 N/ // G/ [。
+- `shortcuts.ts`：suspendGlobalShortcuts()、isEditableTarget()、resolveUndoShortcut()；全域鍵 N/ // G/ [、Ctrl+Z / Ctrl+Shift+Z。
+- `undo.ts`：registerUndoable({label,undo,redo})、useUndoable()、useUndoState()；任務 mutation（useUpdateTask 等）自動登記，`undo: false` 不入堆疊（docs/design/undo.md）。
 - `format.ts`、`colors.ts`（tagVars、statusTone、statusStyle）、`storage.ts`、`useOnline.ts`。
 - `GlobalOverlays.tsx`：空殼，AppShell 已掛載，T9 在此加 Toast/閒置提醒/SSE 狀態。
 
@@ -34,6 +35,6 @@ Button、Input、Textarea、Field、Select、MultiSelect、Menu、Dialog、Badge
 - 管理指令：`python -m server.cli user-add | backup | restore`（npm：`user:add`、`backup`、`backup:self-test`）。
 - 即時同步：`/api/events`（SSE）與 `/api/changes?since=`；前端收到任務刪除事件時不重抓該任務詳情（避免 404）。
 - Session 9 小時 + 閒置 60 分鐘；只有非 GET 請求刷新閒置。
-- tasks API：GET 支援 project/assignee/status 逗號多值、assignee=none、q；POST 只需 title；PATCH 只送改動欄位；軟刪除。
+- tasks API：GET 支援 project/assignee/status 逗號多值、assignee=none、q；POST 只需 title；PATCH 只送改動欄位；軟刪除；`POST /api/tasks/:id/restore` 還原（復原用）。
 - 自訂 property 值存 tasks.custom，PATCH 逐鍵合併，null 清除。
 - TAG_COLORS：gray blue purple green yellow orange red teal。

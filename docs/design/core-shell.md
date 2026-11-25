@@ -292,6 +292,7 @@ Badge 的狀態版：`--radius-full`、高 22、內距 0 8px、前置 6px 圓點
 | `/` | 聚焦 FilterBar 搜尋框（僅任務區，同上限制） |
 | `G` 然後 `O` / `L` / `K` / `G` / `F` / `M` / `E` | 前往 總覽 / List / Kanban / Gantt / 問題回饋 / 個人清單 / 工程追蹤 |
 | `[` | 收合 / 展開 Sidebar |
+| `Ctrl+Z` / `Ctrl+Shift+Z`（或 `Ctrl+Y`；Mac 用 `Cmd`） | 復原 / 重做自己的操作；focus 在輸入框時交給瀏覽器的文字復原（[undo.md](undo.md)） |
 | `Esc` | 依序關閉最上層：Popover → Dialog → TaskDrawer；在輸入框內則先清空 / 失焦 |
 | `Enter` / `Space` | 啟動按鈕、開啟選單、勾選 Checkbox |
 | `↑` `↓` `Home` `End` | 在 Select / Menu 面板內移動；直接輸入文字可跳至相符選項 |

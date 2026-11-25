@@ -6,6 +6,7 @@ import { ApiError, api, onApiEvent } from './api.ts';
 import { createIdleTracker } from './idle.ts';
 import { currentPath, loginUrl, navigateTo } from './navigation.ts';
 import { queryClient, queryKeys } from './queryClient.ts';
+import { undoManager } from './undo.ts';
 
 /*
  * 登入狀態、登入 / 登出 / 改密碼、session 逾時處理與閒置偵測。
@@ -20,6 +21,8 @@ export const isSessionEnding = () => ending;
 function endSession(to: string) {
   ending = true;
   idleTracker.reset();
+  // 復原紀錄只屬於這次登入
+  undoManager.clear();
   queryClient.setQueryData(queryKeys.me, null);
   navigateTo(to, { replace: true });
   window.setTimeout(() => {

@@ -229,3 +229,24 @@ async def delete_task(request: Request, id: str):
         conn.execute("UPDATE tasks SET deleted_at = ?, updated_by = ?, updated_at = ? WHERE id = ?", (t, uid, t, tid))
         record_change(conn, "task", tid, "delete", uid, t)
     return {"ok": True}
+
+
+@router.post("/{id}/restore")
+async def restore_task(request: Request, id: str):
+    """還原軟刪除的任務（復原 / 重做用，docs/design/undo.md）。
+    已存在（未刪除）時冪等回傳目前資料；從未存在 → 404。還原後以 create 事件通知其他人（重新出現）。"""
+    ctx = get_ctx(request)
+    tid = parse_id(id)
+    uid = ctx.user["id"]
+    with ctx.db.tx() as conn:
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (tid,)).fetchone()
+        if row is None:
+            raise not_found("此任務不存在")
+        if row["deleted_at"] is not None:
+            t = ctx.now()
+            conn.execute(
+                "UPDATE tasks SET deleted_at = NULL, updated_by = ?, updated_at = ? WHERE id = ?", (uid, t, tid)
+            )
+            record_change(conn, "task", tid, "create", uid, t)
+            row = conn.execute("SELECT * FROM tasks WHERE id = ?", (tid,)).fetchone()
+    return row_to_dict(row)

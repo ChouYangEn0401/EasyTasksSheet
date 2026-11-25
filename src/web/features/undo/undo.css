@@ -1,0 +1,20 @@
+/* 復原 / 重做（docs/design/undo.md）；只用 core token */
+
+/* 本檔可能早於全域樣式載入：先宣告與 Tailwind 相同的 layer 順序 */
+@layer theme, base, components, utilities;
+
+@layer components {
+  /* 頂欄的復原 / 重做按鈕（docs/design/undo.md） */
+  .undo-buttons {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+  }
+  .undo-conflict-more,
+  .undo-conflict-label {
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+}

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { FeedbackCreateInput, FeedbackItem, FeedbackUpdateInput } from '../../../shared/feedback.ts';
 import { api } from '../../lib/api.ts';
 import { LIST_POLL_MS } from '../../lib/queryClient.ts';
+import { recordFeedbackCreate } from '../undo/simpleUndo.ts';
 import { applyPatch } from './model.ts';
 
 export const feedbackKeys = {
@@ -24,8 +25,9 @@ export function useCreateFeedback() {
     // 表單 / 頁面自行顯示失敗訊息，不發全域失敗 toast
     meta: { errorToast: false },
     mutationFn: (input: FeedbackCreateInput) => api.post<FeedbackItem>('/feedback', input),
-    onSuccess: (item) => {
+    onSuccess: (item, input) => {
       qc.setQueryData<FeedbackItem[]>(feedbackKeys.list(), (prev) => (prev ? [item, ...prev] : [item]));
+      recordFeedbackCreate(qc, feedbackKeys.list(), item, input);
       return qc.invalidateQueries({ queryKey: feedbackKeys.all });
     },
   });
