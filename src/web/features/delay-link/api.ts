@@ -60,15 +60,6 @@ export function useCreateDependency(taskId: number) {
   });
 }
 
-export function useUpdateDependency(taskId: number) {
-  const invalidate = useInvalidateTasks();
-  return useMutation({
-    mutationFn: ({ depId, ...patch }: { depId: number; lagDays?: number; note?: string }) =>
-      api.patch<DependencyMutationResult>(`/tasks/${taskId}/dependencies/${depId}`, patch),
-    onSuccess: () => invalidate(),
-  });
-}
-
 export function useDeleteDependency(taskId: number) {
   const invalidate = useInvalidateTasks();
   return useMutation({

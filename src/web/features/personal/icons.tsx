@@ -1,4 +1,4 @@
-/** 個人清單專用的 16px 線條圖示（core Icon 尚無書籤 / 把手 / 鉛筆） */
+/** 個人清單專用的 16px 線條圖示（core Icon 尚無書籤 / 把手） */
 
 function Svg({ d, fill = 'none' }: { d: string; fill?: string }) {
   return (
@@ -34,8 +34,4 @@ export function GripIcon() {
       ))}
     </svg>
   );
-}
-
-export function PencilIcon() {
-  return <Svg d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" />;
 }

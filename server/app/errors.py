@@ -61,10 +61,6 @@ def too_many_requests(message: str = "嘗試次數過多，請稍後再試") -> 
     return HttpError(429, "TOO_MANY_REQUESTS", message)
 
 
-def not_implemented(message: str = "尚未實作") -> HttpError:
-    return HttpError(501, "NOT_IMPLEMENTED", message)
-
-
 def error_body(code: str, message: str, details: Any = _UNSET) -> dict[str, Any]:
     err: dict[str, Any] = {"code": code, "message": message}
     if details is not _UNSET:

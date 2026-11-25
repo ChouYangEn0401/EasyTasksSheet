@@ -1,20 +1,9 @@
-"""尚未實作的 feature router：任何路徑、任何方法都回 501（而非 404）。"""
+"""路由共用常數。
+
+（核心階段的「尚未實作 → 501」stub router 已隨各功能完成而移除；只留下 catch-all 路由用的方法清單。）
+"""
 
 from __future__ import annotations
 
-from fastapi import APIRouter
-
-from .errors import not_implemented
-
+#: catch-all 路由（/api 404、/api/admin 後備）註冊的 HTTP 方法
 ALL_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
-
-
-def stub_router(feature: str) -> APIRouter:
-    router = APIRouter()
-
-    async def _stub() -> None:
-        raise not_implemented(f"{feature} 尚未實作")
-
-    router.add_api_route("", _stub, methods=ALL_METHODS, include_in_schema=False)
-    router.add_api_route("/{rest:path}", _stub, methods=ALL_METHODS, include_in_schema=False)
-    return router

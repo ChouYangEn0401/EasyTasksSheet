@@ -576,8 +576,3 @@ function ChoiceEditor({
     </Popover>
   );
 }
-
-/** 只有 children 的簡單容器（Drawer 欄位列） */
-export function FieldRowLabel({ children }: { children: ReactNode }) {
-  return <span className="task-field-label">{children}</span>;
-}

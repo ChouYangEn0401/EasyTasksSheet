@@ -53,10 +53,6 @@ def dummy_hash() -> str:
     return _dummy_hash
 
 
-def random_password() -> str:
-    return base64.urlsafe_b64encode(secrets.token_bytes(12)).decode().rstrip("=")
-
-
 # ── session ──
 
 
