@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
+from .conftest import E2E_DB, E2E_ENV
 from .helpers import E2E_USERS, collect_errors, login_via_ui
 
 # 工程追蹤 v2：(A) 自訂狀態、(B) 掃描本機專案、(C) 多台電腦回報的安全機制（空回報攔截、回收區）。
@@ -123,8 +124,8 @@ def test_a_custom_statuses(page: Page):
 def test_b_scan_local_projects(page: Page):
     """(B) 掃描本機專案：預覽 → 勾選 → 登記"""
     errors = collect_errors(page)
-    # 在允許掃描的資料夾（WORKTREE_SCAN_ROOTS=data/e2e-scan）建立暫存 git repo 與兩個 worktree
-    root = ROOT / "data" / "e2e-scan" / stamp
+    # 在允許掃描的資料夾（伺服器的 WORKTREE_SCAN_ROOTS，見 conftest 的 E2E_ENV）建立暫存 git repo 與兩個 worktree
+    root = ROOT / E2E_ENV["WORKTREE_SCAN_ROOTS"] / stamp
     shutil.rmtree(root, ignore_errors=True)
     proj = root / "proj"
     proj.mkdir(parents=True, exist_ok=True)
@@ -201,7 +202,7 @@ def test_c_empty_report_held_and_grouped_by_machine_id(page: Page):
     assert held["previous"] == 3
 
     # 另一台很久沒回報的電腦（模擬 3 天前）
-    db = sqlite3.connect(str(ROOT / "data" / "e2e.db"))
+    db = sqlite3.connect(str(ROOT / E2E_DB))  # 伺服器用的那一份（conftest 的 E2E_DB）
     try:
         db.execute("PRAGMA busy_timeout = 5000")
         old = int(time.time() * 1000) - 3 * 86_400_000

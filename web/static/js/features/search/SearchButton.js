@@ -1,6 +1,7 @@
 import { createElement, Fragment } from 'preact';
 import { useEffect } from 'preact/compat';
-import { useTask } from '../../lib/hooks.js';
+import { useQueryClient } from '../../lib/query.js';
+import { findCachedTask } from '../../lib/taskUndo.js';
 import { readTaskParam } from '../../lib/openTask.js';
 import { useSearchParams } from '../../lib/router.js';
 import { Icon, Kbd } from '../../ui/index.js';
@@ -38,14 +39,29 @@ export function SearchButton() {
   );
 }
 
-/** 不管從哪裡開的任務抽屜（?task=），都記進「最近開啟」 */
+/**
+ * 不管從哪裡開的任務抽屜（?task=），都記進「最近開啟」。
+ * 只讀快取（抽屜自己會抓那筆任務），不另外掛查詢——多掛一個任務查詢的觀察者會干擾清單頁的篩選 debounce。
+ */
 function RecentTracker() {
   const [sp] = useSearchParams();
   const id = readTaskParam(sp);
-  const { data } = useTask(id);
-  const task = id != null && data?.id === id ? data : null;
+  const qc = useQueryClient();
   useEffect(() => {
-    if (task && task.deletedAt == null) rememberRecent(task);
-  }, [task?.id, task?.title, task?.statusId, task?.projectId, task?.assigneeId]);
+    if (id == null) return;
+    const timers = [];
+    let done = false;
+    const tryRecord = () => {
+      if (done) return;
+      const t = findCachedTask(qc, id);
+      if (t && t.deletedAt == null) {
+        done = true;
+        rememberRecent(t);
+      }
+    };
+    tryRecord();
+    for (const ms of [300, 1000, 2500, 5000]) timers.push(window.setTimeout(tryRecord, ms));
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [id, qc]);
   return null;
 }

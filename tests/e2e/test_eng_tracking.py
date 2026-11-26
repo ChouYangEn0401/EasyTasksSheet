@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
+from .conftest import E2E_DB
 from .helpers import E2E_USERS, collect_errors, login_via_ui
 
 pytestmark = pytest.mark.usefixtures("data_hygiene")
@@ -44,8 +45,8 @@ WT = {
 
 
 def seed_report() -> None:
-    """模擬某台電腦已回報（直接寫入 E2E 專用 DB）"""
-    db = sqlite3.connect(str(ROOT / "data" / "e2e.db"))
+    """模擬某台電腦已回報（直接寫入 E2E 專用 DB：伺服器用的那一份，見 conftest 的 E2E_DB）"""
+    db = sqlite3.connect(str(ROOT / E2E_DB))
     try:
         db.execute("PRAGMA busy_timeout = 5000")
         sql = (

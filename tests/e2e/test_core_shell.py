@@ -44,8 +44,12 @@ def _query_param(page: Page, name: str):
     return parse_qs(urlparse(page.url).query).get(name, [None])[0]
 
 
-def _poll_eq(fn, expected, timeout_ms: int = 5000):
-    """對應 expect.poll(fn).toBe(expected)。"""
+def _poll_eq(page: Page, fn, expected, timeout_ms: int = 5000):
+    """對應 expect.poll(fn).toBe(expected)。
+
+    sync API 只在呼叫 Playwright 時才處理瀏覽器送來的事件；`page.url` 是本地快取（不來回），
+    用 time.sleep 等的話導覽事件永遠不會派送、URL 不會更新——所以用 page.wait_for_timeout 等。
+    """
     deadline = time.monotonic() + timeout_ms / 1000
     while True:
         value = fn()
@@ -53,7 +57,7 @@ def _poll_eq(fn, expected, timeout_ms: int = 5000):
             return
         if time.monotonic() > deadline:
             raise AssertionError(f"poll 逾時：期望 {expected!r}，實際 {value!r}")
-        time.sleep(0.1)
+        page.wait_for_timeout(100)
 
 
 def test_login_force_change_nav_quick_add_other_browser_logout(page: Page, browser: Browser, base_url: str):
@@ -168,10 +172,10 @@ def test_login_force_change_nav_quick_add_other_browser_logout(page: Page, brows
     search = page.get_by_role("textbox", name="搜尋任務")
     expect(search).to_be_focused()
     search.fill(f"{P} 第二筆")
-    _poll_eq(lambda: _query_param(page, "q"), f"{P} 第二筆")
+    _poll_eq(page, lambda: _query_param(page, "q"), f"{P} 第二筆")
     expect(page.get_by_text("共 1 筆")).to_be_visible()
     page.get_by_role("search").get_by_role("button", name="清除篩選").click()
-    _poll_eq(lambda: _query_param(page, "q"), None)
+    _poll_eq(page, lambda: _query_param(page, "q"), None)
     search.fill(P)
     expect(page.get_by_text("共 2 筆")).to_be_visible()
 
