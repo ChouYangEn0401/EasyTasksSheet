@@ -1,32 +1,51 @@
-# TasksSheets — 實驗室專案管理工具
+# EasyTasksSheet（TasksSheets）— 實驗室專案管理工具
 
-給實驗室內部使用的多人任務 / 專案管理網站。單一 Python 行程（FastAPI + uvicorn）同時提供 API 與前端靜態檔，資料存在一個 SQLite 檔，部署與備份都很簡單。
+> **What it is.** EasyTasksSheet is a self-hosted, multi-user task and project tracker for small teams
+> (a lab, a small company): list / kanban / Gantt views, task dependencies and delay chains, discussions,
+> personal reports, audit log with one-click revert, and real-time sync. **The whole system is Python only** —
+> one process (FastAPI + uvicorn) serves both the API and a no-build vanilla-JS frontend, and all data lives in one
+> SQLite file. No Node.js, no npm, no build step.
+>
+> **Quick start** (Python 3.11+):
+>
+> ```bash
+> git clone https://github.com/ChouYangEn0401/EasyTasksSheet && cd EasyTasksSheet
+> python scripts/install.py          # creates .venv, installs requirements, copies .env
+> .venv/bin/python main.py           # Windows: .venv\Scripts\python main.py
+> # open http://localhost:3000 — first login: admin / password (you will be asked to change both)
+> ```
+>
+> The rest of this README is in Traditional Chinese.
 
-## 快速開始（純 Python 執行）
+給實驗室（或小團隊、小公司）內部使用的多人任務 / 專案管理網站。**整個系統只有 Python**：單一行程（FastAPI + uvicorn）同時提供 API 與前端，前端是瀏覽器直接載入的原生 JavaScript（不需要 Node.js、npm，也沒有建置步驟），資料存在一個 SQLite 檔，安裝、部署與備份都很簡單。
 
-專案的 Python 進入點是根目錄的 [`main.py`](main.py)：
+目前版本見 [`server/app/version.py`](server/app/version.py)（介面側欄底部與 `/api/health` 也看得到），每一版改了什麼、資料格式有沒有變見 [CHANGELOG.md](CHANGELOG.md)。
+
+## 快速開始
+
+只需要 **Python 3.11 以上**與 git。在專案根目錄：
 
 ```bash
-python -m venv .venv                       # 建立虛擬環境
-.venv/Scripts/activate                     # Windows（Linux / macOS：source .venv/bin/activate）
-pip install -r requirements.txt            # 安裝後端相依套件
-cp .env.example .env                       # 可選；Windows PowerShell：Copy-Item .env.example .env
-python main.py                             # 啟動，開啟 http://localhost:3000
+python scripts/install.py                  # 建 .venv、安裝套件、建 data/ logs/ backups/、沒有 .env 就從 .env.example 複製
+.venv/bin/python main.py                   # 啟動（Windows：.venv\Scripts\python main.py），開啟 http://localhost:3000
 ```
 
 > 預設只綁 `127.0.0.1`，只有本機連得上，請開 `http://localhost:3000`。要讓同一網路的其他電腦連線，在 `.env` 設 `HOST=0.0.0.0`，其他人再開 `http://<這台電腦的 IP>:3000`（注意：**瀏覽器不能開 `0.0.0.0` 這個位址**，會出現 `ERR_ADDRESS_INVALID`）。
 
-- 前端已建置在 `dist/web` 時，後端會一併提供頁面；若是第一次取得原始碼或改了前端，需先 `npm ci && npm run build`（Node 只用在建置前端）。
-- `python main.py --prod` 是正式模式：登入 cookie 會要求 HTTPS（`Secure`），請搭配 Caddy 等反向代理使用；用純 http 在區網測試請不要加 `--prod`。
 - 第一次啟動會自動建立資料庫與預設管理員：帳號 `admin`、密碼 `password`。首次登入會被要求**重設帳號與密碼**（新帳號不可再用 `admin`）。
-- 開發時用 `python main.py --reload`（後端自動重載）；管理指令（新增帳號、備份、還原）用 `python -m server.cli --help`。
-- 後端程式碼在 [`server/app/`](server/app)：`main.py` 組裝應用、`app.py` 掛路由、`features/` 每個功能一個檔案、`migrations/` 放資料表 SQL。
+- `python main.py` 的選項：`--reload`（改了 `server/` 的程式自動重載，開發用）、`--prod`（正式模式，等同 `APP_ENV=production`）、`--port N`（這一次換埠，不改 `.env`）、`--host`、`--help`。
+- 啟動前會先檢查埠：埠已被佔用（例如另一個實例已在跑）就**不碰資料庫**、直接印出原因結束。
+- `--prod` 正式模式：登入 cookie 會要求 HTTPS（`Secure`），請搭配 Caddy / nginx 等反向代理使用；用純 http 在區網測試請不要加 `--prod`。
+- 不想用安裝腳本也可以自己來：`python -m venv .venv` → `.venv/bin/pip install -r requirements.txt` → 複製 `.env.example` 成 `.env` → `.venv/bin/python main.py`。
+- 管理指令（新增帳號、備份、還原、搬家包）：`python -m server.cli --help`。
 
 ## 文件導覽
 
 | 文件                                                    | 內容                                                   |
 | ------------------------------------------------------- | ------------------------------------------------------ |
+| [CHANGELOG.md](CHANGELOG.md)                            | 每一版改了什麼、資料格式有沒有變、升級前要不要先備份   |
 | [docs/HANDOFF.md](docs/HANDOFF.md)                      | 交接總覽：現況、程式地圖、已知問題、待決策、如何擴充   |
+| [docs/frontend.md](docs/frontend.md)                    | 前端架構（原生 JS、無建置）、怎麼新增一頁、怎麼更新 Preact |
 | [docs/MOVE-TO-SERVER.md](docs/MOVE-TO-SERVER.md)        | 把本機資料搬到 server 的逐步教學（整包搬 / JSON / 同步） |
 | [docs/DEPLOY-152.md](docs/DEPLOY-152.md)                | 架到實驗室 152（Windows + nginx `/easytasks/` + NSSM 服務） |
 | [docs/permissions.md](docs/permissions.md)              | 角色與權限矩陣                                         |
@@ -56,40 +75,42 @@ python main.py                             # 啟動，開啟 http://localhost:30
 - **角色與權限**：三層 `root`（超級管理員）> `manager`（管理者）> `user`（成員）；成員管理、狀態 / 專案設定、GitHub 連動、JSON 匯出與合併匯入需 manager 以上，完整 .db 備份下載、匯入「取代全部」與指派 root 僅限 root；以上為預設，root 可在「權限設定」頁調整管理者與成員的權限。完整對照表見 [docs/permissions.md](docs/permissions.md)。
 - **安全**：Argon2 密碼雜湊、session 絕對期限與閒置逾時、登入失敗鎖定、CSRF（Origin 檢查 + SameSite cookie）。
 
-技術：後端 Python 3.11+（FastAPI、uvicorn、標準庫 `sqlite3`，WAL 模式）；前端 React + Vite（TypeScript）。
+技術：後端 Python 3.11+（FastAPI、uvicorn、標準庫 `sqlite3`，WAL 模式）；前端是原生 JavaScript（ES modules）＋ Preact 10（隨附在 `web/static/vendor/preact/`，唯一的第三方前端套件），瀏覽器直接載入，沒有建置步驟。架構見 [docs/frontend.md](docs/frontend.md)。
 
 ## 需求
 
 | 項目     | 版本 / 說明                                                                    |
 | -------- | ------------------------------------------------------------------------------ |
-| Python   | **3.11 以上**（執行後端與管理指令）                                            |
-| Node.js  | 22.18 以上，**只用於建置前端**（`npm run build`）與本機開發；正式執行不需要    |
-| 作業系統 | Linux（正式環境建議 Debian / Ubuntu）；Windows、macOS 可開發                   |
-| 反向代理 | Caddy v2（範例見 `deploy/linux/Caddyfile`），負責 HTTPS                              |
+| Python   | **3.11 以上**（唯一的執行環境：後端、前端、管理指令、測試都是它）              |
+| 瀏覽器   | 近兩年內的 Chrome / Edge / Firefox / Safari（需支援 ES modules 與 import map） |
+| 作業系統 | Linux（正式環境建議 Debian / Ubuntu）、Windows（實驗室 152 即為 Windows）；macOS 可開發 |
+| 反向代理 | 多人使用時建議：Caddy v2（`deploy/linux/Caddyfile`）或 nginx（`deploy/windows/nginx-easytasks.conf`），負責 HTTPS |
 
-Python 相依套件見 `server/requirements.txt`（皆有預編譯 wheel，不需編譯工具）。
+Python 相依套件見 `requirements.txt`（實際清單在 `server/requirements.txt`；皆有預編譯 wheel，不需編譯工具）。測試另需 `requirements-dev.txt`。**不需要 Node.js。**
 
 ## 本機開發
 
 ```bash
-npm ci                        # 前端相依套件
-npm run py:install            # 建立 .venv 並安裝 server/requirements.txt
-cp .env.example .env          # Windows PowerShell：Copy-Item .env.example .env
-npm run dev                   # 後端 uvicorn :3000（自動重載）+ Vite :5173（/api 由 Vite 代理到後端）
+python scripts/install.py --dev               # 另裝測試用套件（pytest-playwright、playwright）
+.venv/bin/python -m playwright install chromium   # E2E 用的瀏覽器（只要一次）
+.venv/bin/python main.py --reload             # 開發模式：改 server/ 自動重載
 ```
 
-開啟 <http://localhost:5173>。後端啟動時會自動建立資料庫、套用 migration 並寫入預設資料；若沒有任何帳號，會建立預設管理員 `admin` / `password`（見「預設管理員與首次改密碼」）。
+開啟 <http://localhost:3000>。後端啟動時會自動建立資料庫、套用 migration 並寫入預設資料；若沒有任何帳號，會建立預設管理員 `admin` / `password`（見「預設管理員與首次改密碼」）。
+
+- **改前端**：直接改 `web/static/js/`、`web/static/css/` 底下的檔案，瀏覽器**重新整理**就生效（開發模式每次載入頁面都重算靜態檔版本）。沒有建置、沒有 watch。正式模式（`--prod`）版本號在啟動時算一次，改了要重啟。
+- **改後端**：`--reload` 會自動重載；沒加就重啟 `main.py`。
 
 常用指令：
 
 | 指令                                                     | 說明                                                       |
 | -------------------------------------------------------- | ---------------------------------------------------------- |
-| `npm run py:test`                                        | 後端測試（pytest）                                         |
-| `npm run build`                                          | 建置前端到 `dist/web`                                      |
-| `npm run dev:py`                                         | 只啟動後端（`python -m server.app --reload`）              |
-| `python -m server.app`                                   | 以 `.env` 的 `HOST` / `PORT` 啟動後端（正式模式同時提供前端） |
+| `python main.py [--reload] [--prod] [--port N]`          | 啟動（後端與前端同一個行程）                               |
+| `python -m pytest server -q`                             | 後端測試（含前端模組連結檢查，見「測試」）                 |
+| `python -m pytest tests/e2e -q`                          | E2E（瀏覽器實測，見「測試」）                              |
 | `python -m server.cli user-add <帳號> [--role root\|manager\|user] [--password 密碼]` | 從命令列新增帳號（預設 `user`；`--admin` 為舊寫法，等同 `--role root`；未給密碼則隨機產生並顯示一次；首次登入須改密碼） |
 | `python -m server.cli backup`                            | 備份資料庫（見「備份與還原」）                             |
+| `python scripts/install.py --check`                      | 只檢查安裝狀態，不安裝                                     |
 
 > `python` 指 `.venv` 內的 Python：Linux / macOS 為 `.venv/bin/python`，Windows 為 `.venv\Scripts\python.exe`（或先啟用 venv）。所有指令都在專案根目錄執行，會讀取該目錄的 `.env`。
 
@@ -99,13 +120,12 @@ npm run dev                   # 後端 uvicorn :3000（自動重載）+ Vite :51
 
 | 變數                       | 預設            | 說明                                                                                                |
 | -------------------------- | --------------- | --------------------------------------------------------------------------------------------------- |
-| `NODE_ENV`                 | `development`   | 沿用的名稱。正式環境設 `production`：提供前端靜態檔、cookie 預設加 `Secure`                        |
+| `APP_ENV`                  | `development`   | `development` / `production` / `test`。正式環境設 `production`（或啟動加 `--prod`）：cookie 預設加 `Secure`、靜態檔版本只在啟動時算一次。舊名 `NODE_ENV` 仍可用，兩者都有時 `APP_ENV` 優先 |
 | `HOST`                     | `127.0.0.1`     | 監聽位址，預設只有本機能連。要讓區網其他電腦直接連才改 `0.0.0.0`；搭配反向代理時維持 `127.0.0.1` |
 | `PORT`                     | `3000`          | 後端連接埠                                                                                          |
-| `WEB_PORT`                 | `5173`          | 僅開發用（Vite）                                                                                    |
 | `APP_ORIGIN`               | （空）          | 對外網址，例如 `https://tasks.lab.example`。設定後修改類請求只接受此 Origin；未設定則與 `Host` 比對 |
 | `DATABASE_PATH`            | `data/app.db`   | SQLite 檔路徑（相對於工作目錄）                                                                     |
-| `STATIC_DIR`               | `dist/web`      | 正式模式的前端檔目錄                                                                                |
+| `BASE_PATH`                | （空）          | 掛在反向代理子路徑底下時的網址前綴，例如 `/easytasks`；空 = 網站根目錄。前端的 `index.html` 每次請求時代入，**改了只要重啟** |
 | `TZ`                       | `Asia/Taipei`   | 時區                                                                                                |
 | `SESSION_MAX_HOURS`        | `9`             | 登入絕對期限（小時，不續期）                                                                        |
 | `SESSION_IDLE_MINUTES`     | `60`            | 閒置自動登出（分鐘）                                                                                |
@@ -124,7 +144,7 @@ npm run dev                   # 後端 uvicorn :3000（自動重載）+ Vite :51
 | `WORKTREE_REPORT_TOKEN`    | （空）          | 各人電腦回報 worktree 用的 token；空白 = 停用回報端點（一律 403）                                   |
 | `WORKTREE_SCAN_ROOTS`      | （空）          | 網頁「掃描本機專案」允許的資料夾（逗號分隔）；空白 = 停用，見「工程追蹤的使用方式」               |
 | `WORKTREE_STALE_DAYS`      | `2`             | 電腦超過幾天沒回報，工作樹頁面標示「未回報」（只是提示，不刪資料）                                  |
-| `GIT_TIMEOUT_MS`           | `10000`         | 伺服器端 git 指令（掃描本機專案、`scan-worktrees`）的逾時毫秒數                                     |
+| `GIT_TIMEOUT_MS`           | `10000`         | 伺服器端 git 指令（掃描本機專案、`scan-worktrees`）與回報腳本 `scripts/report_worktrees.py` 的逾時毫秒數 |
 | `SYNC_AUTO_RESOLVE_MINUTES` | `10`           | sync-push：兩邊更新時間差距超過幾分鐘才自動採較新者，否則列為待確認衝突（見「多台電腦同步」）      |
 | `GITHUB_TOKEN` / `GITHUB_API_URL` / `GITHUB_SYNC_MINUTES` | （空）/ `https://api.github.com` / `5` | 選配 GitHub 連動，見「選配：GitHub 連動」；token 空白 = 停用 |
 | `BACKUP_DIR`               | `backups`       | 備份目錄（`python -m server.cli backup` 使用；建議放在不同磁碟）                                    |
@@ -137,40 +157,39 @@ npm run dev                   # 後端 uvicorn :3000（自動重載）+ Vite :51
 | `LINK_PREVIEW_ENABLED`     | `true`          | 問題連結的網頁 metadata 預覽；`false` = 不連網                                                      |
 | `LINK_PREVIEW_ALLOW_PRIVATE` | `false`       | 允許預覽抓取內網 / 本機位址（**SSRF 風險**，只建議測試用）                                          |
 
+> 2.0 起不再使用 `WEB_PORT`（以前給 Vite 開發伺服器）與 `STATIC_DIR`（前端固定在 `web/`）；舊 `.env` 留著不會壞，啟動時會提示可以移除。
+
 ## 從零部署（Linux + systemd + Caddy）
 
 以下以 Debian / Ubuntu、安裝到 `/opt/tasks-sheets`、主機名稱 `tasks.lab.example` 為例。服務僅供實驗室內網或 VPN 存取。
 
-### 1. 安裝 Python、Node.js（建置用）與 Caddy
+> Windows server（例如實驗室 152，nginx 子路徑 + NSSM 服務）請改看 [docs/DEPLOY-152.md](docs/DEPLOY-152.md)：`deploy/windows/setup_easytasks.bat` 一次做完安裝與服務註冊。
+
+### 1. 安裝 Python 與 Caddy
 
 ```bash
 sudo apt-get install -y python3 python3-venv git     # 確認 python3 --version >= 3.11
-# Node.js 22（只用來建置前端；也可在別台機器 build 後把 dist/web 複製過來）
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt-get install -y nodejs
 # Caddy（官方套件庫，指令見 https://caddyserver.com/docs/install#debian-ubuntu-raspbian）
 sudo apt-get install -y caddy
 ```
 
-### 2. 取得程式、建立 venv、建置前端
+不需要 Node.js。
+
+### 2. 取得程式、安裝
 
 ```bash
 sudo useradd --system --home /opt/tasks-sheets --shell /usr/sbin/nologin tasks-sheets
 sudo git clone <repo-url> /opt/tasks-sheets
-cd /opt/tasks-sheets
-sudo mkdir -p data backups
 sudo chown -R tasks-sheets:tasks-sheets /opt/tasks-sheets
-
-sudo -u tasks-sheets python3 -m venv .venv
-sudo -u tasks-sheets .venv/bin/pip install -r server/requirements.txt
-sudo -u tasks-sheets npm ci                 # 前端建置工具
-sudo -u tasks-sheets npm run build          # 產生 dist/web
+cd /opt/tasks-sheets
+sudo -u tasks-sheets python3 scripts/install.py     # 建 .venv、裝套件、建 data/ logs/ backups/、複製 .env
 ```
+
+前端是 `web/` 底下的靜態檔，跟著 git 來，不必建置。
 
 ### 3. 設定 `.env`
 
 ```bash
-sudo -u tasks-sheets cp .env.example .env
 sudo -u tasks-sheets chmod 600 .env
 sudo -u tasks-sheets nano .env
 ```
@@ -178,7 +197,7 @@ sudo -u tasks-sheets nano .env
 正式環境至少修改：
 
 ```ini
-NODE_ENV=production
+APP_ENV=production
 HOST=127.0.0.1
 PORT=3000
 APP_ORIGIN=https://tasks.lab.example
@@ -190,6 +209,8 @@ ADMIN_USERNAME=admin
 ADMIN_PASSWORD=
 BACKUP_DIR=backups
 BACKUP_KEEP=14
+# 掛在子路徑（例如 https://host/easytasks/）時才設；改了只要重啟
+BASE_PATH=
 ```
 
 `COOKIE_SECURE` 留空即可（正式環境自動為 `true`）。`.env` 已列入 `.gitignore`，不可提交。
@@ -197,8 +218,8 @@ BACKUP_KEEP=14
 ### 4. 手動啟動確認
 
 ```bash
-sudo -u tasks-sheets .venv/bin/python -m server.app     # 依 .env 的 HOST / PORT 啟動；Ctrl+C 結束
-curl http://127.0.0.1:3000/api/health                   # 另開終端機：{"ok":true,...}
+sudo -u tasks-sheets .venv/bin/python main.py --prod   # 依 .env 的 HOST / PORT 啟動；Ctrl+C 結束
+curl http://127.0.0.1:3000/api/health                  # 另開終端機：{"ok":true,"version":"2.0.0",...}
 ```
 
 啟動時會自動建立資料庫並套用尚未執行的 migration，不需另外初始化。
@@ -217,7 +238,7 @@ curl http://127.0.0.1:3000/api/health
 
 - `ExecStart=/opt/tasks-sheets/.venv/bin/python -m uvicorn server.app.main:app --host 127.0.0.1 --port ${PORT} --no-proxy-headers --timeout-graceful-shutdown 3`：一律只綁 `127.0.0.1`；`--timeout-graceful-shutdown` 讓 SSE 長連線不會卡住重啟。
 - **只能單一 worker**（不要加 `--workers`）：即時同步的事件中樞與 SQLite 連線在同一個行程內。
-- `EnvironmentFile=/opt/tasks-sheets/.env`；注意它會覆寫 unit 內的 `Environment=`，所以 `.env` 必須設 `NODE_ENV=production`。
+- `Environment=APP_ENV=production`、`EnvironmentFile=/opt/tasks-sheets/.env`；注意 `EnvironmentFile` 會覆寫 unit 內的 `Environment=`，所以 `.env` 也必須設 `APP_ENV=production`（舊 `.env` 寫的是 `NODE_ENV=production` 也有效）。
 - `ProtectSystem=strict`，只允許寫入 `data/` 與 `backups/`，兩個目錄必須事先存在，否則服務無法啟動。安裝路徑不同時請修改 unit 檔內所有 `/opt/tasks-sheets`。
 
 ### 6. 反向代理與 HTTPS（Caddy）
@@ -232,7 +253,7 @@ sudo systemctl reload caddy
 
 - **憑證**：內網無公開 DNS 時用 `tls internal`（Caddy 內建 CA），再把根憑證 `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt` 發給成員安裝信任；有校方憑證則改用 `tls <crt> <key>`；可從網際網路解析的主機刪掉 `tls` 行即自動申請 Let's Encrypt。
 - **SSE（`/api/events`）**：`flush_interval -1` 關閉緩衝、`read_timeout 0` / `write_timeout 0` 不設逾時、不套用壓縮；`stream_close_delay 5m` 讓重新載入設定時既有連線不會同時斷線。若改用其他反向代理，請務必做等效設定（見「常見問題」）。
-- 其他路徑全部轉給同一個 uvicorn 行程（API + 前端靜態檔 + SPA 路由回退）。
+- 其他路徑全部轉給同一個 uvicorn 行程（API + 前端 `web/` 靜態檔 + SPA 路由回退）。靜態檔網址帶版本段（`/static/v/<版本>/...`），回一年快取；`index.html` 一律 no-cache，所以更新程式後重新整理就拿到新版。
 
 開啟 `https://tasks.lab.example` 確認可看到登入頁。
 
@@ -251,7 +272,7 @@ ls -l /opt/tasks-sheets/backups
 
 ### （可選）Docker Compose
 
-`deploy/linux/Dockerfile` 為多階段建置：`node:22` 建置前端 → `python:3.11-slim` 以 uvicorn 執行（映像內不含 Node）。
+`deploy/linux/Dockerfile` 只有一個階段：`python:3.11-slim` 裝 `server/requirements.txt`，再 `COPY server`、`COPY web`、`COPY main.py`，以 `python -m server.app` 執行（單一 worker）。沒有 Node 建置階段。
 
 ```bash
 cp .env.example .env                        # 依上面步驟 3 修改（路徑類設定會被 compose 覆寫）
@@ -313,9 +334,9 @@ docker compose -f deploy/linux/docker-compose.yml exec app python -m server.cli 
 
 ### 還原演練紀錄（2026-11-25，Windows 11，Python 3.11.9 / SQLite 3.45.1）
 
-在暫存目錄以正式模式實際跑過一次：
+在暫存目錄以正式模式實際跑過一次（當時是 1.x：前端要先用 npm 建置、環境變數叫 `NODE_ENV`；2.0 起直接 `python main.py --prod`，備份 / 還原流程不變）：
 
-1. `npm run build`；以 `NODE_ENV=production`、`HOST=127.0.0.1`、`DATABASE_PATH=<暫存>/data/app.db` 啟動 `python -m server.app`。
+1. 建置前端（1.x 才需要）；以 `NODE_ENV=production`、`HOST=127.0.0.1`、`DATABASE_PATH=<暫存>/data/app.db` 啟動 `python -m server.app`。
 2. 確認 `/` 回傳前端 `index.html`、`/some/deep/link` 回退到同一頁（SPA）。
 3. 以管理員登入，透過 API 新增 3 個專案（連同預設專案共 4 個），記錄 `GET /api/projects` 結果。
 4. **服務運行中**執行 `python -m server.cli backup --out <暫存>/backups --keep 7`，產生 `app-20261125-025344.db`。
@@ -404,17 +425,29 @@ docker compose -f deploy/linux/docker-compose.yml exec app python -m server.cli 
 
 ## 升級流程
 
+先看 [CHANGELOG.md](CHANGELOG.md) 這一版「資料格式有沒有變」「要不要先備份」。
+
 ```bash
 cd /opt/tasks-sheets
-sudo systemctl start tasks-sheets-backup                               # 1. 先備份
-sudo -u tasks-sheets git pull                                          # 2. 取得新版
-sudo -u tasks-sheets .venv/bin/pip install -r server/requirements.txt  # 3. 更新 Python 套件
-sudo -u tasks-sheets npm ci && sudo -u tasks-sheets npm run build      # 4. 重建前端
-sudo systemctl restart tasks-sheets                                    # 5. 重啟（啟動時自動套用新 migration）
-sudo journalctl -u tasks-sheets -n 50                                  # 6. 確認無錯誤
+sudo -u tasks-sheets .venv/bin/python -m server.cli backup             # 1. 先備份（或 systemctl start tasks-sheets-backup）
+sudo -u tasks-sheets git pull --ff-only                                # 2. 取得新版
+sudo -u tasks-sheets .venv/bin/pip install -r requirements.txt         # 3. 更新 Python 套件（前端跟著 git 來，不必建置）
+sudo systemctl restart tasks-sheets                                    # 4. 重啟（啟動時自動套用新 migration）
+sudo journalctl -u tasks-sheets -n 50                                  # 5. 確認無錯誤；curl /api/health 看 version
 ```
 
-若新版啟動失敗：`git checkout <舊版 tag/commit>` → 重新 `pip install` 與 `npm run build` → 依「還原步驟」還原升級前的備份（新版 migration 可能已改動資料庫結構）。
+Windows（152）用 `deploy\windows\update_easytasks.bat`，順序相同（備份 → git pull → pip → 重啟 → 健康檢查）。
+
+若新版啟動失敗：`git checkout <舊版 tag/commit>` → 重新 `pip install -r requirements.txt` → 依「還原步驟」還原升級前的備份（新版 migration 可能已改動資料庫結構）。
+
+### 從 1.x（React + Vite 版）升級到 2.0
+
+- **資料不用搬**：`data/app.db` 原檔直接沿用，資料格式沒有變，migration 在啟動時自動套用。照慣例先 `python -m server.cli backup`。
+- **不再需要 Node.js**：照上面的流程 `git pull` → `pip install` → 重啟即可，不必 `npm ci`、`npm run build`。
+- `.env`：`NODE_ENV` 改名 `APP_ENV`（舊名仍可用、`APP_ENV` 優先）；`WEB_PORT`、`STATIC_DIR` 不再使用，可刪。`BASE_PATH` 改了只要重啟。
+- 啟動方式：`python main.py`（`python -m server.app` 與 systemd 的 uvicorn 指令仍可用）。
+- 舊版殘留的 `dist/`、`node_modules/`、`.tools/`（Windows 自動下載的 Node）已經用不到，可以手動刪除。
+- 各人電腦的 worktree 回報改用 `python scripts/report_worktrees.py`（參數相同，見下節）。
 
 ## 工程追蹤的使用方式
 
@@ -429,15 +462,15 @@ sudo journalctl -u tasks-sheets -n 50                                  # 6. 確�
 
 - **貼上登記（最簡單）**：在專案資料夾執行 `git worktree list`（PowerShell 可 `git worktree list | Set-Clipboard`，也支援 `--porcelain`），到工作樹分頁按「貼上 git worktree list」把輸出整段貼上 → 預覽（新增 / 已存在 / 可能搬動；`.claude/worktrees`、scratchpad、Temp 等疑似暫時性者預設不勾）→ 登記。不執行 git、不需資料夾路徑或 `WORKTREE_SCAN_ROOTS`，一般成員即可使用；重複貼同一份不會重複登記。
 - **不見不等於刪除**：每台電腦以識別碼（`~/.tasks-sheets/machine.json`，第一次回報時自動建立，可編輯其中的 `machineName`）區分，改名或同名不混淆。回報中不見的 worktree 只會標示「回報中找不到」，紀錄一律保留；空清單或筆數驟減的回報會先攔下（保留舊資料），要有人在頁面按「確認採用這次回報」才套用。路徑不同但分支與 HEAD 相同時提示「可能是搬動」並可一鍵更新路徑。刪除紀錄改為「移到回收區」，隨時可還原；只有管理者按「清空回收區」才會永久刪除。
-- **各人電腦自動回報（選用）**：在 `.env` 設定 `WORKTREE_REPORT_TOKEN`（夠長的隨機字串，例如 `python -c "import secrets; print(secrets.token_urlsafe(32))"`）並重啟服務；各人在自己的電腦（需 Node.js 與 git）執行：
+- **各人電腦自動回報（選用）**：在 `.env` 設定 `WORKTREE_REPORT_TOKEN`（夠長的隨機字串，例如 `python -c "import secrets; print(secrets.token_urlsafe(32))"`）並重啟服務；各人在自己的電腦（需 Python 3.9+ 與 git）執行：
 
   ```bash
-  WORKTREE_REPORT_TOKEN=<同一個 token> node scripts/report-worktrees.mjs --server https://tasks.lab.example --path <repo 路徑>
-  # PowerShell：$env:WORKTREE_REPORT_TOKEN='<token>'; node scripts/report-worktrees.mjs --server https://tasks.lab.example
-  # 先看會送出什麼：加 --dry-run
+  WORKTREE_REPORT_TOKEN=<同一個 token> python scripts/report_worktrees.py --server https://tasks.lab.example --path <repo 路徑>
+  # PowerShell：$env:WORKTREE_REPORT_TOKEN='<token>'; python scripts/report_worktrees.py --server https://tasks.lab.example
+  # 其他參數：--machine <電腦名稱>、--repo <repo 名稱>；先看會送出什麼：加 --dry-run
   ```
 
-  腳本會把本機 `git worktree list` 的快照（dirty / ahead / behind / 是否已併入 main）連同電腦識別碼送到 `POST /api/eng/worktrees/report`，頁面上會與手動紀錄比對並提示「可能遺失 / 回報中找不到 / 可能搬動 / 未登記」，僅供參考（回報被攔下時腳本會印出提醒）。腳本只依賴 Node 內建模組，可單獨複製到其他電腦；可用排程（cron / 工作排程器）定期執行。`GIT_TIMEOUT_MS` 環境變數可調整腳本內 git 指令逾時（預設 10000）。
+  腳本會把本機 `git worktree list` 的快照（dirty / ahead / behind / 是否已併入 main）連同電腦識別碼送到 `POST /api/eng/worktrees/report`，頁面上會與手動紀錄比對並提示「可能遺失 / 回報中找不到 / 可能搬動 / 未登記」，僅供參考（回報被攔下時腳本會印出提醒）。腳本只依賴 Python 標準函式庫，可單獨複製到其他電腦（不必裝本專案的套件）；可用排程（cron / 工作排程器）定期執行。`GIT_TIMEOUT_MS` 環境變數可調整腳本內 git 指令逾時（預設 10000）。參數與 `~/.tasks-sheets/machine.json` 的格式都與 1.x 的 `node scripts/report-worktrees.mjs` 相同，換指令即可。
 - **GitHub 連動**：選配功能，見下方「選配：GitHub 連動」。
 
 ### 選配：GitHub 連動
@@ -527,7 +560,7 @@ location /api/events {
 其他路徑的 `location /` 也要設定 `proxy_set_header Host $host;` 與 `proxy_set_header X-Forwarded-For $remote_addr;`（以 `$remote_addr` **覆寫**，不要用會附加用戶端值的 `$proxy_add_x_forwarded_for`）。即時同步的設計是 SSE 斷線時自動重連並退回輪詢，因此設定錯誤通常不會壞掉，只會變慢。
 
 **Q：`systemctl restart` 很久才完成？**
-確認 `ExecStart` 有 `--timeout-graceful-shutdown`（或使用 `python -m server.app`，已內建 3 秒）；否則 uvicorn 會等所有 SSE 連線結束。
+確認 `ExecStart` 有 `--timeout-graceful-shutdown`（或使用 `python main.py` / `python -m server.app`，已內建 3 秒）；否則 uvicorn 會等所有 SSE 連線結束。
 
 **Q：為什麼後端只綁 `127.0.0.1`？**
 登入失敗的 IP 限制在 `TRUSTED_PROXY=true` 時採用 `X-Forwarded-For` 最右段（由代理附加、用戶端無法偽造）；只讓 Caddy 連入可確保該標頭一定經過代理，也避免繞過 HTTPS。沒有反向代理時請維持 `TRUSTED_PROXY=false`，後端改用連線的 socket 位址並忽略該標頭。
@@ -540,3 +573,51 @@ WAL 模式的暫存檔，**服務運行中絕對不可刪除或單獨複製 `app
 
 **Q：備份放哪裡比較好？**
 `BACKUP_DIR` 指向另一顆磁碟或掛載的 NAS，並定期把備份複製到另一台機器。記得兩個 systemd unit 的 `ReadWritePaths` 也要加上該路徑。
+
+**Q：改了 JS / CSS 沒有生效？**
+開發模式重新整理即可；正式模式（`--prod`、systemd、Windows 服務）的靜態檔版本在啟動時算一次，要重啟服務。瀏覽器若還是舊的，按 `Ctrl+Shift+R` 強制重新載入。
+
+**Q：畫面一片空白？**
+打開瀏覽器開發者工具的 Console。常見原因是瀏覽器太舊（不支援 import map）或反向代理把 `/static/` 底下的 `.js` 回成錯的 MIME。`/static/` 底下找不到的檔一律回 404（不會回 `index.html`），錯誤訊息會直接指出是哪個檔。
+
+## 測試
+
+先 `python scripts/install.py --dev`、`.venv/bin/python -m playwright install chromium`（Windows 把 `.venv/bin/python` 換成 `.venv\Scripts\python`）。
+
+```bash
+.venv/bin/python -m pytest server -q       # 後端測試（API、資料庫、備份、部署腳本、前端模組連結檢查）
+.venv/bin/python -m pytest tests/e2e -q    # E2E：真的開瀏覽器操作
+```
+
+- **前端模組連結檢查**（`server/tests/test_web_modules.py`）：掃過 `web/static/js/` 每個檔，確認每個 `import` 都指到存在的檔、每個被 import 的名字對方真的有 export。這取代了以前 TypeScript 的型別檢查能抓到的那一類錯誤（打錯檔名、改名沒改完）。
+- **E2E**（Python 版 Playwright，`tests/e2e/`）：`conftest.py` 起一個正式模式的伺服器在埠 3999（可用 `E2E_PORT` 換），用獨立的 `data/e2e.db`；固定測試帳號定義在 `server/e2e_setup.py`（`E2E_USERS` 是單一來源），共用操作在 `tests/e2e/helpers.py`；`test_smoke.py` 會載入每一個前端模組確認沒有執行期錯誤。
+- 沒有 vitest、eslint、prettier、tsc：前端沒有建置也沒有型別檢查，靠上面三道防線（詳見 [docs/frontend.md](docs/frontend.md)）。
+
+## 專案結構
+
+```
+main.py                    唯一的啟動入口（python main.py）
+requirements.txt           執行用套件（→ server/requirements.txt）；requirements-dev.txt 測試用
+.env.example               設定範本（install.py 會複製成 .env）
+CHANGELOG.md               每版的變更與資料格式說明
+server/
+  app/                     後端：main.py 組裝應用、app.py 掛路由與靜態檔、features/ 每個功能一個檔、version.py 版本
+  migrations/              資料表 SQL（啟動時自動套用）
+  cli.py                   管理指令（python -m server.cli --help）
+  e2e_setup.py             E2E 測試帳號（單一來源）
+  tests/                   後端 pytest（含 test_web_modules.py 前端連結檢查）
+web/
+  index.html               頁面模板（伺服器代入 {{BASE}}、{{STATIC}}）
+  static/js/               前端原生 ES modules：features/ 各頁、lib/ 共用、shell/ 外框、ui/ 元件、shared/ 資料形狀
+  static/css/              樣式（base / tokens / components / features/…）
+  static/vendor/preact/    唯一的第三方：Preact 10（MIT）
+tests/e2e/                 Python 版 Playwright E2E（conftest.py、helpers.py、test_*.py）
+scripts/
+  install.py               第一次安裝 / 檢查
+  report_worktrees.py      各人電腦回報 worktree（工程追蹤）
+deploy/
+  linux/                   systemd、Caddy、Docker
+  windows/                 152 用的 setup / update / 服務註冊 / 備份批次檔、nginx 範例
+docs/                      交接、部署、設計文件（入口：docs/HANDOFF.md）
+data/  backups/  logs/     執行期資料（不進版控）
+```

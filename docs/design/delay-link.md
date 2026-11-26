@@ -78,21 +78,21 @@
 - 被擋住用**琥珀色**（`--color-warning*` token）；準時用綠（success）；未排程用中性灰；**不使用紅色**。
 - 「擋住 N」為中性灰小徽章，Tooltip「完成後，有 N 個任務可以開始」。
 
-### 6.2 任務詳情「依賴」區（`DependenciesSection.tsx`）
+### 6.2 任務詳情「依賴」區（`DependenciesSection.js`）
 
 - 本任務被擋住時頂部琥珀提示：「等待中 · 依前置任務的時程，預計延後 N 天（到 12/20）」。
 - 兩小節：「等待這些任務完成」與「完成後可開始的任務」；每列：狀態點、標題（點擊切換到該任務）、負責人、日期、延後說明、lag。已完成的前置任務淡色＋刪除線並標「已完成的前置任務」。
 - 「＋ 新增」開輕量搜尋選單：方向切換、標題關鍵字、排除自己與已存在者、最多 8 筆、↑↓ Enter 選擇；「進階」摺疊可設 lag 天數。循環等錯誤在選單內以琥珀提示顯示。
 - 移除一鍵，toast 附「復原」。沒有 `tasks.edit` 時不顯示新增 / 移除。
 
-### 6.3 看板與清單（最小接入，`DependencyBadge.tsx`、`dependency.css`）
+### 6.3 看板與清單（最小接入，`DependencyBadge.js`、`web/static/css/features/dependency.css`）
 
 - 被擋住的卡片：琥珀左側色條＋淡琥珀底、標題前沙漏圖示（不用鎖頭，避免與「描述已鎖定」的鎖頭混淆）、底部徽章「等待中 · 預計延後 N 天 → 12/20」（無法推算或未延後時只寫「等待中」），Tooltip 說明；沙漏圖示可用 Tab 聚焦，聚焦時同樣顯示 Tooltip（aria-describedby），ria-label 含完整說明。
 - 正在擋住別人：「擋住 N」。與逾期、待辦清單、相關任務等徽章並存於卡片底部（自動換行，不擠壓標題）。
 - 看板右上「顯示依賴標示」開關（預設開，`localStorage: ts.kanban.showDeps`）。
 - 清單：標題旁小沙漏與 Tooltip（清單格由方向鍵導覽，沙漏不另設 Tab 停駐點，說明由 ria-label 讀出）。
 
-### 6.4 延遲鏈分頁（`DelayLinkPage.tsx`、`delayLinkLayout.ts`）
+### 6.4 延遲鏈分頁（`DelayLinkPage.js`、`delayLinkLayout.js`）
 
 - 沿用任務區 layout 與 FilterBar（專案 / 負責人 / 狀態 / 關鍵字）；ViewTabs 右側「顯示已完成的前置任務」。
 - 頂部中性摘要「共 N 條依賴鏈・最長預計延後 M 天」（皆可如期時「目前都可如期」）。

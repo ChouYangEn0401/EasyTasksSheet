@@ -22,7 +22,7 @@ TasksSheets 是給實驗室內部用的多人任務 / 專案管理網站。本�
 
 ## 1. 專案現況與功能清單
 
-第六輪功能（見 PROGRESS.md「第六輪」）已合併到整合分支 `integration/wave6`（已包含 `main`），審查修正後將 ff-only 合併回 `main`，等使用者驗收。後端為 Python（FastAPI + uvicorn + SQLite），前端為 React + Vite。測試數量以 `npm run check` 實跑結果為準（見[第 10 節](#10-測試如何跑)）。
+第六輪功能（見 PROGRESS.md「第六輪」）已合併到整合分支 `integration/wave6`（已包含 `main`），審查修正後將 ff-only 合併回 `main`，等使用者驗收。後端為 Python（FastAPI + uvicorn + SQLite）。**2.0（2026-11-26）起整個系統只剩 Python**：前端從 React + Vite（TypeScript）改寫成瀏覽器直接載入的原生 JS（`web/`，Preact 10），不需要 Node.js／npm、沒有建置步驟（見 [frontend.md](frontend.md)、[CHANGELOG.md](../CHANGELOG.md)、需求 [requirements-2026-11-26.md](requirements-2026-11-26.md)）。測試數量以實跑結果為準（見[第 10 節](#10-測試如何跑)）。
 
 | 頁面（路由）                          | 功能                                                                                                                 |
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
@@ -44,11 +44,13 @@ TasksSheets 是給實驗室內部用的多人任務 / 專案管理網站。本�
 
 ## 2. 技術架構與目錄地圖
 
-單一 Python 行程（uvicorn）同時提供 `/api/*` 與前端靜態檔（`dist/web`），資料在一個 SQLite 檔。Node 只用於建置前端與開發。
+單一 Python 行程（uvicorn）同時提供 `/api/*` 與前端（`web/` 底下的原生 ES modules，伺服器直接提供、沒有建置步驟），資料在一個 SQLite 檔。不需要 Node.js。前端架構細節見 [frontend.md](frontend.md)。
 
 ```text
-main.py                  根目錄入口（python main.py [--prod] [--reload]）
-requirements.txt         僅 -r server/requirements.txt（必須純 ASCII）
+main.py                  根目錄入口（python main.py [--prod] [--reload] [--port N]）
+requirements.txt         僅 -r server/requirements.txt（必須純 ASCII）；requirements-dev.txt 測試用（pytest-playwright）
+CHANGELOG.md             每版一段：版本、日期、資料格式有沒有變、要不要先備份
+scripts/                 install.py（第一次安裝）、report_worktrees.py（各人電腦回報 worktree）
 server/
   cli.py                 管理指令：user-add / backup / restore / export / import / sync-push / scan-worktrees / attachments-prune
   sync_client.py         sync-push 本機端
@@ -57,6 +59,7 @@ server/
   app/
     main.py / app.py     組裝 app、掛全部 router、middleware（CSRF、登入、寫入權限守門）
     config.py            唯一的環境變數來源（預設值、驗證）
+    version.py           版本與作者署名（介面側欄底部、/api/health、CLI 共用）
     db.py                SQLite 連線（單一連線 + RLock）、migration、seed
     permissions.py       capability 預設矩陣、中文名稱、受保護項目、require()
     security.py / pwcheck.py   session、CSRF、登入限制、密碼檢查
@@ -66,17 +69,21 @@ server/
     presence.py          在線登錄（記憶體）
     attachments.py / link_preview.py / github.py / worktree_scan.py
     features/            每個功能一個檔案（見下表）
-src/
-  shared/                前端用的 zod schema 與型別（permissions.ts 名稱表須與後端一致）
-  web/features/<功能>/   每個頁面一個資料夾（頁面元件、api.ts、model.ts + model.test.ts、css）
-  web/shell/             外殼：AppShell、導覽、Header、RequireAuth
-  web/lib/               auth、sync（SSE）、permissions（useCan）
-deploy/                  Caddyfile、systemd、Dockerfile、docker-compose（皆未實測）
-tests/e2e/               Playwright；tests/helpers/e2eUsers.ts 固定帳號
+web/
+  index.html             頁面模板（伺服器每次請求代入 {{BASE}} = BASE_PATH、{{STATIC}} = 版本化靜態路徑）
+  static/js/shared/      資料形狀與常數（permissions.js 名稱表須與後端一致）
+  static/js/features/<功能>/  每個頁面一個資料夾（頁面元件、api.js、model.js）
+  static/js/shell/       外殼：AppShell、導覽、Header、RequireAuth
+  static/js/lib/         auth、sync（SSE）、permissions（useCan）、query.js / router.js / dnd.js（自寫的小型替代品）
+  static/js/ui/          共用元件（Button、Dialog…）
+  static/css/            樣式；features/ 底下每個功能一份
+  static/vendor/preact/  唯一的第三方：Preact 10（MIT）
+deploy/                  linux/（Caddyfile、systemd、Dockerfile、docker-compose，皆未實測）、windows/（152 批次檔）
+tests/e2e/               Python 版 Playwright（conftest.py 起伺服器、helpers.py、test_*.py）；帳號在 server/e2e_setup.py
 docs/                    規格與說明；docs/design/ 為各頁面介面規格
 ```
 
-功能對應（後端 `server/app/features/` → 前端 `src/web/features/`）：
+功能對應（後端 `server/app/features/` → 前端 `web/static/js/features/`）：
 
 | 功能          | 後端                                       | 前端                          |
 | ------------- | ------------------------------------------ | ----------------------------- |
@@ -87,8 +94,8 @@ docs/                    規格與說明；docs/design/ 為各頁面介面規格
 | 個人清單      | `personal.py`                              | `personal/`                   |
 | 工程追蹤      | `eng.py`、`eng_status.py`、`eng_attach.py`、`eng_paste.py`（+ `worktree_paste.py` 解析器） | `eng/`                        |
 | 成員 / 權限   | `admin.py`、`users.py`、`permissions_admin.py` | `admin/`                  |
-| 資料匯出入 / 備份下載 | `data_admin.py`                    | `admin/DataPage.tsx`          |
-| 多電腦同步    | `sync_push.py`、`sync.py`（SSE）           | `admin/SyncPage.tsx`          |
+| 資料匯出入 / 備份下載 | `data_admin.py`                    | `admin/DataPage.js`           |
+| 多電腦同步    | `sync_push.py`、`sync.py`（SSE）           | `admin/SyncPage.js`           |
 | 在線感知      | `presence.py`                              | `presence/`                   |
 | 相關任務 / 複製任務 | `task_relations.py`（0013）          | `tasks/`（詳情抽屜）          |
 | 任務待辦清單  | `task_checklist.py`（0014）                | `tasks/`（詳情抽屜、徽章）    |
@@ -104,18 +111,15 @@ docs/                    規格與說明；docs/design/ 為各頁面介面規格
 
 ## 3. 如何啟動
 
-**開發**（需要 Node 22.18+ 與 Python 3.11+）：
+只需要 **Python 3.11+**（不需要 Node.js）：
 
 ```powershell
-$env:Path += ";C:\Program Files\nodejs"     # PowerShell 找不到 npm 時
-$env:PYTHONUTF8 = '1'
-npm ci --ignore-scripts                     # 前端相依；--ignore-scripts 避免 Windows 上安裝腳本失敗
-npm run py:install                          # 建立 .venv 並安裝後端相依
-Copy-Item .env.example .env                 # 可省略，全部有預設值
-npm run dev                                 # 後端 :3000（自動重載）+ Vite :5173，開 http://localhost:5173
+$env:PYTHONUTF8 = '1'                       # 繁中 Windows（cp950）建議設
+python scripts/install.py                   # 建 .venv、裝套件、建 data/ logs/ backups/、沒有 .env 就從範本複製
+.venv\Scripts\python main.py --reload       # 開發：改 server/ 自動重載；開 http://localhost:3000
 ```
 
-**單機執行（含已建置前端）**：`npm run build` 後 `python main.py`，開 `http://localhost:3000`。預設只綁 `127.0.0.1`。
+Linux / macOS 把 `.venv\Scripts\python` 換成 `.venv/bin/python`。預設只綁 `127.0.0.1`。改前端（`web/static/`）不必建置，瀏覽器重新整理就生效。啟動前會先檢查埠，被佔用就不碰資料庫直接結束。
 
 **正式**：`python main.py --prod`（cookie 要求 HTTPS，需反向代理）或 systemd（`deploy/linux/tasks-sheets.service`）。完整的 Linux + systemd + Caddy 流程見 README「從零部署」；搬資料見 [MOVE-TO-SERVER.md](MOVE-TO-SERVER.md)。純 http 的區網測試**不要**加 `--prod`。
 
@@ -127,7 +131,8 @@ npm run dev                                 # 後端 :3000（自動重載）+ Vi
 
 | 變數                                  | 重點                                                                         |
 | ------------------------------------- | ---------------------------------------------------------------------------- |
-| `NODE_ENV`                            | `production` = cookie `Secure`；`--prod` 等同設定它                          |
+| `APP_ENV`                             | `production` = cookie `Secure`、靜態檔版本啟動時算一次；`--prod` 等同設定它。舊名 `NODE_ENV` 仍可用，`APP_ENV` 優先 |
+| `BASE_PATH`                           | 子路徑部署（例如 `/easytasks`）；`index.html` 每次請求代入，改了只要重啟     |
 | `HOST` / `PORT`                       | 預設 `127.0.0.1:3000`；有反向代理就別改 HOST                                 |
 | `APP_ORIGIN`                          | 對外網址；設了之後修改類請求只接受此 Origin                                  |
 | `TRUSTED_PROXY`                       | 有 Caddy / nginx 時必須 `true`，直連維持 `false`                             |
@@ -191,26 +196,23 @@ npm run dev                                 # 後端 :3000（自動重載）+ Vi
 
 ## 10. 測試如何跑
 
-Windows 一律用 **PowerShell**（Git Bash 跑 vitest 會失敗）：
-
 ```powershell
-$env:Path += ";C:\Program Files\nodejs"
 $env:PYTHONUTF8 = '1'                # 繁中 Windows（cp950）必設，否則中文輸出 / 讀檔出錯
-npm ci --ignore-scripts
-npm run py:install
-npm run check        # lint + typecheck + vitest + pytest + build，一次全跑
-npm test             # 只跑 vitest（前端單元）
-npm run py:test      # 只跑 pytest（後端）
-npm run test:e2e     # Playwright（會 build 並以 E2E 專用 DB 啟動，port 3999）
-npm run backup:self-test
-npx prettier --check .
+python scripts/install.py --dev      # 另裝 pytest-playwright、playwright
+.venv\Scripts\python -m playwright install chromium     # E2E 用的瀏覽器（只要一次）
+.venv\Scripts\python -m pytest server -q                # 後端（含前端模組連結檢查 test_web_modules.py）
+.venv\Scripts\python -m pytest tests/e2e -q             # E2E（以正式模式起伺服器於 port 3999、E2E 專用 DB）
+.venv\Scripts\python -m server.cli backup --self-test   # 備份 / 還原自我測試
 ```
 
-- 測試數量會隨功能增加；以 `npm run check` 與 `npm run test:e2e` 實跑結果為準。2026-11-25 第六輪審查修正後實測：vitest 429（38 檔）、pytest 690、Playwright E2E 96/96（連跑皆全綠、無 skip）。
-- **E2E 不重試**：`playwright.config.ts` 預設 `retries: 0`。偶發失敗多半是真缺陷（曾經的偶發 404 就是真 bug），**不得用重試掩蓋缺陷**；高負載機器臨時可設環境變數 `E2E_RETRIES=1`，但失敗仍須查明根因。
-- E2E 資料衛生：每個 spec 以 `tests/helpers/hygiene.ts` 的 `useDataHygiene()` 在結束時清掉自己建立的任務與自由待辦（軟刪除），任務計數類斷言一律用專屬標題前綴（`?q=`），不依賴檔名順序或前一個 spec 的清理。
+Linux / macOS 把 `.venv\Scripts\python` 換成 `.venv/bin/python`。
+
+- 沒有 vitest、eslint、prettier、tsc 了（2.0 起）。前端沒有型別檢查，靠三道防線：`server/tests/test_web_modules.py`（每個 import 指到的檔存在、具名匯入對得上 export、不得殘留 React / TS 時期的 import）、`tests/e2e/test_smoke.py`（瀏覽器真的 `import()` 每一個模組、走訪所有路由 console 零錯誤）、其餘 E2E（見 [frontend.md](frontend.md)）。
+- 測試數量會隨功能增加，以實跑結果為準。1.x 時期最後一次實測（2026-11-25 第六輪審查修正後）：vitest 429（38 檔）、pytest 690、Playwright E2E 96/96；當時的 vitest 與 TypeScript E2E 已在 2.0 移除，E2E 改成 Python 版（`tests/e2e/test_*.py`）；移植完成前若還看到 `tests/e2e/*.spec.ts`，那是暫留對照的舊規格，不會被執行，移植完即刪除。
+- **E2E 不重試**：偶發失敗多半是真缺陷（曾經的偶發 404 就是真 bug），**不得用重試掩蓋缺陷**；失敗須查明根因。
+- E2E 資料衛生：`tests/e2e/helpers.py` 的 `data_hygiene` 在測試結束時清掉自己建立的任務與自由待辦（軟刪除），任務計數類斷言一律用專屬標題前綴（`?q=`），不依賴檔名順序或前一個測試的清理。
 - **`requirements.txt` 必須維持純 ASCII**：pip 以系統碼頁讀取，繁中 Windows（cp950）遇到非 ASCII 會安裝失敗（曾因此出過 bug）。
-- E2E 帳號（由 `server/e2e_setup.py` 建立，同 `tests/helpers/e2eUsers.ts`）：`admin`（root）、`manager`、`member`（user）、`newbie`（首次登入須改密碼）、`bootstrap`（模擬預設管理員，ADMIN_USERNAME）、`peer`。其他 spec 請勿動 `newbie` 與 `bootstrap`。
+- E2E 帳號（由 `server/e2e_setup.py` 建立，`E2E_USERS` 是單一來源，`tests/e2e` 直接 import）：`admin`（root）、`manager`、`member`（user）、`newbie`（首次登入須改密碼）、`bootstrap`（模擬預設管理員，ADMIN_USERNAME）、`peer`。其他 spec 請勿動 `newbie` 與 `bootstrap`。
 - E2E 專用 DB 路徑必須含 `e2e`（`e2e_setup.py` 會拒絕其他路徑，避免誤刪正式資料）。
 
 ## 11. 已知問題與限制
@@ -220,7 +222,7 @@ npx prettier --check .
 **部署與環境**
 
 1. Dockerfile、docker-compose、Caddyfile、systemd unit **未實測**（本機無 docker / caddy / Linux）；真實 GitHub API（token 權限、速率限制、分頁）未實測。
-2. Git Bash 跑 vitest 會失敗，請用 PowerShell；`npm ci` 要加 `--ignore-scripts`。
+2. （1.x 時期的「Git Bash 跑 vitest 失敗、`npm ci` 要加 `--ignore-scripts`」在 2.0 已不適用：沒有 Node 了。）
 3. 僅支援單一 worker；SQLite 不可放網路磁碟；權限覆寫與同步速率限制快取都是單一行程設計。
 4. E2E 在 Windows 偶見 `ConnectionResetError [WinError 10054]` 訊息，不影響結果（未重驗）。
 
@@ -269,12 +271,12 @@ npx prettier --check .
 新增一個功能的慣例（參考既有功能照抄結構）：
 
 1. **後端 router**：在 `server/app/features/<name>.py` 建 `APIRouter`，於 `server/app/app.py` 以 `app.include_router(<name>.router, prefix="/api/<name>")` 掛上；請求內容用 pydantic 驗證（`schemas.py` 或該檔內），錯誤用 `errors.py` 的 `HttpError`。需登入的路由預設就受 `api_guard` 保護；免登入的要加進 `PUBLIC_PATHS`（慎用）。
-2. **寫入要記變更流水**：在 transaction 內呼叫 `record_change(conn, entity_type, id, action, actor, t)`，SSE 才會推給其他使用者；前端 `src/web/lib/sync.ts` 的 `ENTITY_QUERY_KEYS` 依 `entity_type` 重抓對應查詢（新的 entity_type 要在此登記）。
+2. **寫入要記變更流水**：在 transaction 內呼叫 `record_change(conn, entity_type, id, action, actor, t)`，SSE 才會推給其他使用者；前端 `web/static/js/lib/sync.js` 的 `ENTITY_QUERY_KEYS` 依 `entity_type` 重抓對應查詢（新的 entity_type 要在此登記）。
 3. **migration 編號**：在 `server/migrations/` 新增下一個編號（目前為 `0021_<說明>.sql`）（四位數字連號，**已合併的 migration 不要修改**）。純 SQL，語句可用 `--> statement-breakpoint` 分隔；啟動時自動套用。需要的 trigger / uid 欄位參考 `0005_uid.sql`。
-4. **權限 capability 登錄**：在 `server/app/permissions.py` 的 `CAPABILITIES` 加入 `名稱: 最低角色`，在 `CAPABILITY_INFO` 補中文名稱 / 說明 / 分組；端點用 `Depends(require("名稱"))`；寫入類的一般協作路徑則加進 `WRITE_GUARDS`。受保護項目加進 `PROTECTED_CAPABILITIES`。前端名稱表 `src/shared/permissions.ts` 要同步（pytest 會比對兩邊一致）。新 capability 不需 migration，自動採預設。更新 [permissions.md](permissions.md) 的矩陣。
-5. **前端 feature 資料夾**：`src/web/features/<name>/` 放頁面元件、`api.ts`（fetch 與 TanStack Query hooks）、`model.ts`（純邏輯，附 `model.test.ts`）、`<name>.css`；在 `src/web/routes.tsx` 註冊路由、`src/shared/<name>.ts` 放 zod schema；導覽項目依 capability 以 `useCan()` 顯示。
+4. **權限 capability 登錄**：在 `server/app/permissions.py` 的 `CAPABILITIES` 加入 `名稱: 最低角色`，在 `CAPABILITY_INFO` 補中文名稱 / 說明 / 分組；端點用 `Depends(require("名稱"))`；寫入類的一般協作路徑則加進 `WRITE_GUARDS`。受保護項目加進 `PROTECTED_CAPABILITIES`。前端名稱表 `web/static/js/shared/permissions.js` 要同步（pytest 會比對兩邊一致）。新 capability 不需 migration，自動採預設。更新 [permissions.md](permissions.md) 的矩陣。
+5. **前端 feature 資料夾**：`web/static/js/features/<name>/` 放頁面元件、`api.js`（fetch 與 `lib/query.js` 的 `useQuery`／`useMutation` hooks）、`model.js`（純邏輯）；樣式放 `web/static/css/features/<name>.css` 並在 `web/index.html` 加一行 `<link>`；在 `web/static/js/routes.js` 註冊路由、`web/static/js/shared/<name>.js` 放資料形狀與常數；導覽項目依 capability 以 `useCan()` 顯示。步驟細節見 [frontend.md](frontend.md)「新增一頁」。
 6. **介面規格**：先在 `docs/design/<name>.md` 寫規格（現有 19 份可參考）。
-7. **測試**：後端 `server/tests/test_<name>.py`（pytest，共用設定在 `server/tests/conftest.py`、`helpers.py`）；前端純邏輯 vitest；關鍵流程加 `tests/e2e/<name>.spec.ts`，帳號用 `tests/helpers/e2eUsers.ts`。新增的環境變數要同時寫進 `config.py`、`.env.example`、README 的環境變數表。
+7. **測試**：後端 `server/tests/test_<name>.py`（pytest，共用設定在 `server/tests/conftest.py`、`helpers.py`）；關鍵流程加 `tests/e2e/test_<name>.py`（Python 版 Playwright，帳號用 `server/e2e_setup.py` 的 `E2E_USERS`，共用操作在 `tests/e2e/helpers.py`）。新增的環境變數要同時寫進 `config.py`、`.env.example`、README 的環境變數表。
 8. 新增功能前先對照 [product-principles.md](product-principles.md)（尤其總覽相關：不排名、不比較）。
 
 ## 14. 開發流程紀錄
@@ -286,6 +288,10 @@ npx prettier --check .
 | 文件                                             | 內容                                         |
 | ------------------------------------------------ | -------------------------------------------- |
 | [../README.md](../README.md)                     | 快速開始、環境變數表、從零部署、備份、常見問題 |
+| [../CHANGELOG.md](../CHANGELOG.md)               | 每版變更、資料格式有沒有變、要不要先備份     |
+| [frontend.md](frontend.md)                       | 前端架構（原生 JS、無建置、Preact、三道防線） |
+| [requirements-2026-11-26.md](requirements-2026-11-26.md) | 2.0 改版需求與施工順序                |
+| [DEPLOY-152.md](DEPLOY-152.md)                   | 實驗室 152（Windows + nginx + NSSM）部署     |
 | [MOVE-TO-SERVER.md](MOVE-TO-SERVER.md)          | 本機資料搬到 server 的逐步教學（已演練）     |
 | [permissions.md](permissions.md)                 | 角色、預設矩陣、受保護項目、端點對照         |
 | [multi-user.md](multi-user.md)                   | 多人架構、閒置計時、在線感知、併發測試       |
@@ -294,4 +300,4 @@ npx prettier --check .
 | [core-interfaces.md](core-interfaces.md)         | 核心介面                                     |
 | [design/](design)                                | 各頁面介面規格                               |
 | [design/task-discussion.md](design/task-discussion.md) | 任務討論區、捲軸設計與描述鎖定        |
-| `../PROGRESS.md`、`../PLAN.md`                   | 進度與原始規劃（PLAN 內的 TS 後端為歷史紀錄） |
+| `../PROGRESS.md`、`../PLAN.md`                   | 進度與原始規劃（React + Vite 時期的歷史紀錄） |

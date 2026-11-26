@@ -6,7 +6,7 @@
 > v2（feat/eng-v2）：可自訂狀態（§10）、一鍵掃描本機專案（§11）、多台電腦回報「不見不等於刪除」（§12）、回收區（§13）。
 > 舊版（repo 管理、server 端 git 偵測、GitHub issue 快取）已隨 TS 後端一併移除。
 
-適用：`src/web/features/eng/**`，路由 `/eng`。token 與基礎元件一律引用 `core-shell.md`，不新增 token、不新增基礎元件。
+適用：`web/static/js/features/eng/**`（1.x 為 `src/web/features/eng/**`），路由 `/eng`。token 與基礎元件一律引用 `core-shell.md`，不新增 token、不新增基礎元件。
 
 優先順序：**手動輸入** → 各人電腦回報、server 集中保存 → 本機路徑只作為記錄欄位 / 回報腳本用 → GitHub 連動（選配，見 §6）。
 
@@ -57,9 +57,9 @@
 
 ## 3. 各人電腦回報（集中管理）
 
-- 在各人電腦的 repo 目錄執行 `node scripts/report-worktrees.mjs --server <網址>`
-  （`--machine` 預設為主機名稱、`--repo` 預設為 repo 目錄名稱、`--dry-run` 只印出不送出）。
-  腳本只依賴 Node 內建模組，讀取 `git worktree list` 與各 worktree 的 dirty、相對 main/master 的 ahead/behind、是否已併入。
+- 在各人電腦的 repo 目錄執行 `python scripts/report_worktrees.py --server <網址>`
+  （`--path` 預設目前目錄、`--machine` 預設為主機名稱、`--repo` 預設為 repo 目錄名稱、`--dry-run` 只印出不送出；token 放環境變數 `WORKTREE_REPORT_TOKEN`）。
+  腳本只依賴 Python 標準函式庫（2.0 起取代 1.x 的 `node scripts/report-worktrees.mjs`，參數與輸出相同），讀取 `git worktree list` 與各 worktree 的 dirty、相對 main/master 的 ahead/behind、是否已併入。
 - 端點 `POST /api/eng/worktrees/report`：免登入，只以 `X-Report-Token` 或 `Authorization: Bearer` 對 `WORKTREE_REPORT_TOKEN` 做固定時間比較；**未設定一律 403**；仍須 `Content-Type: application/json`。以電腦識別碼 + repo 為單位更新快照（**不刪除**，見 §12）。
 - 比對（僅供參考，不會自動改紀錄）：
   - **可能遺失**：紀錄有、但該電腦的回報裡從未出現此路徑（電腦從未回報、或紀錄狀態屬「已結束」類時不提示）。列左緣 danger 色條。
@@ -90,7 +90,7 @@
 
 資料表（`server/migrations/0002_eng_manual.sql`、`0004_eng_github.sql`、`0008_attachments.sql`、`0011_eng_v2.sql`）：`manual_issues`（含 `github_*` 欄位）、`worktree_records`（0011 加 `machine_id`、`source`、`repo`、`head_sha`、`deleted_at`、`deleted_by`）、`worktree_reports`（0011 加 `machine_id`、`missing_since`）、`worktree_report_sources`、`eng_statuses`、`eng_github_links`、`attachments`、`link_previews`。
 即時同步沿用既有實體類型：問題與回報記為 `repo`、紀錄記為 `worktree_plan`（前端皆對應 `['eng']`）。
-型別：`src/shared/engManual.ts`。
+常數與名稱：`web/static/js/shared/engManual.js`（1.x 為 `src/shared/engManual.ts` 的型別）。
 
 ## 5. 響應式
 
@@ -134,7 +134,7 @@
 - **縮圖**：`/thumb` 只給圖片；安裝 Pillow 時產生 480px WebP，否則回傳原圖由 CSS 縮放（不強制新增相依）。
 - **刪除**：`DELETE /api/attachments/:id`（確認對話框）；刪除問題時 trigger 一併刪除資料列，API 刪除檔案。匯入「取代模式」刪除問題後殘留的檔案可用 `python -m server.cli attachments-prune` 清除。
 - 變更紀錄：上傳 / 刪除附件記為該問題的 `repo` update（其他人畫面即時更新）。
-- **前端**（`Attachments.tsx`、`uploads.ts`）：
+- **前端**（`Attachments.js`、`uploads.js`）：
   - 附件區頂部是虛線拖放區（圖示 +「拖放檔案到這裡，或點此選擇；也可以直接貼上圖片」+ 上限說明），可 Tab 聚焦、Enter / Space 開啟檔案選擇器；已有附件時縮為一行。
   - 縮圖格：圖片縮圖、影片第一幀 + 播放圖示 + 時長、其他依類型圖示（PDF / 文件 / 壓縮檔 / 文字 / 音訊）與副檔名標籤；檔名過長中間省略；大小 · 上傳者 · 時間。hover / focus 顯示下載與刪除（觸控裝置常駐）。
   - 上傳：每個檔案一個請求，佔位卡片顯示進度條與取消鈕；失敗卡片顯示原因與「重試」/「移除」；多檔同時上傳；上傳中離開頁面會提示。前端先檢查類型 / 大小 / 數量。
@@ -165,7 +165,7 @@
   封存的狀態不出現在新選單，但舊資料照常顯示、可保留（PATCH 送同一值不會被拒），**不可新設**。寫入的狀態值必須存在於 `eng_statuses`（400）。
 - 新增時未指定狀態：用內建預設（問題 `open`、工作樹 `active`），被封存時改用同類別第一個未封存者。
 - 權限：讀取全員；寫入 `eng.status.manage`（預設 user 以上——使用者希望「讓人自己建立」；root 可在權限設定頁調整）。
-- 前端：所有狀態下拉由 `/api/eng/statuses` 驅動（`EngStatus.tsx`）；選單底部「＋ 新增狀態…」（新增後直接套用到該列）與「管理狀態…」，工具列也有「管理狀態」。管理對話框：行內改名、選色、類別（自訂才可改）、上移 / 下移、封存 / 取消封存、刪除（自訂且未使用）。無權限者看不到管理入口。
+- 前端：所有狀態下拉由 `/api/eng/statuses` 驅動（`EngStatus.js`）；選單底部「＋ 新增狀態…」（新增後直接套用到該列）與「管理狀態…」，工具列也有「管理狀態」。管理對話框：行內改名、選色、類別（自訂才可改）、上移 / 下移、封存 / 取消封存、刪除（自訂且未使用）。無權限者看不到管理入口。
 - 匯出 / 匯入：問題與工作樹紀錄的狀態欄改為自由字串（≤100），工作樹紀錄另帶 `machineId`、`source`、`repo`、`headSha`、`deletedAt`（舊匯出檔缺少時用預設值）。`eng_statuses` 本身目前**不在 JSON 匯出範圍**：匯入到另一台時自訂狀態會以 key 顯示（灰色），可在管理狀態重新建立。
 
 ## 11. 掃描本機專案（一鍵登記 worktree）
@@ -181,7 +181,7 @@
 
 ## 12. 多台電腦回報：不見不等於刪除
 
-- **電腦識別碼**：`scripts/report-worktrees.mjs` 第一次執行在 `~/.tasks-sheets/machine.json`（可用 `TASKS_SHEETS_HOME` 改位置）產生隨機 `machineId` 與可編輯的 `machineName`，之後每次回報帶 `machineId` + 名稱。伺服器以 `machineId` 為分組鍵（`id:<machineId>`），名稱只是顯示用：改名或兩台同名都不會混淆。舊版腳本沒有 id → 以名稱暫代（`name:<小寫名稱>`）；同名的新版腳本第一次帶 id 回報時接手這些舊資料（只接手沒有 id 者）。
+- **電腦識別碼**：`scripts/report_worktrees.py`（1.x 為 `report-worktrees.mjs`，檔案格式相同、可沿用）第一次執行在 `~/.tasks-sheets/machine.json`（可用 `TASKS_SHEETS_HOME` 改位置）產生隨機 `machineId` 與可編輯的 `machineName`，之後每次回報帶 `machineId` + 名稱。伺服器以 `machineId` 為分組鍵（`id:<machineId>`），名稱只是顯示用：改名或兩台同名都不會混淆。舊版腳本沒有 id → 以名稱暫代（`name:<小寫名稱>`）；同名的新版腳本第一次帶 id 回報時接手這些舊資料（只接手沒有 id 者）。
 - **只標記、不刪除**：同一電腦 + repo 的回報以路徑比對更新；這次沒出現的項目只寫 `missing_since`，快照列與紀錄一律保留。頁面顯示：
   - 電腦超過 `WORKTREE_STALE_DAYS`（預設 2）天沒回報 →「未回報（最後看到 3 天前）」；
   - 紀錄在最新回報中找不到 →「回報中找不到（上次看到 N 天前）」。
@@ -207,7 +207,7 @@
 - **API**（皆需 `eng.edit`）：
   - `POST /api/eng/worktrees/paste/preview` `{text, machine?, repo?}`：回傳 `items`（解析結果 + `isTemp` / `tempReasons` + `action`）、`counts`、`unparsed`、`repoGuess`。與既有（未刪除）紀錄比對：`new`；`existing` = 同電腦 + 同路徑（不分大小寫、斜線方向）；`moved` = 同分支 + 同 sha（可為縮寫）但路徑不同。`machine` 預設「我的電腦」（以名稱比對）。
   - `POST /api/eng/worktrees/paste/apply` `{text, machine, repo?, selected: [行號|路徑], updateExisting?, status?}`：**伺服器重新解析 `text`**，只從自己的解析結果依行號 / 路徑挑選，不採信任何前端解析結果；單一 transaction（`status` 須為存在且未封存的工作樹狀態，否則整批不寫入）。新增紀錄：machine、path、branch、repo、`head_sha`、狀態預設「使用中」、備註「由貼上匯入；sha XXXXXXXX；locked / detached HEAD / prunable / bare」、`source = 'paste'`；`existing` 預設略過，`updateExisting` 才更新分支 / HEAD，備註只在原本為空或也是貼上匯入時才覆寫（不蓋掉使用者自己寫的）；`moved` 勾選 = 更新舊紀錄路徑（與掃描一致）；貼上內容中重複路徑只登記第一筆。回傳 `{created, updated, skipped}`；全部 `record_change(worktree_plan)`。**冪等**：重複貼同一份 → 全部已存在、略過。
-- **前端**（`PasteDialog.tsx`、`pasteModel.ts`）：文字框貼上後自動預覽；電腦名稱必填（記住上次，localStorage `eng.machine`，預設「我的電腦」）、Repo 名稱自動帶入可改；預覽表（勾選、路徑中間省略 + tooltip、分支、短 sha、標籤 新增 / 已存在 / 可能搬動 / 暫時性 / 鎖定 / 分離 HEAD / 可清理）；「全選」「只選非暫時性」「全不選」、已選計數、批次「登記為」狀態；Ctrl+Enter 登記、Esc 關閉；登記後 toast「已登記 N 筆、略過 M 筆」並自動套用工作樹分頁的「依電腦篩選」。
+- **前端**（`PasteDialog.js`、`pasteModel.js`）：文字框貼上後自動預覽；電腦名稱必填（記住上次，localStorage `eng.machine`，預設「我的電腦」）、Repo 名稱自動帶入可改；預覽表（勾選、路徑中間省略 + tooltip、分支、短 sha、標籤 新增 / 已存在 / 可能搬動 / 暫時性 / 鎖定 / 分離 HEAD / 可清理）；「全選」「只選非暫時性」「全不選」、已選計數、批次「登記為」狀態；Ctrl+Enter 登記、Esc 關閉；登記後 toast「已登記 N 筆、略過 M 筆」並自動套用工作樹分頁的「依電腦篩選」。
 
 ## 15. 工作樹「每人一份」檢視
 
@@ -215,4 +215,4 @@
 - **分組層級**：第一層是成員（負責人），第二層才是電腦（電腦名稱、識別碼、最後回報時間、可疑回報 / 未回報標記、回報快照、可能搬動提示全部保留）。「我自己 / 某成員」只列負責人為該成員的紀錄；「全部成員」每位成員一張可摺疊卡片（件數 + 狀態摘要），我自己在前、其餘依名稱（`Intl.Collator` zh-Hant），**未指派**放最後。電腦層級、不屬於任何人的項目（未登記的回報、可疑回報待確認）在「全部成員」集中顯示於「未指派」卡片；單一成員檢視則跟著該成員有紀錄的電腦顯示。「我自己」檢視若有未指派紀錄或這類回報，頂部顯示淡色提示並連到「全部成員」。
 - **計數**：分頁標籤「工作樹 N」與提示徽章維持全站總數；檢視內另顯示「共 M 筆」（目前範圍、套用電腦篩選後）。回收區只列目前檢視範圍的已刪除紀錄（我自己 = 負責人為我；全部成員 = 全部）；範圍篩選在前端（`GET /worktree-records/trash` 不變）。
 - **負責人預設**：新增紀錄表單的「負責人」預設為目前登入者（可改為其他人或未指派）；未登記回報的「登記」也帶入目前登入者。貼上 `git worktree list`、掃描本機專案的登記對話框新增「負責人」欄（預設自己），`POST /worktrees/paste/apply` 與 `/worktrees/scan/apply` 接受選填 `ownerId`（須為存在且啟用的使用者，否則 400；省略 = 呼叫者），只影響**新增**的紀錄（`worktree_records.owner_id`），既有紀錄的更新不改負責人；`server.cli scan-worktrees` 仍不設定負責人。無需 migration。
-- **前端**：`personView.ts`（純函式：`readPersonView` / `writePersonView`、`groupByOwner`、`countByStatus`、`inView`；vitest `personView.test.ts`）、`WorktreesTab.tsx`（`OwnerCard`、`MachineSection`）；E2E `tests/e2e/eng-person-view.spec.ts`。
+- **前端**：`personView.js`（純函式：`readPersonView` / `writePersonView`、`groupByOwner`、`countByStatus`、`inView`；1.x 有 vitest `personView.test.ts`，2.0 起移除）、`WorktreesTab.js`（`OwnerCard`、`MachineSection`）；E2E eng-person-view（1.x 為 `tests/e2e/eng-person-view.spec.ts`，2.0 起移植為 `tests/e2e/` 底下的 Python 版 Playwright）

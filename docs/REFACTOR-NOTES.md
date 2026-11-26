@@ -1,5 +1,7 @@
 # 童軍式重構紀錄（refactor/scout）
 
+> 註（2026-11-26）：本文的檔名是 1.x（React + Vite + TypeScript）時期的路徑與工具；2.0 起前端改寫為原生 JS，對照見[第 6 節](#6-2026-11-26-前端改寫20整個系統只剩-python)。
+
 整合分支 `integration/wave6` 之後的一輪輕量整理：只做**不改變行為**的小步重構（API 路徑 / 欄位 / 狀態碼 / 錯誤文案、資料庫 schema 與 migration、UI 外觀與文案、權限名稱與預設值皆未變動）。每個主題一個 commit，commit 訊息內有「為什麼安全」的說明。
 
 ## 1. 做了哪些整理
@@ -67,3 +69,13 @@
 - §11 已知問題第 18 項（後端 5 處與測試 5 個檔案的 docstring 仍寫「行為同 / 對應 src/server/…」）已處理，可刪除。
 - §11 第 9 項提到 `data_transfer.SPECS`：定義已移到 `data_transfer_specs.py`，但 `data_transfer.SPECS` 仍可取用，敘述不必改。
 - （選擇性）若決定刪除 `lib/hooks.ts` 的 `useCreateTask` / `useDeleteTask`，`docs/core-interfaces.md` 第 11 行與 `docs/design/undo.md` 第 45–46 行要一起改為 `features/tasks/data.ts` 的 `useOptimisticCreate` / `useDeleteTaskOptimistic`。
+
+## 6. 2026-11-26 前端改寫（2.0：整個系統只剩 Python）
+
+這一輪**不是**童軍式小步重構，而是換掉前端的執行方式；記在這裡是因為上面各節提到的檔名都是 1.x 的 TypeScript 路徑。
+
+- 前端從 React 18 + Vite + TypeScript（`src/web`、`src/shared`）改成瀏覽器直接載入的原生 ES modules（`web/static/js/`）＋ Preact 10（隨附在 `web/static/vendor/preact/`）。不需要 Node.js、npm、任何建置步驟。
+- 方法：以 commit **a5ce7ac** 為起點機械轉換——`.ts` 只去型別、`.tsx` 的 JSX 轉成 `createElement`，目錄結構一一對應；react-query／react-router／dnd-kit 換成自寫的子集相容版 `lib/query.js`／`lib/router.js`／`lib/dnd.js`（呼叫端只換 import 來源）。細節見 [frontend.md §7](frontend.md#7-這次轉換是怎麼做的2026-11-26)。
+- **行為不變的保護**：舊的 Playwright E2E 規格逐區驗收後移植成 Python 版（`tests/e2e/`）；新增 `server/tests/test_web_modules.py`（import／export 連結檢查）與 `tests/e2e/test_smoke.py`（全模組載入＋全路由零 console error）取代 tsc。後端 API 與 DB migration 一行未動。
+- 本文件上面各節的路徑對照：`src/web/<x>.ts(x)` → `web/static/js/<x>.js`、`src/shared/<x>.ts` → `web/static/js/shared/<x>.js`。第 1 節「保護」欄寫的 vitest、第 2 節「與 eslint／tsc 同時執行」、第 4 節「補 vitest」都是 1.x 的工具，2.0 已移除；前端純邏輯目前只有 E2E 與連結檢查保護。
+- 第 2 節列的「只在本檔使用的 `export`（多數是型別與 zod schema）」：型別與 zod schema 已隨轉換消失，此項不再適用。

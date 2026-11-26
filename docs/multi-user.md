@@ -20,8 +20,8 @@ WAL 模式下 `NORMAL` 不會造成資料庫損毀；最壞情況是作業系統
 
 - 絕對期限 9 小時（`SESSION_MAX_HOURS`），閒置 60 分鐘（`SESSION_IDLE_MINUTES`）自動登出。
 - **只有「非 GET 的寫入請求」刷新閒置計時**；GET（含 SSE、輪詢、`GET /api/presence`）一律不刷新。
-- **例外：`PUT /api/presence` 不刷新**（`security.IDLE_EXEMPT_PATHS`）。在線回報只是「告訴別人我在哪」，不是實際操作；即使分頁一直開著、滑鼠一直在動、presence 每 20 秒回報，60 分鐘沒有實際寫入或點擊 / 鍵盤（前端 heartbeat）仍會被登出。前端也不把 presence 回報當作寫入（`lib/auth.ts`）。
-- 測試：`server/tests/test_presence.py::test_presence_does_not_refresh_idle`、`::test_presence_keepalive_cannot_keep_session_alive`；E2E `tests/e2e/presence.spec.ts`「presence 不延長閒置登出（page.clock）」。
+- **例外：`PUT /api/presence` 不刷新**（`security.IDLE_EXEMPT_PATHS`）。在線回報只是「告訴別人我在哪」，不是實際操作；即使分頁一直開著、滑鼠一直在動、presence 每 20 秒回報，60 分鐘沒有實際寫入或點擊 / 鍵盤（前端 heartbeat）仍會被登出。前端也不把 presence 回報當作寫入（`web/static/js/lib/auth.js`）。
+- 測試：`server/tests/test_presence.py::test_presence_does_not_refresh_idle`、`::test_presence_keepalive_cannot_keep_session_alive`；E2E presence「presence 不延長閒置登出（page.clock）」（1.x 為 `tests/e2e/presence.spec.ts`，2.0 起移植為 `tests/e2e/` 底下的 Python 版 Playwright）。
 
 ## 3. 在線感知（presence）
 
@@ -57,7 +57,7 @@ WAL 模式下 `NORMAL` 不會造成資料庫損毀；最壞情況是作業系統
 
 ## 5. 併發測試結果（2026-11-25，Windows 11，Python 3.11）
 
-測試檔：`server/tests/test_concurrency.py`（`npm run py:test` 一併執行；隨機種子 `CONCURRENCY_SEED`，預設 20261125，可重現每位使用者的操作序列——實際交錯順序由執行緒排程決定，所以 404 次數等細節每次略有不同，驗證條件不受影響）。以 uvicorn 實際提供 app、檔案型 SQLite（WAL），每位使用者一個 httpx 連線、各自一條執行緒。
+測試檔：`server/tests/test_concurrency.py`（`python -m pytest server` 一併執行；隨機種子 `CONCURRENCY_SEED`，預設 20261125，可重現每位使用者的操作序列——實際交錯順序由執行緒排程決定，所以 404 次數等細節每次略有不同，驗證條件不受影響）。以 uvicorn 實際提供 app、檔案型 SQLite（WAL），每位使用者一個 httpx 連線、各自一條執行緒。
 
 | 測試 | 內容 | 結果 |
 |---|---|---|
@@ -67,4 +67,4 @@ WAL 模式下 `NORMAL` 不會造成資料庫損毀；最壞情況是作業系統
 | SSE 30 連線 | 6 人 × 5 分頁共 30 條 SSE，背景每 20ms 持續寫入，同時建立 5 筆任務 | 30 條連線全部收到每一筆，最慢 47–63 ms（門檻 2 秒）；關閉後 hub 與 presence 訂閱數歸零、輪詢 / 掃描工作停止 |
 | DB 設定 | `PRAGMA journal_mode / synchronous / busy_timeout` | wal / NORMAL(1) / 5000 |
 
-E2E（`tests/e2e/presence.spec.ts`）：三個瀏覽器 context（管理員、一般成員、晴恩）同時登入——A 在甘特圖、B 開任務抽屜、C 在清單就地改標題：A 的頭像卡片顯示 B「正在專心看」、C「正在編輯」，B 的抽屜顯示「晴恩 正在編輯」，C 送出後 B 的抽屜即時更新標題；C 關閉後 A 的面板在 60 秒內顯示晴恩離線與「最後看的是 清單」；隱藏動態後別人只看到「在線上」；以 `page.clock` 快轉 65 分鐘、期間持續有 presence 回報，仍準時閒置登出。
+E2E presence（1.x 為 `tests/e2e/presence.spec.ts`，2.0 起移植為 `tests/e2e/` 底下的 Python 版 Playwright）：三個瀏覽器 context（管理員、一般成員、晴恩）同時登入——A 在甘特圖、B 開任務抽屜、C 在清單就地改標題：A 的頭像卡片顯示 B「正在專心看」、C「正在編輯」，B 的抽屜顯示「晴恩 正在編輯」，C 送出後 B 的抽屜即時更新標題；C 關閉後 A 的面板在 60 秒內顯示晴恩離線與「最後看的是 清單」；隱藏動態後別人只看到「在線上」；以 `page.clock` 快轉 65 分鐘、期間持續有 presence 回報，仍準時閒置登出。

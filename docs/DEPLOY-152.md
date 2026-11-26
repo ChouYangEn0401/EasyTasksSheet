@@ -15,15 +15,14 @@
 
 | 檔案 | 什麼時候用 |
 | ---- | ---------- |
-| `setup_easytasks.bat` | 第一次安裝，或 `.venv`／前端壞掉要重建時。建 `.venv` → 裝套件 → 建 `.env`（已有就不動）→ 建置前端 |
-| `install_easytasks_service.bat` | 建立／重建 NSSM 服務。可加 `check` 只檢查 |
-| `update_easytasks.bat` | 更新程式：先備份 → `git pull` → 套件 → 建置 → 重啟 → 健康檢查（建置失敗不會重啟） |
+| `setup_easytasks.bat` | 第一次安裝，或 `.venv` 壞掉要重建時。建 `.venv` → 裝套件 → 建 `.env`（已有就不動）→ 建 `data`／`logs`／`backups`。前端是 `web\` 底下的靜態檔，不用建置 |
+| `install_easytasks_service.bat` | 建立／重建 NSSM 服務。可加 `check` 只檢查（會確認 `web\index.html` 在、`.env` 的部署值正確） |
+| `update_easytasks.bat` | 更新程式：先備份 → `git pull --ff-only` → 套件 → 重啟 → 健康檢查（任何一步失敗就停、不重啟）。沒有建置步驟 |
 | `backup_easytasks.bat` | 備份資料庫與附件（給工作排程器用，也可手動跑） |
 | `allow_restore.bat` | 開啟 30 分鐘的「還原解鎖」，讓 root 能在網頁上用整站搬家包覆蓋已有資料（加 `revoke` 立即關閉） |
 | `uninstall_easytasks_service.bat` | 移除服務（不刪資料） |
 | `env.152.example` | 152 用的 `.env` 範本（`setup_easytasks.bat` 會自動複製） |
 | `nginx-easytasks.conf` | 要貼進 152 `nginx.conf` 的 `/easytasks/` 段落 |
-| `ensure-node.ps1` | 不用手動執行：建置時找不到 npm，由上面的腳本自動呼叫 |
 
 152 server 自己的檔案（`C:\nginx\conf\nginx.conf`、`C:\nginx\html\jump_page.html`、`C:\scripts\*.bat`）**不放在本專案**，由 server 維護者管理。
 
@@ -31,7 +30,7 @@
 
 - Python 3.11 以上（152 已為 pyDMS 安裝；必須是「所有使用者」安裝）
 - Git for Windows（152 已安裝）
-- Node.js：**不用先裝**。建置前端時找不到 npm，腳本會自動下載官方免安裝版 Node.js 22 到 `.tools\node`（只給本專案建置用，不改系統；以官方 SHA256 驗證）。
+- **不需要 Node.js**（2.0 起）。1.x 時期腳本會自動下載免安裝版 Node 到 `.tools\node` 來建置前端；從 1.x 升上來的 152 若還留著 `.tools\`、`dist\`、`node_modules\`，都已用不到，可以手動刪除。
 
 ## 第一次安裝（系統管理員 cmd）
 
@@ -50,10 +49,10 @@
    確認 `.env` 的部署值（**缺 `.env` 時程式會用預設的 3000，和 Gitea 衝突而無法啟動**）：
 
    ```bat
-   findstr /B "NODE_ENV= HOST= PORT= BASE_PATH=" C:\EasyTasksSheet\.env
+   findstr /B "NODE_ENV= APP_ENV= HOST= PORT= BASE_PATH=" C:\EasyTasksSheet\.env
    ```
 
-   要看到 `NODE_ENV=production`、`HOST=127.0.0.1`、`PORT=8100`、`BASE_PATH=/easytasks`。`BACKUP_DIR` 建議改到 C 槽以外。
+   要看到 `NODE_ENV=production`、`HOST=127.0.0.1`、`PORT=8100`、`BASE_PATH=/easytasks`。（152 的範本 `env.152.example` 沿用舊名 `NODE_ENV`，程式視同 `APP_ENV`；`install_easytasks_service.bat check` 目前檢查的也是這一行，所以 152 上請保留它。）`BACKUP_DIR` 建議改到 C 槽以外。
 
 3. 建立服務（先 check，再正式跑；正式跑要輸入 `YES`）：
 
@@ -120,6 +119,13 @@ net start easytasks
 | 健康檢查 | `powershell (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8100/api/health).Content` → `{"ok":true,...}` |
 | 新增帳號 | `cd /d C:\EasyTasksSheet` → `.venv\Scripts\python.exe -m server.cli user-add <帳號> --role user` |
 
+### 從 1.x（要 Node 的版本）升到 2.0
+
+1. 照常跑 `update_easytasks.bat`（它會先備份 `data\app.db`；資料格式沒變，舊資料直接沿用）。
+2. 健康檢查的回應裡會有 `"version":"2.0.0"`；網頁側欄底部也看得到版本。
+3. 確認沒問題後，可以手動刪掉用不到的 `C:\EasyTasksSheet\dist\`、`node_modules\`、`.tools\`。
+4. 如果 152 上曾為本專案另外安裝系統 Node.js，也可以移除（先確認沒有別的服務在用）。
+
 ## 錯誤判讀
 
 先跑健康檢查與看 log，再對照下表。
@@ -128,20 +134,21 @@ net start easytasks
 | ------ | ---- | ---- |
 | nginx 錯誤頁「An error occurred」（502） | 服務沒在跑或一直當掉 | `sc query easytasks`；看 `easytasks.err.log` |
 | 服務狀態 `Paused`，log 有 `bind on address ('127.0.0.1', 3000)` | 沒有 `.env`（或 `PORT` 不是 8100），撞到 Gitea 的 3000 | `net stop easytasks` → 跑 `setup_easytasks.bat` 建 `.env` → `net start easytasks` |
-| `/easytasks/` 空白頁，主控台 404 `/assets/...` | 前端沒建置，或建置時 `BASE_PATH` 不是 `/easytasks` | 確認 `.env` 後重跑 `setup_easytasks.bat`；後端啟動時也會在 log 印警告 |
-| 建置時「下載 Node.js 失敗」 | 連不到 nodejs.org | 手動安裝 Node.js 22 LTS 後重開 cmd 再跑 |
+| `/easytasks/` 空白頁，主控台 404 `/static/...` | `.env` 的 `BASE_PATH` 不是 `/easytasks`，或 nginx 的 `location` 沒對上 | 改 `.env` 後重啟服務（**不用重建**，`index.html` 每次請求代入 `BASE_PATH`）；再對照 `nginx-easytasks.conf` |
+| 服務起不來，log 有「找不到前端 …web\index.html」 | 專案資料夾不完整 | `git status` 確認 `web\` 在；必要時重新 `git pull` 或重新 clone |
+| 更新後畫面還是舊的 | 瀏覽器快取了舊的 `index.html` 以外的東西（少見） | `Ctrl+Shift+R` 強制重新整理；靜態檔網址帶版本段，服務重啟後就會換新 |
 | 登入後馬上被登出／修改都 403 | `APP_ORIGIN` 與瀏覽器網址不同 | `.env` 的 `APP_ORIGIN=https://140.112.180.152`（沒有結尾斜線、沒有路徑） |
 | 畫面不會即時更新（要重整才看到） | nginx 緩衝了 SSE | `location /easytasks/` 要有 `proxy_buffering off;` |
 | 所有人共用登入失敗次數 | `TRUSTED_PROXY` 不是 `true` | 改 `.env` 後重啟服務 |
 
 ## 其他電腦的同步與 worktree 回報（自簽憑證）
 
-`python -m server.cli sync-push --server https://140.112.180.152/easytasks ...` 與 `scripts/report-worktrees.mjs` 都會驗證 HTTPS 憑證。
-152 是自簽憑證，請在那台電腦把 152 的 `server.crt` 加入信任：Python 用環境變數 `SSL_CERT_FILE=<server.crt 路徑>`，Node 用 `NODE_EXTRA_CA_CERTS=<server.crt 路徑>`。憑證的 SAN 必須包含 `IP:140.112.180.152`。
+`python -m server.cli sync-push --server https://140.112.180.152/easytasks ...` 與 `python scripts/report_worktrees.py --server https://140.112.180.152/easytasks ...` 都會驗證 HTTPS 憑證。
+152 是自簽憑證，請在那台電腦把 152 的 `server.crt` 加入信任：設環境變數 `SSL_CERT_FILE=<server.crt 路徑>`（兩支都是 Python，同一個變數就夠；1.x 的 Node 回報腳本才需要 `NODE_EXTRA_CA_CERTS`）。憑證的 SAN 必須包含 `IP:140.112.180.152`。
 
 ## 子路徑是怎麼運作的（給維護者）
 
-- `.env` 的 `BASE_PATH` 一個值控制三件事：前端建置的 `base`（`vite.config.ts`）、session cookie 的 `Path`、後端產生的附件網址。改了要重新建置。
+- `.env` 的 `BASE_PATH` 一個值控制三件事：前端的網址前綴（伺服器每次回 `index.html` 時把 `{{BASE}}`、`{{STATIC}}` 代入，見 [frontend.md](frontend.md)）、session cookie 的 `Path`、後端產生的附件網址。**改了只要重啟服務**（1.x 時要重新建置前端，2.0 起不用）。
 - nginx 用結尾斜線的 `proxy_pass` 去掉前綴；後端另有 `StripBasePath`（`server/app/app.py`），直接連 `http://127.0.0.1:8100/easytasks/` 也能用。
 - cookie 的 `Path=/easytasks`，不會和同網域的 Gitea、pyDMS 的 cookie 互相干擾。
 - 本機開發不用 `.env` 也能跑（預設 `127.0.0.1:3000`、根目錄），152 則一定要有。

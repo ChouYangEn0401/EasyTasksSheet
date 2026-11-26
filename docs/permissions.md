@@ -10,8 +10,8 @@
 
 - 唯一來源：後端 `server/app/permissions.py`（`CAPABILITIES` 預設矩陣、`CAPABILITY_INFO` 中文名稱 / 說明 / 分組、`PROTECTED_CAPABILITIES`、`can(user, capability, db)`、FastAPI dependency `require(capability)`）；前端名稱表 `src/shared/permissions.ts`（pytest 比對兩邊一致）。
 - 後端強制：不具權限一律 **403** `{"code": "FORBIDDEN", "message": "沒有權限執行此操作"}`。一律依**有效矩陣**（預設 + 覆寫）判斷。
-- 前端只做顯示：`/api/auth/me` 與登入回應帶 `capabilities`（有效矩陣下的字串陣列），以 `useCan(capability)`（`src/web/lib/permissions.ts`）決定顯示 / 隱藏，不再以角色字串判斷。
-- 顯示名稱表：`ROLE_LABELS`（`src/shared/users.ts`）。
+- 前端只做顯示：`/api/auth/me` 與登入回應帶 `capabilities`（有效矩陣下的字串陣列），以 `useCan(capability)`（`web/static/js/lib/permissions.js`）決定顯示 / 隱藏，不再以角色字串判斷。
+- 顯示名稱表：`ROLE_LABELS`（`web/static/js/shared/users.js`）。
 
 ## 預設矩陣
 
@@ -57,7 +57,7 @@ root 在「權限設定」頁勾選 / 取消 manager 與 user 的各項權限，
   - `GET /api/admin/permissions`：每個 capability 的中文名稱、說明、分組、是否受保護、各角色預設值 / 有效值、是否已覆寫；以及最後修改時間與修改者。
   - `PUT /api/admin/permissions` `{"changes": [{"role": "user", "capability": "statuses.manage", "allowed": true}, ...]}`：批次設定（單一 transaction；任一筆不合法則全部不寫入，400）；回傳新矩陣。
   - `POST /api/admin/permissions/reset` `{"role"?: "manager" | "user"}`：還原為預設（省略 role = 全部）；回傳新矩陣。
-- **即時更新**：每次寫入記一筆變更流水 `entity_type = permission`（`entity_id = 0`），既有 SSE 推送後，前端（`src/web/lib/sync.ts`）重抓 `/api/auth/me`，在線使用者的導覽與按鈕即時顯示 / 隱藏。
+- **即時更新**：每次寫入記一筆變更流水 `entity_type = permission`（`entity_id = 0`），既有 SSE 推送後，前端（`web/static/js/lib/sync.js`）重抓 `/api/auth/me`，在線使用者的導覽與按鈕即時顯示 / 隱藏。
 - **快取**：覆寫在記憶體中依資料庫快取，寫入後立即失效，下一個請求就套用新設定。系統為**單一 worker（單一行程）**；若日後改為多行程，需另行處理快取同步（例如每次請求檢查 changes 流水）。直接以 SQL 修改 `role_permissions` 需重新啟動服務才會生效。
 
 ### 保護規則

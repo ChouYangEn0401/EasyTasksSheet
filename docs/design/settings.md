@@ -27,16 +27,16 @@ PATCH 規則：
 
 ## 前端
 
-- 路由 `/settings`（`src/web/features/settings/`），頂欄標題「個人設定」。
+- 路由 `/settings`（`web/static/js/features/settings/`），頂欄標題「個人設定」。
 - 三張卡片：
   - 個人資料：顯示名稱、帳號；只有帳號被改動時才出現「目前密碼」欄與說明。無變更不可儲存；錯誤（格式、重複、密碼錯誤）標在對應欄位；儲存中按鈕顯示 loading，成功後 toast「個人資料已更新」並更新頂欄。
   - 變更密碼：目前密碼、新密碼（規則提示 + 強度條）、確認；成功後清空表單並顯示「密碼已更新，其他裝置已登出」。
   - 帳號資訊：角色（唯讀）、建立時間、最近登入。
-- 驗證為純函式（`model.ts`，vitest 覆蓋），規則與後端一致。`must_change_password` 的強制改密碼頁維持原樣。
+- 驗證為純函式（`model.js`；1.x 有 vitest 覆蓋，2.0 起改由 E2E 覆蓋），規則與後端一致。`must_change_password` 的強制改密碼頁維持原樣。
 - 768px 以下卡片縮小內距，無水平捲軸。
 
 ## 測試
 
 - pytest：`server/tests/test_profile.py`（成功 / 失敗、帳號重複、改帳號需密碼、密碼錯誤計入限制、只能改自己、role 被拒）。
-- vitest：`src/web/features/settings/model.test.ts`。
-- E2E：`tests/e2e/settings.spec.ts`，自建專用測試成員（改顯示名稱 → 改密碼 → 其他裝置登出 → 改帳號），結束後以 admin 停用，不動共用帳號。
+- （1.x 的 vitest `src/web/features/settings/model.test.ts` 已在 2.0 移除。）
+- E2E settings（1.x 為 `tests/e2e/settings.spec.ts`，2.0 起移植為 `tests/e2e/` 底下的 Python 版 Playwright）：自建專用測試成員（改顯示名稱 → 改密碼 → 其他裝置登出 → 改帳號），結束後以 admin 停用，不動共用帳號。

@@ -95,33 +95,26 @@ scp move.zip you@server:/tmp/
 sudo apt-get install -y python3 python3-venv git      # python3 --version 要 >= 3.11
 sudo useradd --system --home /opt/tasks-sheets --shell /usr/sbin/nologin tasks-sheets
 sudo git clone <repo-url> /opt/tasks-sheets
-cd /opt/tasks-sheets
-sudo mkdir -p data backups
 sudo chown -R tasks-sheets:tasks-sheets /opt/tasks-sheets
-
-sudo -u tasks-sheets python3 -m venv .venv
-sudo -u tasks-sheets .venv/bin/pip install -r requirements.txt
+cd /opt/tasks-sheets
+sudo -u tasks-sheets python3 scripts/install.py      # 建 .venv、裝套件、建 data/ logs/ backups/、沒有 .env 就從範本複製
 ```
 
-前端頁面二選一：
+前端頁面是 `web/` 底下的靜態檔，跟著 git 一起來，**不需要 Node.js、不需要建置**（2.0 起；1.x 時要先 `npm run build` 產生 `dist/web`）。
 
-- server 上建置：安裝 Node.js 22 後 `sudo -u tasks-sheets npm ci && sudo -u tasks-sheets npm run build`（產生 `dist/web`）。
-- 不想在 server 裝 Node：在本機 `npm run build`，把整個 `dist/web` 資料夾複製到 server 的 `/opt/tasks-sheets/dist/web`。
-
-Windows server 也可以：`python -m venv .venv`、`.venv\Scripts\activate`、`pip install -r requirements.txt`（已實測可安裝並啟動）。
+Windows server 也可以：`python scripts/install.py`，之後 `.venv\Scripts\python main.py`。實驗室 152 請直接照 [DEPLOY-152.md](DEPLOY-152.md)（`deploy\windows\setup_easytasks.bat`）。
 
 ### 2.4 server：設定 `.env`
 
 ```bash
-sudo -u tasks-sheets cp .env.example .env
-sudo -u tasks-sheets chmod 600 .env
+sudo -u tasks-sheets chmod 600 .env       # .env 已由 install.py 從 .env.example 複製
 sudo -u tasks-sheets nano .env
 ```
 
 搬家會用到的設定（完整列表見 README「環境變數」）：
 
 ```ini
-NODE_ENV=production          # systemd 部署務必設，--prod 啟動時可省略
+APP_ENV=production           # systemd 部署務必設，--prod 啟動時可省略（舊名 NODE_ENV 仍可用）
 HOST=127.0.0.1               # 有反向代理就維持這個；只做區網測試才改 0.0.0.0
 PORT=3000
 APP_ORIGIN=https://tasks.lab.example   # 對外網址，與瀏覽器網址列完全相同；還不確定就先留空
@@ -337,6 +330,9 @@ sudo -u tasks-sheets .venv/bin/python -m server.cli import /tmp/export.json \
 **升級提醒：migration 0019（總覽成員卡）**
 migration 0019 會把**既有 root 帳號**的 `in_overview` 設為 0，所以升級（或整包搬到新版程式）後，root 不再出現在總覽的成員卡與近三週統計。這是設計行為（超級管理員預設不列入總覽）；要列入請到「成員管理」重新開啟該帳號的總覽統計開關。任務本身不受影響。
 
+**從 1.x 搬到 2.0 的程式**
+2.0 只換了前端技術（不需 Node.js），資料格式沒有變：1.x 的 `app.db`、備份檔、JSON 匯出檔、搬家包都能直接用在 2.0。版本號看 `/api/health` 的 `version` 或介面側欄底部。
+
 **版本不一致 / migration**
 啟動與所有 CLI 指令都會**自動套用尚未執行的 migration**。把舊版資料庫搬到較新的程式上沒問題，會自動升級（建議搬之前保留一份備份）。反過來——用**較舊**的程式開**較新**版本的資料庫——程式沒有防呆也不保證可用（新欄位 / 新表它不認得），請先把 server 的程式更新到相同或更新的版本。JSON 匯出檔（與 sync-push 上傳內容）的 `schemaVersion` 比 server 新時會被拒絕並提示先更新 server（目前格式版本為 2，新版仍可匯入版本 1 的舊檔）。最新 migration 請看 `server/migrations/` 中編號最大的檔案（撰寫時為 `0020_*.sql`）。
 
@@ -345,8 +341,8 @@ migration 0019 會把**既有 root 帳號**的 `in_overview` 設為 0，所以�
 
 **`HOST` / `COOKIE_SECURE` / `--prod`**
 - `HOST=127.0.0.1`（預設）：只有 server 本機連得上，搭配反向代理用。`0.0.0.0` 是「監聽所有網卡」，瀏覽器**不能**開 `http://0.0.0.0:3000`，要開 `http://<server IP>:3000`。
-- `--prod`（或 `NODE_ENV=production`）使 cookie 帶 `Secure`，必須 HTTPS。http 測試請不加 `--prod`，或在 `.env` 設 `COOKIE_SECURE=false`（僅限無 HTTPS 的臨時測試）。
-- 前端已建置在 `dist/web` 時，不論模式都由後端提供頁面。
+- `--prod`（或 `APP_ENV=production`，舊名 `NODE_ENV` 也可）使 cookie 帶 `Secure`，必須 HTTPS。http 測試請不加 `--prod`，或在 `.env` 設 `COOKIE_SECURE=false`（僅限無 HTTPS 的臨時測試）。
+- 前端（`web/`）不論模式都由後端直接提供，沒有建置步驟。
 
 **Windows cp950（繁中 Windows）**
 先設 `$env:PYTHONUTF8='1'`，避免 Python 以 cp950 讀寫中文輸出而出錯。`requirements.txt` 必須維持純 ASCII，否則 `pip install` 在 cp950 下會失敗。

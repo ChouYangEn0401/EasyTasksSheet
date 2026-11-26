@@ -15,7 +15,7 @@
 - **單向**：只有本機 → 中央，不會把中央的資料寫回本機（不下行）。
 - 本機與中央是同一套系統，資料以 `uid` 對應（migration `0005_uid`）；成員以**帳號**對應；GitHub 連動以專案名稱對應。
 - 狀態與專案若 uid 對不到，會以「名稱完全相同且唯一」對應到中央既有的那一筆（例如兩邊各自安裝時產生的「待辦」「預設專案」），並記錄對照（`sync_uid_aliases`），之後的增量上傳沿用。
-- 程式：中央邏輯 `server/app/sync_push.py`、API `server/app/features/sync_push.py`、本機命令 `server/sync_client.py`、前端 `src/web/features/admin/SyncPage.tsx`。資料表見 migration `0012_sync_push_sources_conflicts`。
+- 程式：中央邏輯 `server/app/sync_push.py`、API `server/app/features/sync_push.py`、本機命令 `server/sync_client.py`、前端 `web/static/js/features/admin/SyncPage.js`。資料表見 migration `0012_sync_push_sources_conflicts`。
 
 ## 使用步驟
 
