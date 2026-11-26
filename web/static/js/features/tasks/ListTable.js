@@ -5,7 +5,6 @@ import { fxAttr, isRecentRemote, taskFxKey, useFlip, useItemFx } from '../../lib
 import { openTask } from '../../lib/openTask.js';
 import { useCan } from '../../lib/permissions.js';
 import { readStorage, writeStorage } from '../../lib/storage.js';
-import { statusTone } from '../../lib/colors.js';
 import { toDateString, todayString } from '../../lib/format.js';
 import { Avatar, Badge, ColorDot, Button, Icon, Input, Spinner, StatusBadge } from '../../ui/index.js';
 import { PinButton } from '../personal/PinButton.js';

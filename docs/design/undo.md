@@ -71,4 +71,4 @@
 - `src/web/features/undo/`：頂欄按鈕、衝突對話框、個人待辦 / 回饋的登記。
 - `src/web/features/undo/linkUndo.ts`：相關任務、依賴（新增 / 移除）與待辦清單（新增、勾選、刪除項目）的登記；抽屜 / 甘特 toast 的「復原」以登記時回傳的項目 id 執行（`undoFromToast()` / `performUndoEntry(id)` → `undoManager.undoEntry(id)`）：在堆疊頂端時走一般復原（之後可重做）；不在頂端則執行後**從堆疊移除**（之後 Ctrl+Z 不會再執行一次），錯誤照常提示；已復原過則不做事。「清除已完成」不提供復原（確認對話框已說明）。
 - 後端：`POST /api/tasks/:id/restore`（`server/app/features/tasks.py`；需 `tasks.edit`；未刪除時冪等回傳；不存在 404；寫入 `create` 變更流水讓其他人看到任務重新出現）。
-- 測試：`src/web/lib/undo.test.ts`、`taskUndoModel.test.ts`、`shortcuts.test.ts`、`server/tests/test_tasks.py`（restore）、`tests/e2e/undo.spec.ts`。
+- 測試：`server/tests/test_tasks.py`（restore）、`tests/e2e/test_undo.py`（1.x 另有 vitest `undo.test.ts`、`taskUndoModel.test.ts`、`shortcuts.test.ts`，2.0 起移除）。

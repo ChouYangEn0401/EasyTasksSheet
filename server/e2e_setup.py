@@ -21,7 +21,7 @@ E2E_USERS = {
     "member": {"username": "member", "password": "e2e-member-pass", "display_name": "一般成員"},
     "manager": {"username": "manager", "password": "e2e-manager-pass", "display_name": "管理者"},
     "newbie": {"username": "newbie", "password": "e2e-newbie-pass", "display_name": "新成員"},
-    # 模擬首次啟動的預設管理員：E2E 伺服器以 ADMIN_USERNAME=bootstrap 啟動（見 playwright.config.ts）
+    # 模擬首次啟動的預設管理員：E2E 伺服器以 ADMIN_USERNAME=bootstrap 啟動（見 tests/e2e/conftest.py）
     "bootstrap": {"username": "bootstrap", "password": "password", "display_name": "首次啟動"},
     # 多人在線感知（presence spec）的第三位使用者
     "peer": {"username": "peer", "password": "e2e-peer-pass", "display_name": "晴恩"},

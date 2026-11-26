@@ -1,9 +1,0 @@
-dist
-data
-coverage
-playwright-report
-test-results
-package-lock.json
-*.md
-# artifact 本機鏡像：必須與線上逐字相同，不可被格式化
-artifacts/

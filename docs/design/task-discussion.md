@@ -129,4 +129,4 @@
 
 - 後端：`server/app/features/task_comments.py`、`server/migrations/0016_task_comments.sql`、`0017_task_description_lock.sql`；`tasks.py`（鎖定、聚合欄位）、`permissions.py`、`data_transfer.py`（純新增）。
 - 前端：`src/web/features/tasks/DiscussionSection.tsx`（版面、捲動、未讀）、`DiscussionThread.tsx`（討論串與訊息）、`DiscussionComposer.tsx`（輸入框）、`discussionModel.ts`（純函式）、`discussionApi.ts`、`DescriptionLock.tsx`、`TaskBadges.tsx`、`discussion.css`、`scroll-soft.css`。
-- 測試：`server/tests/test_task_comments.py`、`src/web/features/tasks/discussionModel.test.ts`、`tests/e2e/task-discussion.spec.ts`（設 `DISCUSSION_SHOTS=<資料夾>` 會輸出版面截圖）。
+- 測試：`server/tests/test_task_comments.py`、`tests/e2e/test_task_discussion.py`（設 `DISCUSSION_SHOTS=<資料夾>` 會輸出版面截圖；1.x 另有 vitest `discussionModel.test.ts`，2.0 起移除）。

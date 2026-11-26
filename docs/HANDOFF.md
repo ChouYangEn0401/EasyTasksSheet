@@ -208,7 +208,7 @@ python scripts/install.py --dev      # 另裝 pytest-playwright、playwright
 Linux / macOS 把 `.venv\Scripts\python` 換成 `.venv/bin/python`。
 
 - 沒有 vitest、eslint、prettier、tsc 了（2.0 起）。前端沒有型別檢查，靠三道防線：`server/tests/test_web_modules.py`（每個 import 指到的檔存在、具名匯入對得上 export、不得殘留 React / TS 時期的 import）、`tests/e2e/test_smoke.py`（瀏覽器真的 `import()` 每一個模組、走訪所有路由 console 零錯誤）、其餘 E2E（見 [frontend.md](frontend.md)）。
-- 測試數量會隨功能增加，以實跑結果為準。1.x 時期最後一次實測（2026-11-25 第六輪審查修正後）：vitest 429（38 檔）、pytest 690、Playwright E2E 96/96；當時的 vitest 與 TypeScript E2E 已在 2.0 移除，E2E 改成 Python 版（`tests/e2e/test_*.py`）；移植完成前若還看到 `tests/e2e/*.spec.ts`，那是暫留對照的舊規格，不會被執行，移植完即刪除。
+- 測試數量會隨功能增加，以實跑結果為準。1.x 時期最後一次實測（2026-11-25 第六輪審查修正後）：vitest 429（38 檔）、pytest 690、Playwright E2E 96/96；當時的 vitest 與 TypeScript E2E 已在 2.0 移除，E2E 改成 Python 版（`tests/e2e/test_*.py`）；32 支 TypeScript 規格已全部移植成 `tests/e2e/test_*.py` 並刪除原檔。
 - **E2E 不重試**：偶發失敗多半是真缺陷（曾經的偶發 404 就是真 bug），**不得用重試掩蓋缺陷**；失敗須查明根因。
 - E2E 資料衛生：`tests/e2e/helpers.py` 的 `data_hygiene` 在測試結束時清掉自己建立的任務與自由待辦（軟刪除），任務計數類斷言一律用專屬標題前綴（`?q=`），不依賴檔名順序或前一個測試的清理。
 - **`requirements.txt` 必須維持純 ASCII**：pip 以系統碼頁讀取，繁中 Windows（cp950）遇到非 ASCII 會安裝失敗（曾因此出過 bug）。
