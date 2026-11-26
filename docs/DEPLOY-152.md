@@ -50,17 +50,16 @@
 
    結尾會驗證：服務 RUNNING、只綁 `127.0.0.1:8100`、`/api/health` 回 200，並印出 log 最後 15 行。
 
-4. nginx：照交接書 8.5 的流程（先備份 `nginx.conf`），把 [`deploy/windows/nginx-easytasks.conf`](../deploy/windows/nginx-easytasks.conf) 的內容貼進 **443 的 server 區塊**，和 `location /pydms/` 並列，然後：
+4. nginx 與首頁導覽頁：完整的新版在 [`deploy/windows/nginx.conf`](../deploy/windows/nginx.conf)（以交接書 6.1 的現況為底，pyDMS、Gitea 一行都沒改，只加 `/easytasks/`）與 [`deploy/windows/jump_page.html`](../deploy/windows/jump_page.html)（多一張卡片）。用腳本套用：
 
    ```bat
-   cd /d C:\nginx
-   nginx.exe -t
-   nginx.exe -s reload
+   C:\EasyTasksSheet\deploy\windows\apply_nginx.bat check
+   C:\EasyTasksSheet\deploy\windows\apply_nginx.bat
    ```
 
-   重點：`proxy_pass http://127.0.0.1:8100/;`（結尾斜線，去掉前綴）、`proxy_buffering off`（即時更新用的 SSE 才不會卡住）。
+   `check` 只列出設定行的差異：應該**只有「+ 新增」的 EasyTasksSheet 幾行、沒有任何「- 移除」**。有「- 移除」代表 152 上的 nginx.conf 和交接書記錄的不同，先停下來。正式跑會備份兩個檔（`.bak_時間`）→ 換上 → `nginx -t` → 通過才 `-s reload`；沒通過自動還原。
 
-5. 首頁導覽：把 [`deploy/windows/jump_page.html`](../deploy/windows/jump_page.html) 複製到 `C:\nginx\html\jump_page.html`（UTF-8 無 BOM）。只多了一張 EasyTasksSheet 卡片，其他不變。
+5. （已併入第 4 步）
 
 6. 從校內電腦開 `https://140.112.180.152/easytasks/`，用 `admin` / `password` 登入，會被要求改帳號與密碼。
 
