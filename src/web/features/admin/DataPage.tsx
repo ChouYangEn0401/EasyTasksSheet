@@ -16,6 +16,7 @@ import { useCan } from '../../lib/permissions.ts';
 import { formatDateTime } from '../../lib/format.ts';
 import { Alert, Badge, Button, Dialog, Field, Input, Select } from '../../ui/index.ts';
 import { NoPermission } from './AdminUsersPage.tsx';
+import { SitePackSection } from './SitePackSection.tsx';
 import {
   DATA_BACKUP_URL,
   DATA_EXPORT_URL,
@@ -50,6 +51,7 @@ export function DataPage() {
   if (!canExport && !canImport) return <NoPermission />;
   return (
     <div className="adm-page dat-page">
+      {(canBackup || canReplace) && <SitePackSection canExport={canBackup} canRestore={canReplace} />}
       {canExport && <ExportSection canBackup={canBackup} />}
       {canImport && <ImportSection canReplace={canReplace} />}
     </div>

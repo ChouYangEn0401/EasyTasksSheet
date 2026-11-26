@@ -54,6 +54,8 @@ class Config:
     BACKUP_DIR: str = "backups"
     #: 資料匯入檔大小上限（MB）
     DATA_IMPORT_MAX_MB: float = 50
+    #: 整站搬家包（.etpack）上傳還原的大小上限（MB）；反向代理的上傳上限也要放寬到此值以上
+    PACK_MAX_MB: float = 2048
     #: 多台電腦同步：兩邊更新時間差距超過此分鐘數才自動採較新者，否則列為待確認衝突（docs/sync.md）
     SYNC_AUTO_RESOLVE_MINUTES: float = 10
 
@@ -105,6 +107,7 @@ _POSITIVE_FLOAT = {
     "CHANGES_RETENTION_DAYS",
     "AUDIT_RETENTION_DAYS",
     "DATA_IMPORT_MAX_MB",
+    "PACK_MAX_MB",
     "SYNC_AUTO_RESOLVE_MINUTES",
     "GITHUB_SYNC_MINUTES",
     "WORKTREE_STALE_DAYS",

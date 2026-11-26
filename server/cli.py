@@ -10,6 +10,12 @@
       在暫存目錄演練 備份 → 保留份數 → 還原 → 驗證一致。
   python -m server.cli restore <備份檔> [--db 資料庫] --yes
       以備份檔還原（必須先停止服務）；原資料庫保留為 <db>.before-restore-<時間>。
+  python -m server.cli pack-export [--out 資料夾]
+      建立整站搬家包（.etpack：資料庫＋附件，以隨機 8 字英文密語加密；密語只顯示一次）。server/app/sitepack.py
+  python -m server.cli pack-import <搬家包.etpack> [--passphrase 密語] [--replace --yes]
+      以搬家包取代全部資料。已有資料時須加 --replace --yes；還原前一律自動備份到 BACKUP_DIR。
+  python -m server.cli allow-restore [--minutes 30] [--revoke]
+      在 server 本機開啟還原解鎖（root 才能在網頁上以搬家包覆蓋已有資料的網站；用一次或逾時即關閉）。
   python -m server.cli export <檔.json> [--db 資料庫]
       匯出可攜 JSON（業務資料，不含密碼雜湊 / session）。
   python -m server.cli import <檔.json> [--strategy keep_newer|keep_local|use_import] [--dry-run]
@@ -37,6 +43,12 @@ USAGE = (
     "  python -m server.cli backup [--db 資料庫] [--out 備份目錄] [--keep 保留份數] [--attachments 附件目錄 | --no-attachments]\n"
     "  python -m server.cli backup --self-test\n"
     "  python -m server.cli restore <備份檔> [--db 資料庫] --yes\n"
+    "  python -m server.cli pack-export [--out 資料夾]\n"
+    "      建立整站搬家包（.etpack，資料庫＋附件，以隨機密語加密），印出解鎖密語\n"
+    "  python -m server.cli pack-import <搬家包.etpack> [--passphrase 密語] [--replace --yes]\n"
+    "      以搬家包取代全部資料（已有資料時須加 --replace --yes；還原前自動備份）\n"
+    "  python -m server.cli allow-restore [--minutes 30] [--revoke]\n"
+    "      在 server 本機開啟還原解鎖，讓 root 能在網頁上以搬家包覆蓋已有資料的網站\n"
     "  python -m server.cli export <檔.json> [--db 資料庫]\n"
     "  python -m server.cli import <檔.json> [--strategy keep_newer|keep_local|use_import] [--dry-run]\n"
     "      [--create-missing-users] [--replace --yes] [--db 資料庫] [--out 備份目錄]\n"
@@ -385,7 +397,158 @@ def scan_worktrees_cmd(argv: list[str], input_fn=input) -> int:  # type: ignore[
     return 0
 
 
+def _data_dir(db_path: str) -> str:
+    return os.path.dirname(os.path.abspath(db_path))
+
+
+def pack_export_cmd(argv: list[str]) -> int:
+    """建立整站搬家包（服務運行中可執行），印出檔案路徑與解鎖密語（只顯示這一次）"""
+    from .app import sitepack as sp
+    from .app.db import create_db
+
+    p = argparse.ArgumentParser(prog="python -m server.cli pack-export")
+    p.add_argument("--db", help="資料庫檔（預設 DATABASE_PATH）")
+    p.add_argument("--out", help="輸出資料夾（預設 BACKUP_DIR，否則 backups）")
+    p.add_argument("--attachments", help="附件目錄（預設 ATTACHMENTS_DIR）")
+    args = p.parse_args(argv)
+    db_path = args.db or config.DATABASE_PATH
+    if not os.path.isfile(db_path):
+        print(f"[pack-export] 找不到資料庫：{db_path}", file=sys.stderr)
+        return 1
+    db = create_db(db_path)
+    try:
+        result = sp.build_pack(
+            db,
+            args.attachments or _env("ATTACHMENTS_DIR") or config.ATTACHMENTS_DIR,
+            args.out or _env("BACKUP_DIR") or config.BACKUP_DIR,
+            created_by="cli",
+        )
+    finally:
+        db.close()
+    counts = result.manifest["counts"]
+    print(f"[pack-export] 已建立：{result.file}")
+    print(f"[pack-export] 內容：帳號 {counts['users']}、任務 {counts['tasks']}、附件 {counts['attachments']}")
+    for name in result.manifest["missingAttachments"]:
+        print(f"[pack-export] 警告：資料庫有紀錄但找不到附件檔 {name}", file=sys.stderr)
+    print("")
+    print("解鎖密語（只顯示這一次，請和搬家包分開保存；遺失就無法開啟）：")
+    print(f"    {result.passphrase}")
+    return 0
+
+
+def pack_import_cmd(argv: list[str], getpass_fn=None) -> int:  # type: ignore[no-untyped-def]
+    """在 server 本機以整站搬家包取代全部資料。還原前一律自動備份現有資料。"""
+    import getpass
+
+    from .app import sitepack as sp
+    from .app.db import create_db
+
+    p = argparse.ArgumentParser(prog="python -m server.cli pack-import")
+    p.add_argument("pack", help="搬家包檔案（.etpack）")
+    p.add_argument("--passphrase", help="解鎖密語（未給則互動輸入，不會顯示在畫面上）")
+    p.add_argument("--db", help="資料庫檔（預設 DATABASE_PATH）")
+    p.add_argument("--attachments", help="附件目錄（預設 ATTACHMENTS_DIR）")
+    p.add_argument("--out", help="還原前自動備份的資料夾（預設 BACKUP_DIR）")
+    p.add_argument("--replace", action="store_true", help="這台已經有資料時，確認要取代全部資料")
+    p.add_argument("--yes", action="store_true", help="與 --replace 一起使用，確認不再詢問")
+    args = p.parse_args(argv)
+    db_path = args.db or config.DATABASE_PATH
+    if not os.path.isfile(args.pack):
+        print(f"[pack-import] 找不到搬家包：{args.pack}", file=sys.stderr)
+        return 1
+    db = create_db(db_path)
+    try:
+        from .app.db import run_migrations, run_seed
+
+        run_migrations(db)
+        run_seed(db)
+        pristine = sp.users_empty(db) or sp.is_pristine(db)
+        if not pristine and not (args.replace and args.yes):
+            print(
+                "[pack-import] 這台已經有資料。確定要以搬家包取代全部資料，請加上 --replace --yes"
+                "（還原前會自動備份現有資料）。",
+                file=sys.stderr,
+            )
+            return 1
+        phrase = args.passphrase or (getpass_fn or getpass.getpass)("解鎖密語：")
+        with sp.RESTORE_LOCK:
+            opened = sp.open_pack(args.pack, phrase)
+            try:
+                sp.check_compatible(opened.manifest)
+                result = sp.apply_restore(
+                    db,
+                    opened,
+                    attachments_dir=args.attachments or _env("ATTACHMENTS_DIR") or config.ATTACHMENTS_DIR,
+                    backup_dir=args.out or _env("BACKUP_DIR") or config.BACKUP_DIR,
+                )
+                from .app.audit import record_audit
+
+                counts = opened.manifest.get("counts") or {}
+                with db.tx() as conn:
+                    record_audit(
+                        conn,
+                        actor=None,
+                        actor_name="server 指令（pack-import）",
+                        entity_type="import",
+                        entity_id=None,
+                        action="pack_restore",
+                        summary=(
+                            f"以整站搬家包取代全部資料（帳號 {counts.get('users', 0)}、任務 {counts.get('tasks', 0)}、"
+                            f"附件 {counts.get('attachments', 0)}）"
+                        ),
+                        after={"createdAt": opened.manifest.get("createdAt"), "counts": counts},
+                        source="system",
+                        revertable=False,
+                        note=f"還原前的資料已備份為 {result.pre_restore_backup.name}" if result.pre_restore_backup else None,
+                        entity_label="整站還原",
+                    )
+                sp.revoke_unlock(_data_dir(db_path))
+            finally:
+                opened.cleanup()
+    except sp.PackError as e:
+        print(f"[pack-import] {e.message}", file=sys.stderr)
+        return 1
+    finally:
+        db.close()
+    print(f"[pack-import] 已還原：帳號 {counts.get('users', 0)}、任務 {counts.get('tasks', 0)}、附件 {counts.get('attachments', 0)}")
+    if result.pre_restore_backup:
+        print(f"[pack-import] 還原前的資料已備份為 {result.pre_restore_backup}（可用 restore 指令換回）")
+    print("[pack-import] 所有人需要重新登入。服務若在執行中，建議重新啟動（net stop easytasks、net start easytasks）。")
+    return 0
+
+
+def allow_restore_cmd(argv: list[str]) -> int:
+    """在 server 本機開啟「還原解鎖」：之後 N 分鐘內，root 才能在網頁上以搬家包覆蓋已有資料的網站"""
+    import datetime as _dt
+
+    from .app import sitepack as sp
+
+    p = argparse.ArgumentParser(prog="python -m server.cli allow-restore")
+    p.add_argument("--minutes", type=int, default=sp.UNLOCK_MINUTES, help=f"有效分鐘數（預設 {sp.UNLOCK_MINUTES}，最多 120）")
+    p.add_argument("--revoke", action="store_true", help="立刻關閉還原解鎖")
+    p.add_argument("--db", help="資料庫檔（預設 DATABASE_PATH；解鎖檔放在同一個資料夾）")
+    args = p.parse_args(argv)
+    data_dir = _data_dir(args.db or config.DATABASE_PATH)
+    if args.revoke:
+        sp.revoke_unlock(data_dir)
+        print("[allow-restore] 已關閉還原解鎖。")
+        return 0
+    try:
+        expires = sp.allow_restore(data_dir, args.minutes)
+    except sp.PackError as e:
+        print(f"[allow-restore] {e.message}", file=sys.stderr)
+        return 1
+    until = _dt.datetime.fromtimestamp(expires).strftime("%H:%M")
+    print(f"[allow-restore] 已開啟還原解鎖，到 {until} 為止（{args.minutes} 分鐘），還原一次後自動關閉。")
+    print("[allow-restore] 現在可以由 root 在網頁「資料管理 → 整站搬家包」上傳搬家包取代全部資料。")
+    print("[allow-restore] 不用了請立刻關閉：python -m server.cli allow-restore --revoke")
+    return 0
+
+
 COMMANDS = {
+    "pack-export": pack_export_cmd,
+    "pack-import": pack_import_cmd,
+    "allow-restore": allow_restore_cmd,
     "scan-worktrees": scan_worktrees_cmd,
     "attachments-prune": attachments_prune_cmd,
     "user-add": user_add,

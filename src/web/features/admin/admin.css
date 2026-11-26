@@ -287,6 +287,19 @@
   .dat-meta {
     font-size: var(--text-xs);
   }
+  .dat-passphrase {
+    display: block;
+    padding: var(--space-3);
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: var(--text-base);
+    line-height: 1.6;
+    color: var(--color-text);
+    background: var(--color-surface-sunken, var(--color-bg-subtle, transparent));
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    overflow-wrap: anywhere;
+    user-select: all;
+  }
   .dat-warn {
     color: var(--color-danger-text);
     font-weight: var(--font-medium);

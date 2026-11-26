@@ -145,7 +145,7 @@ def require_session(db: Database, settings: AuthSettings, request: Request, t: i
 
 #: 允許 multipart/form-data 的上傳端點（只限 POST）。multipart 是跨站表單也能送出的「簡單請求」，
 #: 因此這些端點「必須」帶 Origin 且同源（不像 JSON 端點只在有帶時檢查）
-MULTIPART_UPLOAD_PATHS = re.compile(r"^/api/eng/issues/[0-9]+/attachments$")
+MULTIPART_UPLOAD_PATHS = re.compile(r"^/api/(eng/issues/[0-9]+/attachments|setup/restore|admin/data/pack/restore)$")
 
 
 def csrf_check(request: Request, settings: AuthSettings) -> None:

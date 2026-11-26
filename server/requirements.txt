@@ -3,6 +3,8 @@ uvicorn[standard]>=0.30,<1
 pydantic>=2.7,<3
 argon2-cffi>=23.1,<26
 python-dotenv>=1.0,<2
+# site pack (.etpack): AES-256-GCM encryption (prebuilt wheels for Windows / Linux / macOS)
+cryptography>=42,<47
 # attachments upload: streaming multipart/form-data parser (pure Python)
 python-multipart>=0.0.18,<1
 # tests
