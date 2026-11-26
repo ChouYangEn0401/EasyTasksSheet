@@ -28,12 +28,15 @@ from server.e2e_setup import E2E_USERS  # noqa: E402
 
 PORT = int(os.environ.get("E2E_PORT", "3999"))
 BASE_URL = f"http://localhost:{PORT}"
+#: 幾個人同時跑 E2E 時各用自己的資料庫與資料夾（名稱一定要含 e2e，e2e_setup 才肯清）
+E2E_DB = os.environ.get("E2E_DB", "data/e2e.db")
+E2E_DIR = E2E_DB.rsplit(".", 1)[0]  # data/e2e → data/e2e-attachments 等
 
 E2E_ENV = {
     "APP_ENV": "production",
     "PORT": str(PORT),
-    "DATABASE_PATH": "data/e2e.db",
-    "ATTACHMENTS_DIR": "data/e2e-attachments",
+    "DATABASE_PATH": E2E_DB,
+    "ATTACHMENTS_DIR": f"{E2E_DIR}-attachments",
     # 僅限 E2E：連結預覽測試要抓本機的測試頁（127.0.0.1）。正式環境預設為 false，請勿開啟
     "LINK_PREVIEW_ALLOW_PRIVATE": "true",
     "COOKIE_SECURE": "false",
@@ -46,8 +49,8 @@ E2E_ENV = {
     "PRESENCE_IDLE_SECONDS": "25",
     # 工程追蹤 v2：回報 token、允許掃描的資料夾、本機電腦識別設定的位置（不讀寫使用者家目錄）
     "WORKTREE_REPORT_TOKEN": "e2e-report-token",
-    "WORKTREE_SCAN_ROOTS": "data/e2e-scan",
-    "TASKS_SHEETS_HOME": "data/e2e-home",
+    "WORKTREE_SCAN_ROOTS": f"{E2E_DIR}-scan",
+    "TASKS_SHEETS_HOME": f"{E2E_DIR}-home",
 }
 
 

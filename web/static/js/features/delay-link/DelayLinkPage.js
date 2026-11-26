@@ -143,7 +143,7 @@ function ChainCard({ chain, today, narrow }) {
     highlighted: hover === n.id,
     tabIndex: n.id === tabbable ? 0 : -1,
     blockerTitles: n.blockerIds.map((b) => byId.get(b)?.title ?? `#${b}`),
-    ref: (el) => {
+    nodeRef: (el) => {
       if (el) refs.current.set(n.id, el);
       else refs.current.delete(n.id);
     },
@@ -292,7 +292,7 @@ function ChainCard({ chain, today, narrow }) {
 }
 
 function NodeCard(props) {
-  const { node: n, today, isStart, dim, highlighted, tabIndex, blockerTitles, stacked, ref } = props;
+  const { node: n, today, isStart, dim, highlighted, tabIndex, blockerTitles, stacked, nodeRef } = props;
   const statuses = useStatusesById();
   const users = useUsersById();
   const status = statuses.get(n.statusId);
@@ -322,7 +322,7 @@ function NodeCard(props) {
   return createElement(
     'button',
     {
-      ref: ref,
+      ref: nodeRef,
       type: 'button',
       className: [
         'dl-node',
