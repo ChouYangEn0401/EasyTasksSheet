@@ -92,4 +92,4 @@ def test_root_has_everything(page: Page):
     nav(page).get_by_role("link", name="資料管理").click()
     expect(page.get_by_role("button", name="下載 JSON 匯出檔")).to_be_visible()
     expect(page.get_by_role("button", name="下載完整備份")).to_be_visible()
-    expect(page.get_by_role("heading", name="取代全部資料")).to_be_visible()
+    expect(page.get_by_role("heading", name="取代全部資料", exact=True)).to_be_visible()

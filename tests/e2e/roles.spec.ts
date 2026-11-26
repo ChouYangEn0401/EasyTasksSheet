@@ -83,5 +83,5 @@ test('root：成員管理可選超級管理員；資料管理有完整備份與�
   await nav(page).getByRole('link', { name: '資料管理' }).click();
   await expect(page.getByRole('button', { name: '下載 JSON 匯出檔' })).toBeVisible();
   await expect(page.getByRole('button', { name: '下載完整備份' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '取代全部資料' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '取代全部資料', exact: true })).toBeVisible();
 });
