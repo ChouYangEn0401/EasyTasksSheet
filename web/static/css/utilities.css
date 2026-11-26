@@ -11,7 +11,8 @@
   .absolute { position: absolute; }
   .left-0 { left: 0; }
   .top-full { top: 100%; }
-  .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tabular-nums { font-variant-numeric: tabular-nums; }
   .whitespace-nowrap { white-space: nowrap; }
   .m-0 { margin: 0; }
   .mt-1 { margin-top: 4px; }

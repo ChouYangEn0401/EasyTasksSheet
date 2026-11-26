@@ -66,12 +66,26 @@ export function KanbanCardContent({ task, project, showProject, isDone }) {
     ),
     createElement(
       'div',
-      { className: 'kanban-card-title' },
+      // 標題最多兩行，完整標題放 title（ui-refresh §4）
+      { className: 'kanban-card-title', title: task.title },
       createElement(BlockedLock, { task: task }),
       task.title,
       createElement(TaskBadges, { task: task }),
     ),
     task.id > 0 && createElement(TaskPresenceDots, { taskId: task.id }),
+    // 純顯示：進度條，只在 0 < progress < 100 時出現（ui-refresh §4）
+    task.progress > 0 &&
+      task.progress < 100 &&
+      createElement(
+        'div',
+        { className: 'kanban-card-progress', 'aria-hidden': 'true' },
+        createElement(
+          'span',
+          { className: 'kanban-card-progress-bar' },
+          createElement('span', { style: { width: `${Math.round(task.progress)}%` } }),
+        ),
+        createElement('span', { className: 'kanban-card-progress-num' }, `${Math.round(task.progress)}%`),
+      ),
     createElement(
       'div',
       { className: 'kanban-card-meta' },

@@ -93,11 +93,13 @@ export function Sidebar({ collapsed, onToggle, toggleLabel }) {
           ? createElement(TaskGroup, { key: e.key, entry: e, collapsed: collapsed })
           : createElement(NavItemLink, { key: e.key, entry: e, collapsed: collapsed }),
       ),
+      // 管理組：展開時顯示 11px 分組標題、細線隱藏；收合時反過來只留細線（ui-refresh §2.1）。第一組（工作）不顯示標題
       admin.length > 0 &&
         createElement(
           Fragment,
           null,
           createElement('div', { className: 'sidebar-sep', role: 'separator' }),
+          createElement('div', { className: 'nav-section-label', 'aria-hidden': 'true' }, '管理'),
           admin.map((e) => createElement(NavItemLink, { key: e.key, entry: e, collapsed: collapsed })),
         ),
     ),

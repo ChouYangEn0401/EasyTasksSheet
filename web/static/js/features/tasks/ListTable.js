@@ -5,6 +5,8 @@ import { fxAttr, isRecentRemote, taskFxKey, useFlip, useItemFx } from '../../lib
 import { openTask } from '../../lib/openTask.js';
 import { useCan } from '../../lib/permissions.js';
 import { readStorage, writeStorage } from '../../lib/storage.js';
+import { statusTone } from '../../lib/colors.js';
+import { toDateString, todayString } from '../../lib/format.js';
 import { Avatar, Badge, ColorDot, Button, Icon, Input, Spinner, StatusBadge } from '../../ui/index.js';
 import { PinButton } from '../personal/PinButton.js';
 import { openAdminDialog } from './adminUi.js';
@@ -28,6 +30,20 @@ import { QuickAdd } from './QuickAdd.js';
 import { useFieldCommit } from './useFieldCommit.js';
 
 const COLLAPSED_KEY = 'tasks.list.collapsed';
+
+/**
+ * 純顯示：到期日分桶（ui-refresh §3.2 的 data-due）→ overdue／today／week（本週日以前）／later。
+ * 已完成或沒有到期日回 null（不套三色）。只給 CSS 上色用，不影響任何邏輯。
+ */
+function dueBucket(dueDate, done, now = Date.now()) {
+  if (!dueDate || done) return null;
+  const today = todayString(now);
+  if (dueDate < today) return 'overdue';
+  if (dueDate === today) return 'today';
+  const d = new Date(now);
+  d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
+  return dueDate <= toDateString(d) ? 'week' : 'later';
+}
 
 function readCollapsed() {
   try {
@@ -635,6 +651,8 @@ function TaskRow({
   const status = statusMap.get(task.statusId);
   const done = status?.category === 'done';
   const temp = task.id < 0;
+  // 純顯示：標題左側狀態點的顏色（ui-refresh §3.2）
+  const dotColor = status ? `var(--color-status-${statusTone(status)})` : undefined;
   const commit = useFieldCommit();
   const toggleDone = async () => {
     const next = toggleDoneStatus(statuses, task.statusId);
@@ -654,6 +672,7 @@ function TaskRow({
       className: 'tl-row tl-row--task',
       'data-selected': selected || undefined,
       'data-done': done || undefined,
+      'data-due': dueBucket(task.dueDate, done) || undefined,
       ...fxAttr(fx),
       'data-temp': temp || undefined,
       'data-task-id': task.id,
@@ -687,13 +706,14 @@ function TaskRow({
         setEditing: setEditing,
         cellProps: cellProps,
         onSaved: onSaved,
+        dotColor: dotColor,
       }),
     ),
     createElement('div', { role: 'gridcell', className: 'tl-cell tl-cell--pad' }),
   );
 }
 
-function TaskCell({ task, col, colIndex, rowKey, edit, setEditing, cellProps, onSaved }) {
+function TaskCell({ task, col, colIndex, rowKey, edit, setEditing, cellProps, onSaved, dotColor }) {
   const valueText = useValueText(task, col);
   const sticky = col.kind === 'title' ? ' tl-sticky-1' : '';
   if (!isApplicable(task, col))
@@ -738,9 +758,16 @@ function TaskCell({ task, col, colIndex, rowKey, edit, setEditing, cellProps, on
     'div',
     {
       role: 'gridcell',
-      className: `tl-cell${sticky}${col.kind === 'title' ? ' tl-cell--title' : ''}`,
+      className: `tl-cell${sticky}${col.kind === 'title' ? ' tl-cell--title' : ''}${col.kind === 'dueDate' ? ' tl-cell--due' : ''}`,
       title: col.kind === 'title' ? task.title : undefined,
     },
+    col.kind === 'title' &&
+      dotColor &&
+      createElement('span', {
+        className: 'tl-status-dot',
+        style: { '--status-dot': dotColor },
+        'aria-hidden': 'true',
+      }),
     createElement(EditableField, {
       task: task,
       col: col,

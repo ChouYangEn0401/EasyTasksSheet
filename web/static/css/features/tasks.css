@@ -257,6 +257,7 @@
   }
 
   /* ── 群組列 ───────────────────────────── */
+  /* 群組列：600 字重讓分組看得出來；張數用計數泡泡（ui-refresh §3.2） */
   .tl-group-cell {
     position: sticky;
     left: 0;
@@ -265,9 +266,27 @@
     gap: 8px;
     height: 100%;
     padding: 0 12px;
-    color: var(--color-text-secondary);
+    color: var(--color-text);
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
     cursor: pointer;
     outline: none;
+  }
+  .tl-group-cell > svg {
+    color: var(--color-text-tertiary);
+  }
+  .tl-group-cell .ui-badge--count,
+  .tl-group-count {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: var(--radius-full);
+    background: var(--color-surface-active);
+    color: var(--color-text-secondary);
+    font-size: var(--text-2xs);
+    line-height: 18px;
+    font-weight: var(--font-medium);
+    font-variant-numeric: tabular-nums;
   }
   .tl-row--group:hover {
     background: var(--color-surface-hover);
@@ -290,6 +309,77 @@
   /* 標題欄：標題文字保底 8 字寬；徽章區（TitleBadges）依優先序排列，放不下的整顆換到隱藏的第二行，以「+N」表示 */
   .tl-cell--title > .tl-field {
     min-width: calc(8em + 20px);
+  }
+  /* 標題左側 8px 狀態點：把狀態欄藏掉的人也看得到狀態（ui-refresh §3.2） */
+  .tl-status-dot {
+    flex: none;
+    align-self: center;
+    width: 8px;
+    height: 8px;
+    margin: 0 2px 0 10px;
+    border-radius: var(--radius-full);
+    background: var(--status-dot, var(--color-status-todo));
+  }
+  .tl-status-dot + .tl-field {
+    padding-left: 6px;
+  }
+
+  /* 到期日三色（列上的 data-due 由 ListTable 依日期算出；已完成的列不帶 data-due） */
+  .tl-cell--due .tl-field-value {
+    color: var(--color-text-secondary);
+  }
+  .tl-row--task[data-due='overdue'] .tl-cell--due .tl-field-value,
+  .tl-row--task[data-due='overdue'] .tl-due {
+    color: var(--color-status-overdue-text);
+    font-weight: var(--font-medium);
+  }
+  .tl-row--task[data-due='today'] .tl-cell--due .tl-field-value,
+  .tl-row--task[data-due='today'] .tl-due {
+    color: var(--color-warning-text);
+    font-weight: var(--font-medium);
+  }
+  .tl-row--task[data-due='week'] .tl-cell--due .tl-field-value,
+  .tl-row--task[data-due='week'] .tl-due {
+    color: var(--color-text);
+  }
+  .tl-row--task[data-done='true'] .tl-cell--due .tl-field-value,
+  .tl-row--task[data-done='true'] .tl-due {
+    color: var(--color-text-tertiary);
+  }
+  .tl-due {
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-secondary);
+  }
+
+  /* 進度（清單欄位；元件在第二階段接上，樣式先到位） */
+  .tl-cell--progress {
+    align-items: center;
+    padding: 0 10px;
+  }
+  .tl-progress {
+    position: relative;
+    flex: none;
+    width: 56px;
+    height: 4px;
+    border-radius: var(--radius-full);
+    background: var(--color-surface-active);
+    overflow: hidden;
+  }
+  .tl-progress > span {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: var(--radius-full);
+    background: var(--status-dot, var(--color-accent));
+  }
+  .tl-progress-num {
+    min-width: 30px;
+    margin-left: 8px;
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
   }
   .tl-tbadges {
     display: flex;
@@ -787,7 +877,7 @@
     height: 22px;
     border: 2px solid transparent;
     border-radius: var(--radius-full);
-    color: #fff;
+    color: var(--color-text-on-accent);
     cursor: pointer;
   }
   .adm-swatch[data-selected] {

@@ -92,10 +92,11 @@
     overflow-y: auto;
     overflow-x: hidden;
   }
+  /* 展開時分組由 .nav-section-label 表示，細線只留 4px 間距（收合時才畫線，見下方） */
   .sidebar-sep {
-    height: 1px;
-    margin: 8px 16px;
-    background: var(--color-border);
+    height: 0;
+    margin: 4px 16px 0;
+    background: transparent;
   }
   .nav-item {
     display: flex;
@@ -130,15 +131,56 @@
     background: var(--color-surface-hover);
     color: var(--color-text);
   }
+  /* 選中：左緣 2px 藍條，和清單選中列同一語言（ui-refresh §2.1） */
   .nav-item[aria-current='page'] {
     background: var(--color-accent-soft);
     color: var(--color-accent-text);
+    box-shadow: inset 2px 0 0 var(--color-accent);
   }
   .nav-item[data-group-active='true'] {
     color: var(--color-text);
+    font-weight: var(--font-semibold);
   }
   .nav-item--sub {
+    height: 28px;
     padding-left: 36px;
+    font-weight: var(--font-regular);
+  }
+  /* 子項選中不畫左緣條（避免與群組形成兩條） */
+  .nav-item--sub[aria-current='page'] {
+    box-shadow: none;
+  }
+  .nav-flyout .nav-item[aria-current='page'] {
+    box-shadow: none;
+  }
+  /* 側欄分組標題（ui-refresh §2.1）；第一組（工作）不放標題，只靠 .sidebar-nav 的 8px 上距 */
+  .nav-section-label {
+    margin: 0;
+    padding: 10px 18px 4px;
+    font-size: var(--text-2xs);
+    line-height: var(--text-2xs--line-height);
+    font-weight: var(--font-medium);
+    letter-spacing: 0.02em;
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* 導覽項右側計數泡泡（有未讀／到期時才 render） */
+  .nav-item-count {
+    margin-left: auto;
+    flex: none;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: var(--radius-full);
+    background: var(--color-surface-active);
+    color: var(--color-text-secondary);
+    font-size: var(--text-2xs);
+    line-height: 18px;
+    font-weight: var(--font-medium);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
   }
   .nav-item-label {
     flex: 1;
@@ -170,12 +212,13 @@
     display: flex;
     gap: 6px;
     align-items: baseline;
-    padding: 6px 10px 2px;
-    font-size: 11px;
-    line-height: 16px;
+    padding: 4px 10px 6px;
+    font-size: var(--text-2xs);
+    line-height: var(--text-xs--line-height);
     color: var(--color-text-tertiary);
     white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
   }
   .sidebar-version-author {
     overflow: hidden;
@@ -183,7 +226,7 @@
   }
   .sidebar[data-collapsed='true'] .sidebar-version {
     justify-content: center;
-    padding: 6px 0 2px;
+    padding: 4px 0 6px;
   }
   .sidebar[data-collapsed='true'] .sidebar-version-author {
     display: none;
@@ -198,8 +241,18 @@
   .sidebar[data-collapsed='true'] .nav-item-label,
   .sidebar[data-collapsed='true'] .nav-item--sub,
   .sidebar[data-collapsed='true'] .nav-chevron,
-  .sidebar[data-collapsed='true'] .sidebar-footer-label {
+  .sidebar[data-collapsed='true'] .sidebar-footer-label,
+  .sidebar[data-collapsed='true'] .nav-item-count {
     display: none;
+  }
+  /* 收合時分組標題放不下，改回細線 */
+  .sidebar[data-collapsed='true'] .nav-section-label {
+    display: none;
+  }
+  .sidebar[data-collapsed='true'] .sidebar-sep {
+    height: 1px;
+    margin: 8px 16px;
+    background: var(--color-border);
   }
   .sidebar[data-collapsed='true'] .nav-item {
     justify-content: center;
@@ -278,9 +331,82 @@
   .header-menu-btn {
     display: none;
   }
+  /* 第一階段先縮（ui-refresh §2.2），按鈕化在第二階段 */
   .header-quickadd {
-    width: 280px;
+    width: 220px;
     flex: none;
+  }
+  /* 全站搜尋入口（長得像輸入框的按鈕；元件在第二階段接上，樣式先到位） */
+  .header-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    width: 240px;
+    height: var(--control-md);
+    padding: 0 10px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-tertiary);
+    font: inherit;
+    font-size: var(--text-sm);
+    text-align: left;
+    cursor: text;
+    transition:
+      background-color var(--duration-fast) var(--ease-standard),
+      border-color var(--duration-fast) var(--ease-standard);
+  }
+  .header-search:hover {
+    border-color: var(--color-border-strong);
+    background: var(--color-surface);
+  }
+  .header-search svg {
+    flex: none;
+  }
+  .header-search-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .header-search .ui-kbd + .ui-kbd {
+    margin-left: -4px;
+  }
+  .user-menu-version {
+    padding: 0 8px 6px;
+    font-size: var(--text-2xs);
+    line-height: var(--text-2xs--line-height);
+    color: var(--color-text-tertiary);
+  }
+
+  /* ── 頁面標題列（ui-refresh §2.3；只給有副標或動作的頁用） ── */
+  .page-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: var(--space-4);
+  }
+  .page-head-main {
+    min-width: 0;
+  }
+  .page-head-title {
+    margin: 0;
+    font-size: var(--text-xl);
+    line-height: var(--text-xl--line-height);
+    font-weight: var(--font-semibold);
+  }
+  .page-head-sub {
+    margin: 2px 0 0;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+  .page-head-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
   }
   .user-trigger {
     display: inline-flex;
@@ -518,7 +644,13 @@
   /* ── 響應式 ───────────────────────────── */
   @media (max-width: 1279px) {
     .header-quickadd {
+      width: 200px;
+    }
+    .header-search {
       width: 220px;
+    }
+    .task-drawer {
+      width: min(var(--drawer-width), calc(100vw - var(--sidebar-width-collapsed)));
     }
   }
   @media (max-width: 1023px) {
@@ -540,6 +672,15 @@
     }
     .header-quickadd {
       width: 180px;
+    }
+    .header-search {
+      width: var(--control-md);
+      padding: 0;
+      justify-content: center;
+    }
+    .header-search-text,
+    .header-search .ui-kbd {
+      display: none;
     }
     .user-trigger-name {
       display: none;

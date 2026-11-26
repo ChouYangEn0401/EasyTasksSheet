@@ -1,6 +1,7 @@
 import { createElement, Fragment } from 'preact';
 import { useState } from 'preact/compat';
 import { ApiError, errorMessage } from '../../lib/api.js';
+import { useAppInfo } from '../../lib/appInfo.js';
 import { useChangePassword } from '../../lib/auth.js';
 import { formatDateTime } from '../../lib/format.js';
 import { notifySuccess } from '../../lib/toast.js';
@@ -21,7 +22,7 @@ import {
 
 const errorField = (err) => (err instanceof ApiError && err.details?.field) || '';
 
-/** 個人設定（/settings，docs/design/settings.md）：個人資料、變更密碼、帳號資訊 */
+/** 個人設定（/settings，docs/design/settings.md）：個人資料、變更密碼、帳號資訊、整合（規劃中）、關於 */
 export function SettingsPage() {
   const query = useProfile();
   return createElement(
@@ -42,6 +43,8 @@ export function SettingsPage() {
             createElement(ProfileCard, { profile: query.data }),
             createElement(PasswordCard, null),
             createElement(InfoCard, { profile: query.data }),
+            createElement(IntegrationsCard, null),
+            createElement(AboutCard, null),
           ),
   );
 }
@@ -292,6 +295,134 @@ function InfoCard({ profile }) {
           createElement('dt', null, '最近登入'),
           createElement('dd', null, formatDateTime(profile.lastLoginAt)),
         ),
+    ),
+  );
+}
+
+/** 預留的整合項目（ui-refresh §9、requirements U6）：只有說明與停用的開關，不接任何服務 */
+const INTEGRATIONS = [
+  {
+    key: 'ai',
+    name: 'AI 助理',
+    desc: '用你的任務與討論產生日誌、週報草稿；資料不會離開這台伺服器，除非你在這裡設定外部服務。',
+  },
+  {
+    key: 'notify',
+    name: 'Webhook／通知',
+    desc: '任務有變動時通知到 Slack、Email 等外部服務。',
+  },
+];
+
+function IntegrationsCard() {
+  return createElement(
+    'section',
+    { className: 'settings-card settings-card--muted', 'aria-labelledby': 'settings-integrations-title' },
+    createElement(
+      'header',
+      { className: 'settings-card-head' },
+      createElement('h3', { id: 'settings-integrations-title' }, '整合 ', createElement(Badge, null, '規劃中')),
+      createElement(
+        'p',
+        null,
+        '這裡之後會放 AI 助理（例如幫你把本週任務整理成日誌草稿）與外部通知。目前還沒有接任何服務，開關都是停用的。',
+      ),
+    ),
+    createElement(
+      'ul',
+      { className: 'settings-int-list' },
+      INTEGRATIONS.map((it) =>
+        createElement(
+          'li',
+          { key: it.key, className: 'settings-int-row' },
+          createElement(
+            'div',
+            { className: 'settings-int-main' },
+            createElement('span', { className: 'settings-int-name', id: `settings-int-${it.key}` }, it.name),
+            createElement('span', { className: 'settings-int-desc' }, it.desc),
+          ),
+          // 真的 disabled、不接任何事件
+          createElement(
+            'label',
+            { className: 'settings-switch', 'aria-disabled': 'true' },
+            createElement('input', {
+              type: 'checkbox',
+              role: 'switch',
+              disabled: true,
+              checked: false,
+              'aria-labelledby': `settings-int-${it.key}`,
+            }),
+            createElement('span', { className: 'settings-switch-track', 'aria-hidden': 'true' }),
+          ),
+        ),
+      ),
+    ),
+    createElement(
+      'p',
+      { className: 'settings-int-foot' },
+      '後端設定點：',
+      createElement('code', null, 'integrations'),
+      '（見 docs/requirements-2026-11-26.md U6）。',
+    ),
+  );
+}
+
+/** 關於：版本與署名，資料來源是 /api/health（server/app/version.py），不另抄一份 */
+function AboutCard() {
+  const info = useAppInfo();
+  const repo = info?.repository ?? '';
+  return createElement(
+    'section',
+    { className: 'settings-card', 'aria-labelledby': 'settings-about-title' },
+    createElement(
+      'header',
+      { className: 'settings-card-head' },
+      createElement('h3', { id: 'settings-about-title' }, '關於'),
+    ),
+    createElement(
+      'dl',
+      { className: 'settings-info' },
+      createElement(
+        'div',
+        null,
+        createElement('dt', null, '版本'),
+        createElement(
+          'dd',
+          null,
+          info?.version ? `${info.app ? `${info.app} ` : ''}v${info.version}` : createElement('span', { className: 'settings-about-dim' }, '—'),
+        ),
+      ),
+      createElement(
+        'div',
+        null,
+        createElement('dt', null, '作者'),
+        createElement('dd', null, info?.author || createElement('span', { className: 'settings-about-dim' }, '—')),
+      ),
+      repo &&
+        createElement(
+          'div',
+          null,
+          createElement('dt', null, '原始碼'),
+          createElement(
+            'dd',
+            null,
+            createElement(
+              'a',
+              { className: 'tl-link', href: repo, target: '_blank', rel: 'noopener noreferrer' },
+              repo.replace(/^https?:\/\//, ''),
+            ),
+          ),
+        ),
+      createElement(
+        'div',
+        null,
+        createElement('dt', null, '更新紀錄'),
+        createElement(
+          'dd',
+          null,
+          createElement('code', null, 'CHANGELOG.md'),
+          createElement('span', { className: 'settings-about-dim' }, '（原始碼根目錄）'),
+        ),
+      ),
     ),
   );
 }

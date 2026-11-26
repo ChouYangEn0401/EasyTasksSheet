@@ -7,16 +7,19 @@
 :root {
 
   /* 2.1 中性與強調 */
-  --color-bg: #f7f8fa;
+  --color-bg: #f6f7f9;
   --color-surface: #ffffff;
-  --color-surface-hover: #f3f4f6;
+  --color-surface-hover: #f2f4f7;
+  /* 浮層（選單、Popover、Ctrl+K）語意名；值同 surface（ui-refresh §1.1） */
+  --color-surface-raised: #ffffff;
   --color-surface-active: #e9ebef;
   --color-border: #e3e5e9;
   --color-border-subtle: #eef0f2;
-  --color-border-strong: #c9cdd4;
+  --color-border-strong: #c3c8d1;
   --color-text: #1c2024;
   --color-text-secondary: #5b6370;
-  --color-text-tertiary: #8b929d;
+  /* 原 #8b929d 只有 3.3:1，12px 輔助字不達 AA；改 4.7:1（ui-refresh §1.1） */
+  --color-text-tertiary: #6b7380;
   --color-text-disabled: #b4b9c1;
   --color-text-on-accent: #ffffff;
   --color-accent: #2f6feb;
@@ -24,8 +27,10 @@
   --color-accent-active: #1d4cb0;
   --color-accent-soft: #eaf1fe;
   --color-accent-text: #1f56c4;
+  /* 選取框線（原本借用 --color-info-border，改成有名字） */
+  --color-accent-border: #c3d6fa;
   --color-focus-ring: rgba(47, 111, 235, 0.35);
-  --color-overlay: rgba(20, 24, 32, 0.4);
+  --color-overlay: rgba(20, 24, 32, 0.32);
 
   /* 2.2 語意色 */
   --color-success: #1f9d61;
@@ -45,22 +50,37 @@
   --color-info-text: #1f56c4;
   --color-info-border: #c3d6fa;
 
-  /* 2.3 狀態色 */
+  /* 2.3 狀態色：每種 dot／-soft／-text／-border 四件組（ui-refresh §1.3） */
   --color-status-todo: #8b929d;
   --color-status-todo-soft: #f0f1f3;
   --color-status-todo-text: #4b5360;
+  --color-status-todo-border: #d9dce2;
   --color-status-doing: #2f6feb;
   --color-status-doing-soft: #eaf1fe;
   --color-status-doing-text: #1f56c4;
+  --color-status-doing-border: #c3d6fa;
   --color-status-review: #8257d9;
   --color-status-review-soft: #f1ebfd;
   --color-status-review-text: #5e3bb0;
+  --color-status-review-border: #dccffa;
   --color-status-done: #1f9d61;
   --color-status-done-soft: #e7f6ee;
   --color-status-done-text: #15734a;
+  --color-status-done-border: #bfe5d0;
   --color-status-overdue: #d8433b;
   --color-status-overdue-soft: #fdecea;
   --color-status-overdue-text: #a82c26;
+  --color-status-overdue-border: #f4c4c0;
+  /* 被擋住＝琥珀（與 warning 同值，但有自己的名字；delay-link.md §6.1：被擋不用紅） */
+  --color-status-blocked: #d98a0b;
+  --color-status-blocked-soft: #fdf3df;
+  --color-status-blocked-text: #8f5a06;
+  --color-status-blocked-border: #f3d9a4;
+  /* 暫停（狀態名稱含「暫停／擱置／hold」或 color=orange；判法在元件，見 ui-refresh §1.3） */
+  --color-status-paused: #e0762a;
+  --color-status-paused-soft: #fcefe6;
+  --color-status-paused-text: #9a4a14;
+  --color-status-paused-border: #f5cdb3;
 
   /* 標籤調色盤（DB 存鍵名）；-soft = 本色混白 88%；-text = 本色加深（Avatar、Badge 字色） */
   --color-tag-gray: #8b929d;
@@ -103,16 +123,25 @@
   --text-xl--line-height: 28px;
   --text-2xl: 24px;
   --text-2xl--line-height: 32px;
+  /* 小字：計數泡泡、側欄分組標題、鍵盤提示（ui-refresh §1.4） */
+  --text-2xs: 11px;
+  --text-2xs--line-height: 14px;
+  /* 統計數字（本週卡、總覽卡）；搭配字重 600、tabular-nums */
+  --text-num: 28px;
+  --text-num--line-height: 32px;
 
   /* 2.5 圓角、陰影、曲線 */
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 10px;
+  /* Dialog、Ctrl+K 浮層、本週卡（ui-refresh §1.5）；一般卡片仍用 lg */
+  --radius-xl: 12px;
   --radius-full: 9999px;
-  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
-  --shadow-sm: 0 2px 6px rgba(16, 24, 40, 0.08);
-  --shadow-md: 0 8px 24px rgba(16, 24, 40, 0.12);
-  --shadow-lg: 0 16px 48px rgba(16, 24, 40, 0.18);
+  /* 陰影收成兩階、名字保留：xs＝靜置（卡片、按鈕）、md＝浮層；sm、lg 是別名 */
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-sm: var(--shadow-xs);
+  --shadow-md: 0 2px 6px rgba(16, 24, 40, 0.06), 0 12px 32px -8px rgba(16, 24, 40, 0.14);
+  --shadow-lg: var(--shadow-md);
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
 }
 
@@ -129,8 +158,10 @@
   --font-medium: 500;
   --font-semibold: 600;
 
-  /* 間距（4px 基準） */
+  /* 間距（4px 基準）；0-5、1-5 是 ui-refresh §1.5 新增，新寫的 2px／6px 用它們 */
+  --space-0-5: 2px;
   --space-1: 4px;
+  --space-1-5: 6px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
@@ -149,7 +180,8 @@
   --sidebar-width: 232px;
   --sidebar-width-collapsed: 56px;
   --header-height: 52px;
-  --drawer-width: 480px;
+  /* 抽屜要放相依區鍊圖與每列五欄（ui-refresh §1.5） */
+  --drawer-width: 520px;
   --content-max: 1440px;
   --row-height: 40px;
 

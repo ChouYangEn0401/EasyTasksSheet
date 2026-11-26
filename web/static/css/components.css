@@ -567,6 +567,8 @@
     white-space: nowrap;
     background: var(--status-soft);
     color: var(--status-text);
+    /* 淡底 pill 要有 1px 同色系邊才不會糊在白底上；--status-border 由 statusStyle() 補，先給 fallback */
+    border-color: var(--status-border, transparent);
   }
   .ui-status-badge .ui-dot {
     color: var(--status-dot);
@@ -599,7 +601,7 @@
   .ui-avatar--sm {
     width: 24px;
     height: 24px;
-    font-size: 11px;
+    font-size: var(--text-2xs);
   }
   .ui-avatar--md {
     width: 28px;
@@ -723,20 +725,30 @@
     --alert-border: var(--color-danger-border);
   }
 
-  /* ── EmptyState / ErrorState ──────────── */
+  /* ── EmptyState / ErrorState（ui-refresh §2.4：圖示放 44px 圓底，錯誤態同版型） ── */
   .ui-empty {
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
-    gap: 4px;
+    gap: 6px;
     padding: var(--space-12) var(--space-4);
   }
+  /* EmptyState 給的是 40px 的 svg；這裡把它撐成 44px 圓、內距 12px，圖示實際 20px */
   .ui-empty-icon {
+    box-sizing: border-box;
+    display: block;
+    flex: none;
+    width: 44px;
+    height: 44px;
+    padding: 12px;
+    border-radius: var(--radius-full);
+    background: var(--color-bg);
     color: var(--color-text-tertiary);
-    margin-bottom: 8px;
+    margin-bottom: 10px;
   }
   .ui-empty--error .ui-empty-icon {
+    background: var(--color-danger-soft);
     color: var(--color-danger);
   }
   .ui-empty-title {
@@ -753,7 +765,7 @@
     max-width: 420px;
   }
   .ui-empty-action {
-    margin-top: 12px;
+    margin-top: 14px;
   }
 
   /* ── Toast（僅外觀，佇列由 T9 實作） ──── */
