@@ -1,7 +1,7 @@
 # 2.0 改版需求統整（2026-11-26）
 
 > 📐 規範｜讀者：這一輪的所有施工者（人與 AI agent）｜5 分鐘
-> 建立：2026-11-26｜最後更新：2026-11-26
+> 建立：2026-11-26｜最後更新：2026-11-26（施工狀態見 §5）
 > 來源：使用者 2026-11-26 的指示（對話），由 Claude 統整；有出入以使用者為準。
 
 ## 0. 一句話
@@ -48,13 +48,13 @@
 
 ## 5. 施工順序（每階段都能跑、都 commit）
 
-0. 啟動器與靜態檔（✅ c5e7e38）
-1. 機械轉換 TS→JS＋Preact（放進 repo）＋自寫 `query.js`／`router.js`／`dnd.js`
-2. 用舊 E2E 逐區驗收修正
-3. E2E 移植成 Python 版（核心先）
-4. 刪 Node、部署檔去 Node、文件、CHANGELOG、版本署名
-5. UI 改版（第 2 節）＋功能（第 3、4 節）
-6. 驗證、push
+0. 啟動器與靜態檔 ✅（c5e7e38）
+1. 機械轉換 TS→JS＋Preact＋自寫 `query.js`／`router.js`／`dnd.js` ✅（d949092、de48e17、44e16a4）
+2. 用舊 E2E 逐區驗收修正 ✅（舊 TS 規格 96 項：最後一輪只剩「下載檔名」一題，確認是這台機器 Node 版 Playwright 的環境差異、Python 版正確）
+3. E2E 移植成 Python 版 ✅（31 支全部移植，79eba3f；加 test_smoke／test_search／test_report_templates）
+4. 刪 Node、部署檔去 Node、文件、CHANGELOG、版本署名 ✅（ecaaa28）
+5. UI 改版＋功能 ✅ 第一輪：token／外殼／清單／看板（0e088fc）、阻擋鍊（§2 U2）、本週卡＋匯報模版（§3 R1–R4）、Ctrl+K 與討論區（U3、U5）、設定頁整合預留與關於（U6）。未做：M1 常用篩選、M4 自訂欄位改善、PPT 檔直接產出。
+6. 驗證、push：持續進行（分支 `claude/pensive-ritchie-la0hex`）
 
 ## 6. 不做／之後
 
