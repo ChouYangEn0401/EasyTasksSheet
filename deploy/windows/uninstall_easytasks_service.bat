@@ -1,38 +1,39 @@
 @echo off
-@echo off
 rem ============================================================================
-rem  EasyTasksSheet：停止並移除 Windows 服務 easytasks
-rem  不刪資料夾與資料，不強制結束行程。要重新註冊用 install_easytasks_service.bat
+rem  EasyTasksSheet - stop and remove the Windows service "easytasks".
+rem  Does not delete any folder or data, and never force-kills the process.
+rem  To register it again: install_easytasks_service.bat
+rem
+rem  KEEP THIS FILE ASCII-ONLY (see setup_easytasks.bat).
 rem ============================================================================
 setlocal EnableExtensions EnableDelayedExpansion
-chcp 65001 >nul
 set "SVC=easytasks"
 set "NSSM=C:\nssm\win64\nssm.exe"
 
 sc query "%SVC%" >nul 2>&1
 if errorlevel 1 (
-  echo 服務 %SVC% 不存在，沒有要做的事。
+  echo Service %SVC% does not exist. Nothing to do.
   goto :end
 )
-for %%K in (Application AppDirectory AppParameters) do (
-  for /f "delims=" %%V in ('"%NSSM%" get %SVC% %%K 2^>nul') do echo   %%K = %%V
-)
+"%NSSM%" get %SVC% Application
+"%NSSM%" get %SVC% AppDirectory
 set "ANS="
-set /p "ANS=確定要停止並移除 %SVC% 請輸入 YES： "
+set /p "ANS=Type YES to stop and remove %SVC%: "
 if not "!ANS!"=="YES" (
-  echo 已取消。
+  echo Cancelled.
   goto :end
 )
 net stop "%SVC%"
 sc query "%SVC%" | findstr /C:"STOPPED" >nul
 if errorlevel 1 (
-  echo [X] %SVC% 停不下來，沒有移除。不要用 taskkill /f。
+  echo [X] %SVC% did not stop, so it was not removed. Do not use taskkill /f.
   goto :end
 )
 "%NSSM%" remove "%SVC%" confirm
-echo 已移除。資料夾與資料都還在。
+echo Removed. All folders and data are still there.
 
 :end
 echo.
 pause
 endlocal
+exit /b

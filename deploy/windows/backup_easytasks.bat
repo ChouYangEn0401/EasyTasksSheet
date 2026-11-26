@@ -1,18 +1,20 @@
 @echo off
-@echo off
 rem ============================================================================
-rem  EasyTasksSheet：備份資料庫與附件（給「工作排程器」每天執行，也可以手動執行）
-rem  備份位置與保留份數看 .env 的 BACKUP_DIR、BACKUP_KEEP。結果附加到 logs\backup.log
-rem  不需要停服務（SQLite 線上備份）。沒有 pause，排程才不會卡住。
-rem  註冊排程（系統管理員 cmd，每天 03:17，用 SYSTEM 帳號）：
-rem    schtasks /Create /TN "EasyTasksSheet Backup" /TR "<專案路徑>\deploy\windows\backup_easytasks.bat" /SC DAILY /ST 03:17 /RU SYSTEM /F
-rem  立刻跑一次：schtasks /Run /TN "EasyTasksSheet Backup"
+rem  EasyTasksSheet - back up the database and attachments.
+rem  For Windows Task Scheduler (daily), can also be run by hand.
+rem  Location and count: BACKUP_DIR / BACKUP_KEEP in .env. Output: logs\backup.log
+rem  No need to stop the service (online SQLite backup). No pause, so the
+rem  scheduled task never hangs.
+rem  Register the scheduled task (administrator cmd, daily 03:17, SYSTEM):
+rem    schtasks /Create /TN "EasyTasksSheet Backup" /TR "<project>\deploy\windows\backup_easytasks.bat" /SC DAILY /ST 03:17 /RU SYSTEM /F
+rem  Run it once now: schtasks /Run /TN "EasyTasksSheet Backup"
+rem
+rem  KEEP THIS FILE ASCII-ONLY (see setup_easytasks.bat).
 rem ============================================================================
 setlocal EnableExtensions
-chcp 65001 >nul
-rem 專案路徑：本腳本在 <專案>\deploy\windows\，往上兩層就是專案根目錄（clone 到哪裡都適用）
 for %%I in ("%~dp0..\..") do set "APP_DIR=%%~fI"
-cd /d "%APP_DIR%" || exit /b 1
+cd /d "%APP_DIR%"
+if errorlevel 1 exit /b 1
 if not exist "logs" mkdir "logs"
 set "PYTHONIOENCODING=utf-8"
 echo ==== %DATE% %TIME% ==== >> "logs\backup.log"

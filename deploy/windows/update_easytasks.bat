@@ -1,75 +1,102 @@
 @echo off
-@echo off
 rem ============================================================================
-rem  EasyTasksSheet：更新到最新程式碼並重啟服務
-rem  順序：先備份資料庫 -> git pull --ff-only -> 安裝套件 -> 建置前端 -> 重啟服務 -> 健康檢查
-rem  任何一步失敗就停下來，服務維持原狀（建置失敗時不會重啟）
+rem  EasyTasksSheet - update to the latest code and restart the service.
+rem  Order: backup DB -> git pull --ff-only -> pip install -> build frontend
+rem         -> restart service -> health check.
+rem  Stops at the first failure; the service is NOT restarted if the build fails.
+rem
+rem  KEEP THIS FILE ASCII-ONLY (see setup_easytasks.bat).
 rem ============================================================================
 setlocal EnableExtensions EnableDelayedExpansion
-chcp 65001 >nul
-rem 專案路徑：本腳本在 <專案>\deploy\windows\，往上兩層就是專案根目錄（clone 到哪裡都適用）
 set "SCRIPT_DIR=%~dp0"
 for %%I in ("%~dp0..\..") do set "APP_DIR=%%~fI"
 set "SVC=easytasks"
 set "PORT=8100"
 set "PY=%APP_DIR%\.venv\Scripts\python.exe"
-cd /d "%APP_DIR%" || goto :end
+cd /d "%APP_DIR%"
+if errorlevel 1 goto :end
 
-echo === [1/5] 更新前先備份 ===
-"%PY%" -m server.cli backup || ( echo [X] 備份失敗，停止更新 & goto :end )
+echo === [1/5] Backup before updating ===
+"%PY%" -m server.cli backup
+if errorlevel 1 (
+  echo [X] Backup failed, update stopped.
+  goto :end
+)
 
 echo === [2/5] git pull ===
 git status --porcelain --untracked-files=no | findstr . >nul
 if not errorlevel 1 (
-  echo [X] 工作副本有未提交的修改，先處理再更新：git status
+  echo [X] The working copy has uncommitted changes. Check with: git status
   goto :end
 )
-git pull --ff-only || ( echo [X] git pull 失敗 & goto :end )
-git log -1 --format="  目前版本：%%h %%ci %%s"
+git pull --ff-only
+if errorlevel 1 (
+  echo [X] git pull failed.
+  goto :end
+)
+git log -1 --format="  Now at: %%h %%ci %%s"
 
-echo === [3/5] Python 套件 ===
-"%PY%" -m pip install -r requirements.txt || ( echo [X] pip 安裝失敗 & goto :end )
+echo === [3/5] Python packages ===
+"%PY%" -m pip install -r requirements.txt
+if errorlevel 1 (
+  echo [X] pip install failed.
+  goto :end
+)
 
-echo === [4/5] 建置前端 ===
-call :ensure_node || goto :end
-call npm ci || ( echo [X] npm ci 失敗 & goto :end )
-call npm run build || ( echo [X] npm run build 失敗，服務沒有重啟 & goto :end )
+echo === [4/5] Build frontend ===
+call :ensure_node
+if errorlevel 1 goto :end
+call npm ci
+if errorlevel 1 (
+  echo [X] npm ci failed. Service not restarted.
+  goto :end
+)
+call npm run build
+if errorlevel 1 (
+  echo [X] npm run build failed. Service not restarted.
+  goto :end
+)
 
-echo === [5/5] 重啟服務 ===
+echo === [5/5] Restart service ===
 net stop "%SVC%"
 net start "%SVC%"
 timeout /t 5 /nobreak >nul
+set "CODE=0"
 for /f %%S in ('powershell -NoProfile -Command "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 http://127.0.0.1:%PORT%/api/health).StatusCode } catch { 0 }"') do set "CODE=%%S"
-if "!CODE!"=="200" ( echo [OK] 更新完成，/api/health 回 200 ) else ( echo [X] /api/health 回 !CODE!，看 logs\easytasks.err.log )
+if "!CODE!"=="200" (
+  echo [OK] Update done, /api/health returned 200.
+) else (
+  echo [X] /api/health returned !CODE!. See logs\easytasks.err.log
+)
 
 :end
 echo.
 pause
 endlocal
-
 exit /b
 
-rem ---- 確保有 npm：系統有就用系統的；沒有就用（或下載）專案內的免安裝版 Node.js 22 ----
-rem 放在括號區塊外，避免 PATH 裡的 "Program Files (x86)" 弄壞 if ( ... ) 的解析
+rem ---------------------------------------------------------------------------
+rem :ensure_node - same as in setup_easytasks.bat
+rem ---------------------------------------------------------------------------
 :ensure_node
 set "NODE_DIR=%APP_DIR%\.tools\node"
-rem 系統的 Node 要 v22 以上才用（package.json 要求 >=22.18）；太舊就改用專案內的免安裝版
 set "SYS_NODE_MAJOR="
 for /f "tokens=1 delims=." %%V in ('node -v 2^>nul') do set "SYS_NODE_MAJOR=%%V"
-rem 沒裝 Node 時變數未定義，不能對它做 :v= 取代（會得到怪值），所以先判斷 defined、用延遲展開
 if defined SYS_NODE_MAJOR set "SYS_NODE_MAJOR=!SYS_NODE_MAJOR:v=!"
 if defined SYS_NODE_MAJOR if !SYS_NODE_MAJOR! GEQ 22 (
   where npm >nul 2>&1
   if not errorlevel 1 exit /b 0
 )
-if defined SYS_NODE_MAJOR echo   系統的 Node 版本太舊（v!SYS_NODE_MAJOR!），改用專案內的免安裝版 Node.js 22
+if defined SYS_NODE_MAJOR echo   System Node v!SYS_NODE_MAJOR! is older than 22, using portable Node.js 22 instead.
 if exist "%NODE_DIR%\npm.cmd" goto :ensure_node_path
-echo   找不到 npm：自動下載免安裝版 Node.js 22 到 %NODE_DIR%
-echo   （只給本專案建置前端用，不跑安裝程式、不改系統設定）
+echo   npm not found: downloading portable Node.js 22 into %NODE_DIR%
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%ensure-node.ps1" -ProjectDir "%APP_DIR%"
 if errorlevel 1 (
-  echo [X] 下載 Node.js 失敗：確認這台電腦連得到 nodejs.org；
-  echo     或手動安裝 Node.js 22 LTS 後重開 cmd 再執行
+  echo [X] Node.js download failed. Check that this machine can reach nodejs.org.
+  exit /b 1
+)
+if not exist "%NODE_DIR%\npm.cmd" (
+  echo [X] %NODE_DIR%\npm.cmd not found after download.
   exit /b 1
 )
 :ensure_node_path
