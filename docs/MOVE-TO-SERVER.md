@@ -191,7 +191,7 @@ Windows 上 `python main.py`（不加 `--prod`，http）啟動、`/api/health` �
 正式常駐用 systemd（單一 worker，不要加 `--workers`）【未實測】：
 
 ```bash
-sudo cp deploy/tasks-sheets.service /etc/systemd/system/
+sudo cp deploy/linux/tasks-sheets.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now tasks-sheets
 sudo systemctl status tasks-sheets
@@ -205,7 +205,7 @@ sudo systemctl status tasks-sheets
 
 ```bash
 sudo apt-get install -y caddy
-sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+sudo cp deploy/linux/Caddyfile /etc/caddy/Caddyfile
 sudo nano /etc/caddy/Caddyfile        # 改主機名稱；內網無公開 DNS 保留 tls internal
 sudo systemctl reload caddy
 ```
@@ -360,10 +360,10 @@ WAL 暫存檔，服務運行中不要刪、**不要單獨複製 `app.db`**。搬
 確認 `ATTACHMENTS_DIR` 指向還原後的附件資料夾，且服務帳號可讀寫。附件檔名是隨機 id，與資料庫紀錄一一對應，不能只搬其中一邊。
 
 **反向代理上傳附件失敗**
-影片上限 200 MB，Caddy 要放寬 `request_body max_size`（`deploy/Caddyfile` 已設）；nginx 要設 `client_max_body_size 210m`。
+影片上限 200 MB，Caddy 要放寬 `request_body max_size`（`deploy/linux/Caddyfile` 已設）；nginx 要設 `client_max_body_size 210m`。
 
 **Docker 部署**
-`deploy/docker-compose.yml` 檔頭有備份與還原指令（`docker compose ... run --rm app python -m server.cli restore /backups/<檔> --yes`）。備份檔要先放進 volume `tasks-backups`。【未實測，本機無 Docker】
+`deploy/linux/docker-compose.yml` 檔頭有備份與還原指令（`docker compose ... run --rm app python -m server.cli restore /backups/<檔> --yes`）。備份檔要先放進 volume `tasks-backups`。【未實測，本機無 Docker】
 
 ## 6. 還原失敗時如何回復
 

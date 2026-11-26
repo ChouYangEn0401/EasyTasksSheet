@@ -19,6 +19,19 @@ os.environ["TZ"] = config.TZ
 if hasattr(time, "tzset"):
     time.tzset()
 
+# 前端建置檔（dist/web/index.html）存在就由同一個行程提供，不論是否為正式模式；開發時另用 Vite 也不衝突。
+# 正式模式一定要有：沒有就在動到資料庫之前，用一行說明結束，而不是噴出 FileNotFoundError。
+_index_html = os.path.join(config.STATIC_DIR, "index.html")
+serve_frontend = os.path.isfile(_index_html)
+if config.is_production and not serve_frontend:
+    print(
+        f"[server] 錯誤：找不到前端建置檔 {os.path.abspath(_index_html)}，無法以正式模式啟動。\n"
+        "         請先建置前端：Windows 跑 deploy\\windows\\setup_easytasks.bat；"
+        "或在專案資料夾執行 npm ci 與 npm run build（會讀 .env 的 BASE_PATH）。",
+        flush=True,
+    )
+    raise SystemExit(1)
+
 db = create_db(config.DATABASE_PATH)
 run_migrations(db)
 run_seed(db)
@@ -26,18 +39,13 @@ prune_on_startup(db)  # 稽核紀錄保留期限（AUDIT_RETENTION_DAYS）；之
 prune_changes_on_startup(db)  # 變更流水保留期限（CHANGES_RETENTION_DAYS）；之後寫入時每日檢查一次
 ensure_admin(db, config.ADMIN_USERNAME, config.ADMIN_PASSWORD, log=lambda m: print(m, flush=True))
 
-# 前端已建置（dist/web 存在）就由同一個行程提供，不論是否為正式模式；
-# 開發時另用 Vite（npm run dev:web）也不衝突。
-serve_frontend = config.is_production or os.path.isdir(config.STATIC_DIR)
 app = create_app(db, static_dir=config.STATIC_DIR if serve_frontend else None, base_path=config.BASE_PATH)
 print(f"[server] FastAPI 已就緒（{config.NODE_ENV}，DB: {config.DATABASE_PATH}，BASE_PATH: {config.BASE_PATH or '/'}）", flush=True)
 
 
 def _check_built_base() -> None:
     """前端的網址前綴是建置時寫死的；與目前 BASE_PATH 不同時頁面會空白，啟動時先提醒。"""
-    index = os.path.join(config.STATIC_DIR, "index.html")
-    if not os.path.isfile(index):
-        return
+    index = _index_html
     with open(index, encoding="utf-8") as f:
         html = f.read()
     expected = f'"{config.BASE_PATH}/assets/'
@@ -51,5 +59,5 @@ def _check_built_base() -> None:
 
 if serve_frontend:
     _check_built_base()
-if not serve_frontend:
-    print(f"[server] 找不到前端建置檔（{config.STATIC_DIR}），請先執行 npm ci && npm run build", flush=True)
+else:
+    print(f"[server] 找不到前端建置檔（{_index_html}），只提供 API；請先執行 npm ci && npm run build", flush=True)

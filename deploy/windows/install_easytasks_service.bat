@@ -11,8 +11,9 @@ rem ============================================================================
 setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 
+rem 專案路徑：本腳本在 <專案>\deploy\windows\，往上兩層就是專案根目錄（clone 到哪裡都適用）
+for %%I in ("%~dp0..\..") do set "APP_DIR=%%~fI"
 rem ---- 設定區（只需要改這裡）----
-set "APP_DIR=C:\EasyTasksSheet"
 set "SVC=easytasks"
 set "PORT=8100"
 set "NSSM=C:\nssm\win64\nssm.exe"

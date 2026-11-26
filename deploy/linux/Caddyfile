@@ -1,7 +1,7 @@
 # TasksSheets 反向代理範例（Caddy v2）
 # 安裝位置通常為 /etc/caddy/Caddyfile；修改後 `sudo systemctl reload caddy`。
 # 把 tasks.lab.example 換成實際主機名稱（或設環境變數 SITE_ADDRESS）。
-# 後端（uvicorn）請只綁 127.0.0.1:3000（deploy/tasks-sheets.service 已固定 --host 127.0.0.1）；
+# 後端（uvicorn）請只綁 127.0.0.1:3000（deploy/linux/tasks-sheets.service 已固定 --host 127.0.0.1）；
 # 容器部署時以環境變數 UPSTREAM=app:3000 覆寫。
 # Caddy 會把真實對端 IP 附加到 X-Forwarded-For 鏈尾；後端在 .env 設 TRUSTED_PROXY=true 時
 # 取該標頭「最右邊一段」判斷登入失敗的來源 IP（用戶端自填的前綴無效）。

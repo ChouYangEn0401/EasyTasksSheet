@@ -1,6 +1,6 @@
 # 每日備份（由 tasks-sheets-backup.timer 觸發）。服務運行中執行即可，不需停機。
 # 安裝：
-#   sudo cp deploy/tasks-sheets-backup.service deploy/tasks-sheets-backup.timer /etc/systemd/system/
+#   sudo cp deploy/linux/tasks-sheets-backup.service deploy/linux/tasks-sheets-backup.timer /etc/systemd/system/
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now tasks-sheets-backup.timer
 # 立即手動跑一次：sudo systemctl start tasks-sheets-backup

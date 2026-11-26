@@ -1,7 +1,7 @@
 # 可選：以容器部署。從專案根目錄建置：
-#   docker build -f deploy/Dockerfile -t tasks-sheets .
-# 或使用 deploy/docker-compose.yml。
-# 排除清單見 deploy/Dockerfile.dockerignore（BuildKit 會自動套用與 Dockerfile 同名的 .dockerignore）。
+#   docker build -f deploy/linux/Dockerfile -t tasks-sheets .
+# 或使用 deploy/linux/docker-compose.yml。
+# 排除清單見 deploy/linux/Dockerfile.dockerignore（BuildKit 會自動套用與 Dockerfile 同名的 .dockerignore）。
 
 # ── 階段 1：建置前端（Node 只用在這裡）──
 FROM node:22-bookworm-slim AS web
