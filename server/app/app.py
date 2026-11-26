@@ -27,6 +27,7 @@ from .features import dependencies
 from .features import task_checklist
 from .features import audit_log
 from .features import task_comments
+from .features import site_pack
 
 #: 不需登入的路由。/api/eng/worktrees/report 由端點自行以 WORKTREE_REPORT_TOKEN 驗證（仍受 CSRF 檢查約束）
 PUBLIC_PATHS = {
@@ -36,6 +37,9 @@ PUBLIC_PATHS = {
     "/api/eng/worktrees/report",
     # 多台電腦同步：以同步來源金鑰驗證（server/app/features/sync_push.py）
     "/api/sync/push",
+    # 整站搬家包：狀態查詢與「全新 server」的還原（後端自行檢查只在全新時可用）
+    "/api/setup/status",
+    "/api/setup/restore",
 }
 
 
@@ -106,6 +110,8 @@ def create_app(
     app.include_router(eng_attach.router, prefix="/api/eng")
     app.include_router(eng_attach.files_router, prefix="/api/attachments")
     # 須在 admin.router 之前：admin 有 /api/admin/* 的 fallback
+    app.include_router(site_pack.setup_router, prefix="/api/setup")
+    app.include_router(site_pack.admin_router, prefix="/api/admin/data/pack")
     app.include_router(data_admin.router, prefix="/api/admin/data")
     app.include_router(permissions_admin.router, prefix="/api/admin/permissions")
     app.include_router(sync_push.admin_router, prefix="/api/admin/sync")
