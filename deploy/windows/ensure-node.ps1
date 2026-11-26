@@ -29,7 +29,7 @@ New-Item -ItemType Directory -Force $tmp | Out-Null
 $zip = Join-Path $tmp "$name.zip"
 Invoke-WebRequest -UseBasicParsing "https://nodejs.org/dist/$ver/$name.zip" -OutFile $zip
 
-$sums = (Invoke-WebRequest -UseBasicParsing "https://nodejs.org/dist/$ver/SHASUMS256.txt").Content
+$sums = [string](Invoke-RestMethod -UseBasicParsing "https://nodejs.org/dist/$ver/SHASUMS256.txt")
 $pattern = '\s' + [regex]::Escape("$name.zip") + '$'
 $line = ($sums -split "`n") | Where-Object { $_.Trim() -match $pattern } | Select-Object -First 1
 if (-not $line) { throw "SHASUMS256.txt 裡找不到 $name.zip" }

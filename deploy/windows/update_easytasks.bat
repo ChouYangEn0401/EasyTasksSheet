@@ -52,9 +52,17 @@ exit /b
 rem ---- 確保有 npm：系統有就用系統的；沒有就用（或下載）專案內的免安裝版 Node.js 22 ----
 rem 放在括號區塊外，避免 PATH 裡的 "Program Files (x86)" 弄壞 if ( ... ) 的解析
 :ensure_node
-where npm >nul 2>&1
-if not errorlevel 1 exit /b 0
 set "NODE_DIR=%APP_DIR%\.tools\node"
+rem 系統的 Node 要 v22 以上才用（package.json 要求 >=22.18）；太舊就改用專案內的免安裝版
+set "SYS_NODE_MAJOR="
+for /f "tokens=1 delims=." %%V in ('node -v 2^>nul') do set "SYS_NODE_MAJOR=%%V"
+rem 沒裝 Node 時變數未定義，不能對它做 :v= 取代（會得到怪值），所以先判斷 defined、用延遲展開
+if defined SYS_NODE_MAJOR set "SYS_NODE_MAJOR=!SYS_NODE_MAJOR:v=!"
+if defined SYS_NODE_MAJOR if !SYS_NODE_MAJOR! GEQ 22 (
+  where npm >nul 2>&1
+  if not errorlevel 1 exit /b 0
+)
+if defined SYS_NODE_MAJOR echo   系統的 Node 版本太舊（v!SYS_NODE_MAJOR!），改用專案內的免安裝版 Node.js 22
 if exist "%NODE_DIR%\npm.cmd" goto :ensure_node_path
 echo   找不到 npm：自動下載免安裝版 Node.js 22 到 %NODE_DIR%
 echo   （只給本專案建置前端用，不跑安裝程式、不改系統設定）
