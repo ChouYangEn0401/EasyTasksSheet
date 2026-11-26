@@ -22,3 +22,6 @@ test-results/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# 舊 TS E2E 寫死的 Windows 截圖路徑（在 Linux 上會變成這種資料夾名）
+C:\\*

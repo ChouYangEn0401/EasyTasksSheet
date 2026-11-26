@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from server.e2e_setup import E2E_USERS  # noqa: E402
+from tests.e2e.helpers import data_hygiene  # noqa: E402,F401  讓各測試檔的 usefixtures 找得到
 
 PORT = int(os.environ.get("E2E_PORT", "3999"))
 BASE_URL = f"http://localhost:{PORT}"
