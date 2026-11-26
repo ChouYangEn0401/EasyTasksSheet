@@ -65,7 +65,7 @@ python main.py                             # 啟動，開啟 http://localhost:30
 | Python   | **3.11 以上**（執行後端與管理指令）                                            |
 | Node.js  | 22.18 以上，**只用於建置前端**（`npm run build`）與本機開發；正式執行不需要    |
 | 作業系統 | Linux（正式環境建議 Debian / Ubuntu）；Windows、macOS 可開發                   |
-| 反向代理 | Caddy v2（範例見 `deploy/Caddyfile`），負責 HTTPS                              |
+| 反向代理 | Caddy v2（範例見 `deploy/linux/Caddyfile`），負責 HTTPS                              |
 
 Python 相依套件見 `server/requirements.txt`（皆有預編譯 wheel，不需編譯工具）。
 
@@ -206,14 +206,14 @@ curl http://127.0.0.1:3000/api/health                   # 另開終端機：{"ok
 ### 5. 以 systemd 常駐
 
 ```bash
-sudo cp deploy/tasks-sheets.service /etc/systemd/system/
+sudo cp deploy/linux/tasks-sheets.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now tasks-sheets
 sudo systemctl status tasks-sheets
 curl http://127.0.0.1:3000/api/health
 ```
 
-`deploy/tasks-sheets.service` 重點：
+`deploy/linux/tasks-sheets.service` 重點：
 
 - `ExecStart=/opt/tasks-sheets/.venv/bin/python -m uvicorn server.app.main:app --host 127.0.0.1 --port ${PORT} --no-proxy-headers --timeout-graceful-shutdown 3`：一律只綁 `127.0.0.1`；`--timeout-graceful-shutdown` 讓 SSE 長連線不會卡住重啟。
 - **只能單一 worker**（不要加 `--workers`）：即時同步的事件中樞與 SQLite 連線在同一個行程內。
@@ -223,12 +223,12 @@ curl http://127.0.0.1:3000/api/health
 ### 6. 反向代理與 HTTPS（Caddy）
 
 ```bash
-sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+sudo cp deploy/linux/Caddyfile /etc/caddy/Caddyfile
 sudo nano /etc/caddy/Caddyfile             # 改主機名稱、選擇憑證方式
 sudo systemctl reload caddy
 ```
 
-`deploy/Caddyfile` 重點：
+`deploy/linux/Caddyfile` 重點：
 
 - **憑證**：內網無公開 DNS 時用 `tls internal`（Caddy 內建 CA），再把根憑證 `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt` 發給成員安裝信任；有校方憑證則改用 `tls <crt> <key>`；可從網際網路解析的主機刪掉 `tls` 行即自動申請 Let's Encrypt。
 - **SSE（`/api/events`）**：`flush_interval -1` 關閉緩衝、`read_timeout 0` / `write_timeout 0` 不設逾時、不套用壓縮；`stream_close_delay 5m` 讓重新載入設定時既有連線不會同時斷線。若改用其他反向代理，請務必做等效設定（見「常見問題」）。
@@ -239,7 +239,7 @@ sudo systemctl reload caddy
 ### 7. 每日備份
 
 ```bash
-sudo cp deploy/tasks-sheets-backup.service deploy/tasks-sheets-backup.timer /etc/systemd/system/
+sudo cp deploy/linux/tasks-sheets-backup.service deploy/linux/tasks-sheets-backup.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now tasks-sheets-backup.timer
 sudo systemctl start tasks-sheets-backup    # 立即跑一次確認
@@ -251,16 +251,16 @@ ls -l /opt/tasks-sheets/backups
 
 ### （可選）Docker Compose
 
-`deploy/Dockerfile` 為多階段建置：`node:22` 建置前端 → `python:3.11-slim` 以 uvicorn 執行（映像內不含 Node）。
+`deploy/linux/Dockerfile` 為多階段建置：`node:22` 建置前端 → `python:3.11-slim` 以 uvicorn 執行（映像內不含 Node）。
 
 ```bash
 cp .env.example .env                        # 依上面步驟 3 修改（路徑類設定會被 compose 覆寫）
-SITE_ADDRESS=tasks.lab.example docker compose -f deploy/docker-compose.yml up -d --build
-docker compose -f deploy/docker-compose.yml logs app | grep '初始密碼'
-docker compose -f deploy/docker-compose.yml exec app python -m server.cli backup   # 備份
+SITE_ADDRESS=tasks.lab.example docker compose -f deploy/linux/docker-compose.yml up -d --build
+docker compose -f deploy/linux/docker-compose.yml logs app | grep '初始密碼'
+docker compose -f deploy/linux/docker-compose.yml exec app python -m server.cli backup   # 備份
 ```
 
-資料在 volume `tasks-data`，備份在 `tasks-backups`；`tls internal` 的根憑證在 caddy 容器的 `/data/caddy/pki/authorities/local/root.crt`。還原方式見 `deploy/docker-compose.yml` 開頭註解。
+資料在 volume `tasks-data`，備份在 `tasks-backups`；`tls internal` 的根憑證在 caddy 容器的 `/data/caddy/pki/authorities/local/root.crt`。還原方式見 `deploy/linux/docker-compose.yml` 開頭註解。
 
 ## 預設管理員與首次改密碼
 
@@ -464,7 +464,7 @@ token 權限：fine-grained token 選定相關 repo，**Issues：Read-only** 即
 - 支援：圖片（png / jpg / gif / webp）、影片（mp4 / webm / mov，可直接播放、拖曳進度條）、音訊（mp3 / wav / m4a）、pdf、文字（txt / md / csv / json / log）、zip、Office 文件。SVG 與其他類型不接受。伺服器會以檔案內容驗證類型（改副檔名無效）。
 - 上限：一般檔案 `ATTACHMENT_MAX_MB`（預設 25 MB）、影片 `ATTACHMENT_VIDEO_MAX_MB`（預設 200 MB）、每筆問題 `ATTACHMENT_MAX_PER_ITEM`（預設 10 個）。
 - 檔案存在 `ATTACHMENTS_DIR`（預設 `data/attachments`，檔名為隨機 id）。systemd 部署時 `ReadWritePaths` 已包含 `data/`；Docker 映像預設 `/data/attachments`（同一個 volume）。
-- **反向代理要放寬上傳大小與逾時**：Caddy 見 `deploy/Caddyfile` 的附件上傳區塊（`request_body { max_size 210MB }`、讀寫逾時 10 分鐘）；nginx：
+- **反向代理要放寬上傳大小與逾時**：Caddy 見 `deploy/linux/Caddyfile` 的附件上傳區塊（`request_body { max_size 210MB }`、讀寫逾時 10 分鐘）；nginx：
 
   ```nginx
   location ~ ^/api/eng/issues/[0-9]+/attachments$ {
@@ -508,7 +508,7 @@ token 權限：fine-grained token 選定相關 repo，**Issues：Read-only** 即
 帳號 `admin`、密碼 `password`（若 `.env` 有覆寫 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 則以其為準）。登入後須立即重設帳號與密碼。
 
 **Q：即時更新延遲、或每隔一段時間斷線？**
-通常是反向代理緩衝或逾時。Caddy 請用 `deploy/Caddyfile` 的 `/api/events` 設定；nginx 需對該路徑設定：
+通常是反向代理緩衝或逾時。Caddy 請用 `deploy/linux/Caddyfile` 的 `/api/events` 設定；nginx 需對該路徑設定：
 
 ```nginx
 location /api/events {

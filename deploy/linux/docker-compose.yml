@@ -1,22 +1,22 @@
 # 可選：Docker Compose 部署（TasksSheets + Caddy）。
 # 在專案根目錄執行：
 #   cp .env.example .env   # 依 README 修改
-#   docker compose -f deploy/docker-compose.yml up -d --build
+#   docker compose -f deploy/linux/docker-compose.yml up -d --build
 # 備份（服務運行中）：
-#   docker compose -f deploy/docker-compose.yml exec app python -m server.cli backup
+#   docker compose -f deploy/linux/docker-compose.yml exec app python -m server.cli backup
 # 還原（先停 app，再以一次性容器執行）：
-#   docker compose -f deploy/docker-compose.yml stop app
-#   docker compose -f deploy/docker-compose.yml run --rm app python -m server.cli restore /backups/app-YYYYMMDD-HHMMSS.db --yes
-#   docker compose -f deploy/docker-compose.yml start app
+#   docker compose -f deploy/linux/docker-compose.yml stop app
+#   docker compose -f deploy/linux/docker-compose.yml run --rm app python -m server.cli restore /backups/app-YYYYMMDD-HHMMSS.db --yes
+#   docker compose -f deploy/linux/docker-compose.yml start app
 # 備份檔位於 volume tasks-backups，可用 `docker cp` 取出或改成 bind mount 到備份磁碟。
 
 services:
   app:
     build:
-      context: ..
-      dockerfile: deploy/Dockerfile
+      context: ../..
+      dockerfile: deploy/linux/Dockerfile
     restart: unless-stopped
-    env_file: ../.env
+    env_file: ../../.env
     environment:
       # 以下固定為容器內路徑，覆寫 .env 中的同名設定
       NODE_ENV: production
@@ -41,7 +41,7 @@ services:
       - '80:80'
       - '443:443'
     environment:
-      # 對應 deploy/Caddyfile 中的 {$SITE_ADDRESS} 與 {$UPSTREAM}
+      # 對應 deploy/linux/Caddyfile 中的 {$SITE_ADDRESS} 與 {$UPSTREAM}
       SITE_ADDRESS: ${SITE_ADDRESS:-tasks.lab.example}
       UPSTREAM: app:3000
     volumes:

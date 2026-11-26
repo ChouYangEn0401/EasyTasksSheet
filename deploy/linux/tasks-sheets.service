@@ -1,6 +1,6 @@
 # TasksSheets systemd unit 範例（Python：FastAPI + uvicorn）
 # 安裝：
-#   sudo cp deploy/tasks-sheets.service /etc/systemd/system/
+#   sudo cp deploy/linux/tasks-sheets.service /etc/systemd/system/
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now tasks-sheets
 # 檢視紀錄：journalctl -u tasks-sheets -f

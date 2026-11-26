@@ -117,7 +117,7 @@ npm run dev                                 # 後端 :3000（自動重載）+ Vi
 
 **單機執行（含已建置前端）**：`npm run build` 後 `python main.py`，開 `http://localhost:3000`。預設只綁 `127.0.0.1`。
 
-**正式**：`python main.py --prod`（cookie 要求 HTTPS，需反向代理）或 systemd（`deploy/tasks-sheets.service`）。完整的 Linux + systemd + Caddy 流程見 README「從零部署」；搬資料見 [MOVE-TO-SERVER.md](MOVE-TO-SERVER.md)。純 http 的區網測試**不要**加 `--prod`。
+**正式**：`python main.py --prod`（cookie 要求 HTTPS，需反向代理）或 systemd（`deploy/linux/tasks-sheets.service`）。完整的 Linux + systemd + Caddy 流程見 README「從零部署」；搬資料見 [MOVE-TO-SERVER.md](MOVE-TO-SERVER.md)。純 http 的區網測試**不要**加 `--prod`。
 
 第一次啟動自動建立資料庫、套用 migration、寫入預設狀態與專案；沒有任何帳號時建立 `admin` / `password`。
 
@@ -155,7 +155,7 @@ npm run dev                                 # 後端 :3000（自動重載）+ Vi
 - **changes 流水修剪**：`changes`（即時同步補漏用）啟動時與每日修剪一次，保留天數由 `CHANGES_RETENTION_DAYS` 控制（預設 30，須 > 0）；修剪後過舊的 `since` 重連會收到 `reset` 並全部重抓。
 - **附件**：檔案存在 `ATTACHMENTS_DIR`（預設 `data/attachments`），檔名是 32 位隨機 id，與資料庫 `attachments` 表一一對應。
 - **migration**：`server/migrations/*.sql` 依編號在啟動與任何 CLI 指令時自動套用，已套用者記在 `_migrations`；升級程式後不需手動動資料庫。
-- **備份**：`python -m server.cli backup`（運行中可執行）以 `VACUUM INTO` 產生一致快照 `backups/app-<時間>.db` 與附件資料夾 `app-<時間>.db.attachments`，並依 `BACKUP_KEEP`（預設 14）清除舊備份。每日備份用 `deploy/tasks-sheets-backup.timer`。
+- **備份**：`python -m server.cli backup`（運行中可執行）以 `VACUUM INTO` 產生一致快照 `backups/app-<時間>.db` 與附件資料夾 `app-<時間>.db.attachments`，並依 `BACKUP_KEEP`（預設 14）清除舊備份。每日備份用 `deploy/linux/tasks-sheets-backup.timer`。
 - **還原**：停止服務 → `python -m server.cli restore <備份檔> --yes`；原資料庫保留為 `.before-restore-<時間>`。
 - `python -m server.cli backup --self-test` 在暫存目錄演練備份與還原。
 
@@ -165,7 +165,7 @@ npm run dev                                 # 後端 :3000（自動重載）+ Vi
 - **併發寫入**：單一連線序列化，欄位層級合併（不同欄位都保留，同欄位後寫者勝）。
 - **建議規模**：同時在線 ≤ 30 人、SSE 連線 ≤ 60。實驗室 10–20 人綽綽有餘。
 - **閒置計時**：只有非 GET 的寫入與前端的實際操作心跳會刷新；presence 回報與 SSE 不刷新，所以分頁開著不動 60 分鐘仍會登出。
-- **反向代理**必須關閉 SSE 緩衝（`deploy/Caddyfile` 已處理），否則即時更新延遲；斷線時前端自動退回 30 秒輪詢。
+- **反向代理**必須關閉 SSE 緩衝（`deploy/linux/Caddyfile` 已處理），否則即時更新延遲；斷線時前端自動退回 30 秒輪詢。
 - 細節與併發測試結果：[multi-user.md](multi-user.md)。
 
 ## 8. 同步、匯入匯出：何時用哪個
