@@ -1,5 +1,3 @@
-node_modules
-dist
 data
 backups
 .env
@@ -11,9 +9,7 @@ backups
 **/*.pyc
 .pytest_cache
 server/tests
-coverage
-playwright-report
-test-results
+tests
 *.db
 *.db-wal
 *.db-shm

@@ -1,0 +1,43 @@
+/* 以前由 Tailwind 產生、程式裡實際用到的 utility class（只列用到的；要加新的先 grep 確認真的有人用）。 */
+@layer utilities {
+  .flex { display: flex; }
+  .flex-col { flex-direction: column; }
+  .flex-wrap { flex-wrap: wrap; }
+  .flex-1 { flex: 1 1 0%; }
+  .grid { display: grid; }
+  .items-center { align-items: center; }
+  .justify-between { justify-content: space-between; }
+  .relative { position: relative; }
+  .absolute { position: absolute; }
+  .left-0 { left: 0; }
+  .top-full { top: 100%; }
+  .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .whitespace-nowrap { white-space: nowrap; }
+  .m-0 { margin: 0; }
+  .mt-1 { margin-top: 4px; }
+  .mt-2 { margin-top: 8px; }
+  .mt-3 { margin-top: 12px; }
+  .mt-4 { margin-top: 16px; }
+  .px-2 { padding-left: 8px; padding-right: 8px; }
+  .gap-1 { gap: 4px; }
+  .gap-2 { gap: 8px; }
+  .gap-3 { gap: 12px; }
+  .gap-4 { gap: 16px; }
+  .gap-6 { gap: 24px; }
+  .text-xs { font-size: var(--text-xs); line-height: var(--text-xs--line-height); }
+  .text-sm { font-size: var(--text-sm); line-height: var(--text-sm--line-height); }
+  .text-secondary { color: var(--color-text-secondary); }
+  .text-tertiary { color: var(--color-text-tertiary); }
+  .font-medium { font-weight: var(--font-medium); }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+}

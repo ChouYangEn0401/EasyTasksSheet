@@ -3,7 +3,7 @@
 - 問題（manual_issues）：任何成員可新增 / 編輯 / 結案 / 刪除；狀態值為 eng_statuses 的 key（eng_status.py）
 - Worktree 紀錄（worktree_records）：任何成員可新增 / 編輯；刪除為「移到回收區」（軟刪除，可還原；
   永久清空需 eng.trash.purge）。**任何自動流程（回報、掃描）都不會刪除紀錄**
-- 回報（worktree_reports）：各人電腦以 scripts/report-worktrees.mjs 回報 `git worktree list` 快照，
+- 回報（worktree_reports）：各人電腦以 scripts/report_worktrees.py 回報 `git worktree list` 快照，
   POST /api/eng/worktrees/report 免 session，只以 WORKTREE_REPORT_TOKEN 驗證（未設定一律 403）。
   以電腦識別碼（machine_id）為鍵；最新回報找不到的項目只標記 missing_since、不刪除；
   空清單或筆數驟減的回報先攔下（pending），由有權限者在頁面確認後才採用

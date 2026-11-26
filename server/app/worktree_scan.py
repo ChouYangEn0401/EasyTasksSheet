@@ -7,7 +7,7 @@
   可能執行外部程式的設定，`GIT_OPTIONAL_LOCKS=0`（不寫入 index）、`GIT_TERMINAL_PROMPT=0`；
   環境變數只帶白名單；只用唯讀指令（worktree list、status、rev-list、merge-base、log、rev-parse、reflog），
   不 fetch、不執行 hook。輸出長度與 worktree 數量有上限。
-- 電腦識別碼（machine_id）存在使用者家目錄 `~/.tasks-sheets/machine.json`（與 scripts/report-worktrees.mjs 共用）。
+- 電腦識別碼（machine_id）存在使用者家目錄 `~/.tasks-sheets/machine.json`（與 scripts/report_worktrees.py 共用）。
 """
 
 from __future__ import annotations
@@ -182,7 +182,7 @@ class Git:
 
 
 def normalize_path(p: str) -> str:
-    """與 report-worktrees.mjs 相同：正斜線、去除結尾斜線"""
+    """與 report_worktrees.py 相同：正斜線、去除結尾斜線"""
     n = p.strip().replace("\\", "/")
     while len(n) > 1 and n.endswith("/") and not re.fullmatch(r"[a-zA-Z]:/", n):
         n = n[:-1]
@@ -313,7 +313,7 @@ def scan_repo(target: Path, git: Git | None = None, repo_name: str | None = None
     return result
 
 
-# ── 本機電腦識別碼（~/.tasks-sheets/machine.json；與 report-worktrees.mjs 共用） ──
+# ── 本機電腦識別碼（~/.tasks-sheets/machine.json；與 report_worktrees.py 共用） ──
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 

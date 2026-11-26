@@ -6,10 +6,9 @@
 # 檢視紀錄：journalctl -u tasks-sheets -f
 #
 # 假設：程式放在 /opt/tasks-sheets，以系統帳號 tasks-sheets 執行，
-#       虛擬環境在 /opt/tasks-sheets/.venv（python3 -m venv .venv && .venv/bin/pip install -r server/requirements.txt），
-#       前端已以 npm run build 產生 /opt/tasks-sheets/dist/web。
+#       虛擬環境在 /opt/tasks-sheets/.venv（python3 scripts/install.py）；前端是 web/ 底下的靜態檔，不必建置。
 # 設定寫在 /opt/tasks-sheets/.env（EnvironmentFile 載入；程式也會從工作目錄讀取 .env）。
-# 注意：EnvironmentFile 的值會覆寫下方 Environment=，因此 .env 內務必設 NODE_ENV=production。
+# 注意：EnvironmentFile 的值會覆寫下方 Environment=，因此 .env 內務必設 APP_ENV=production。
 
 [Unit]
 Description=TasksSheets 任務管理
@@ -20,7 +19,7 @@ Type=simple
 User=tasks-sheets
 Group=tasks-sheets
 WorkingDirectory=/opt/tasks-sheets
-Environment=NODE_ENV=production
+Environment=APP_ENV=production
 Environment=PORT=3000
 Environment=PYTHONUNBUFFERED=1
 EnvironmentFile=-/opt/tasks-sheets/.env

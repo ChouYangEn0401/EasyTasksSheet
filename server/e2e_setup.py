@@ -1,6 +1,6 @@
 ﻿"""E2E 前準備（Python 後端版）：清除 E2E 專用 DB → migration + seed → 建立固定測試帳號。
 
-用法：python -m server.e2e_setup（DATABASE_PATH 須為 E2E 專用檔）。帳密同 tests/helpers/e2eUsers.ts。
+用法：python -m server.e2e_setup（DATABASE_PATH 須為 E2E 專用檔）。帳密與 tests/e2e/helpers.py 共用（這裡是單一來源）。
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from .app.config import config
 from .app.db import create_db, run_migrations, run_seed
 from .app.features.users import create_user
 
-#: 與 tests/helpers/e2eUsers.ts 一致
+#: E2E 帳號的單一來源（tests/e2e 直接 import 這裡）
 E2E_USERS = {
     # 鍵名與帳號沿用 admin / member（其他 spec 以此參照）；角色為 root / user
     "admin": {"username": "admin", "password": "e2e-admin-pass", "display_name": "管理員"},

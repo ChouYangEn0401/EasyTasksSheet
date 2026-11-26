@@ -3,23 +3,14 @@
 # 或使用 deploy/linux/docker-compose.yml。
 # 排除清單見 deploy/linux/Dockerfile.dockerignore（BuildKit 會自動套用與 Dockerfile 同名的 .dockerignore）。
 
-# ── 階段 1：建置前端（Node 只用在這裡）──
-FROM node:22-bookworm-slim AS web
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
-COPY . .
-RUN npm run build
-
-# ── 階段 2：執行環境（Python + uvicorn）──
+# ── 執行環境（Python + uvicorn；前端是 web/ 底下的靜態檔，沒有建置步驟）──
 FROM python:3.11-slim
-ENV NODE_ENV=production \
+ENV APP_ENV=production \
     HOST=0.0.0.0 \
     PORT=3000 \
     DATABASE_PATH=/data/app.db \
     ATTACHMENTS_DIR=/data/attachments \
     BACKUP_DIR=/backups \
-    STATIC_DIR=dist/web \
     TZ=Asia/Taipei \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -36,7 +27,8 @@ RUN grep -vE '^(pytest|httpx)' server/requirements.txt > /tmp/requirements.txt \
     && pip install -r /tmp/requirements.txt \
     && rm /tmp/requirements.txt
 COPY server ./server
-COPY --from=web /app/dist/web ./dist/web
+COPY web ./web
+COPY main.py ./main.py
 RUN mkdir -p /data /backups && chown app:app /data /backups
 USER app
 VOLUME ["/data", "/backups"]

@@ -3,7 +3,7 @@ name = "tasks-sheets-server"
 version = "0.1.0"
 description = "TasksSheets 後端（FastAPI + uvicorn + SQLite）"
 requires-python = ">=3.11"
-# 相依套件見 requirements.txt（npm run py:install）
+# 相依套件見 requirements.txt（python scripts/install.py）
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

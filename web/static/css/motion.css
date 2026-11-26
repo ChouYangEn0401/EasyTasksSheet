@@ -1,0 +1,205 @@
+/*
+ * 即時回饋的動態（docs/design/realtime-feedback.md §3、§5）。
+ * 時長與曲線一律取自 tokens.css；只動 transform / opacity（列高收合例外）。
+ * reduced motion：tokens 已把所有 --duration-* 設為 0，以下另取消位移並改用靜態標示。
+ */
+
+@layer components {
+  /* ── Toast ─────────────────────────────── */
+  .ui-toast {
+    animation: ui-toast-in var(--duration-base) var(--ease-enter);
+  }
+  .ui-toast[data-leaving='true'] {
+    animation: ui-toast-out var(--duration-exit) var(--ease-exit) forwards;
+    pointer-events: none;
+  }
+  .ui-toast-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .ui-toast-spinner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+  }
+  .ui-toast:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  @keyframes ui-toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+  @keyframes ui-toast-out {
+    to {
+      opacity: 0;
+      transform: translateX(16px);
+    }
+  }
+
+  /* ── Dialog 與遮罩 ─────────────────────── */
+  .ui-dialog[open] {
+    animation: ui-dialog-in var(--duration-base) var(--ease-enter);
+  }
+  .ui-dialog[open]::backdrop {
+    animation: ui-fade-in var(--duration-base) var(--ease-enter);
+  }
+  @keyframes ui-dialog-in {
+    from {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+  }
+  @keyframes ui-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  /* ── TaskDrawer ───────────────────────── */
+  .task-drawer {
+    animation: ui-drawer-in var(--duration-base) var(--ease-enter);
+  }
+  .task-drawer[data-leaving='true'] {
+    animation: ui-drawer-out var(--duration-exit) var(--ease-exit) forwards;
+    pointer-events: none;
+  }
+  @keyframes ui-drawer-in {
+    from {
+      opacity: 0;
+      transform: translateX(24px);
+    }
+  }
+  @keyframes ui-drawer-out {
+    to {
+      opacity: 0;
+      transform: translateX(24px);
+    }
+  }
+
+  /* ── 項目效果：更新高亮 / 進場 / 離場（data-fx，見 lib/motion.ts） ── */
+  [data-fx='flash'] {
+    animation: ui-highlight var(--duration-highlight) linear;
+  }
+  /* 清單列：列高 0 → --row-height + 淡入，接著播更新高亮 */
+  .tl-row--task[data-fx='enter'] {
+    overflow: hidden;
+    animation:
+      ui-row-in var(--duration-base) var(--ease-enter),
+      ui-highlight var(--duration-highlight) linear var(--duration-base);
+  }
+  /* 卡片等非列項目：淡入後播高亮 */
+  [data-fx='enter']:not(.tl-row--task) {
+    animation:
+      ui-fade-in var(--duration-base) var(--ease-enter),
+      ui-highlight var(--duration-highlight) linear var(--duration-base);
+  }
+  /* 清單列離場：淡出 --duration-fast，再收合列高 --duration-exit */
+  .tl-row--task[data-fx='leave'] {
+    overflow: hidden;
+    pointer-events: none;
+    animation:
+      ui-fade-out var(--duration-fast) linear forwards,
+      ui-row-collapse var(--duration-exit) var(--ease-exit) var(--duration-fast) forwards;
+  }
+  [data-fx='leave']:not(.tl-row--task) {
+    pointer-events: none;
+    animation: ui-fade-out var(--duration-fast) linear forwards;
+  }
+  @keyframes ui-highlight {
+    from {
+      background-color: var(--color-accent-soft);
+    }
+  }
+  @keyframes ui-row-in {
+    from {
+      height: 0;
+      opacity: 0;
+    }
+    to {
+      height: var(--row-height);
+      opacity: 1;
+    }
+  }
+  @keyframes ui-row-collapse {
+    from {
+      height: var(--row-height);
+    }
+    to {
+      height: 0;
+      border-bottom-width: 0;
+    }
+  }
+  @keyframes ui-fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+
+  /* ── 他人變更提示條（TaskDrawer 標題列下方，core §5 提示列樣式） ── */
+  .rt-notice {
+    flex: none;
+    padding: 12px 24px 0;
+    overflow: hidden;
+    animation: ui-notice-in var(--duration-base) var(--ease-enter);
+  }
+  .rt-notice .ui-alert-body {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  @keyframes ui-notice-in {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+  }
+
+  /* ── 閒置提醒倒數 ─────────────────────── */
+  .idle-countdown {
+    margin: 8px 0;
+    font-size: var(--text-2xl);
+    line-height: var(--text-2xl--line-height);
+    font-weight: var(--font-semibold);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+  .idle-countdown[data-danger='true'] {
+    color: var(--color-danger-text);
+  }
+
+  @media (max-width: 1023px) {
+    .toast-viewport .ui-toast {
+      width: min(360px, calc(100vw - 32px));
+    }
+  }
+
+  /* ── reduced motion：取消位移、縮放、列高收合；高亮改為靜態左緣標示 ── */
+  @media (prefers-reduced-motion: reduce) {
+    .ui-toast,
+    .ui-toast[data-leaving='true'],
+    .ui-dialog[open],
+    .ui-dialog[open]::backdrop,
+    .task-drawer,
+    .task-drawer[data-leaving='true'],
+    .rt-notice,
+    [data-fx] {
+      animation: none !important;
+    }
+    .ui-toast[data-leaving='true'],
+    .task-drawer[data-leaving='true'] {
+      visibility: hidden;
+    }
+    [data-fx='flash'],
+    [data-fx='enter'] {
+      box-shadow: inset 2px 0 0 var(--color-accent);
+    }
+  }
+}

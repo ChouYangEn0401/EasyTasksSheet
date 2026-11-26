@@ -8,7 +8,7 @@ const venvPython = ['.venv/Scripts/python.exe', '.venv/bin/python'].find((p) => 
 const python = venvPython ? `"${venvPython}"` : 'python';
 
 // 每次重建 E2E 專用 DB 並建立固定測試帳號（tests/helpers/e2eUsers.ts）
-const command = `npm run build && ${python} -m server.e2e_setup && ${python} -m uvicorn server.app.main:app --port ${port}`;
+const command = `${python} -m server.e2e_setup && ${python} -m uvicorn server.app.main:app --port ${port}`;
 
 // E2E 一律跑正式模式（單一行程同時提供 API + 已 build 的前端），使用獨立 DB 檔
 export default defineConfig({
@@ -26,7 +26,7 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 180_000,
     env: {
-      NODE_ENV: 'production',
+      APP_ENV: 'production',
       PORT: String(port),
       DATABASE_PATH: 'data/e2e.db',
       ATTACHMENTS_DIR: 'data/e2e-attachments',

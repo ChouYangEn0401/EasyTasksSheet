@@ -1,6 +1,8 @@
+# 舊版（React + Vite）殘留的資料夾；新版用不到，留著只是避免既有 clone 冒出一堆未追蹤檔
 node_modules/
 dist/
 build/
+.tools/
 .env
 .env.*
 !.env.example
@@ -14,14 +16,9 @@ backups/
 Thumbs.db
 .vscode/
 .idea/
-coverage/
 playwright-report/
 test-results/
-*.tsbuildinfo
 .venv/
 __pycache__/
 *.pyc
 .pytest_cache/
-
-# 專案內的免安裝版 Node.js（deploy/windows/ensure-node.ps1 下載，只用來建置前端）
-.tools/

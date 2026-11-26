@@ -1,0 +1,507 @@
+import { createElement, Fragment } from 'preact';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/compat';
+import { useSearchParams } from '../../lib/router.js';
+import { errorMessage } from '../../lib/api.js';
+import { statusTone } from '../../lib/colors.js';
+import { hasActiveFilters } from '../../lib/filters.js';
+import { todayString } from '../../lib/format.js';
+import { useStatusesById, useTasks, useUpdateTask, useUsers, useUsersById } from '../../lib/hooks.js';
+import { useCan } from '../../lib/permissions.js';
+import { isEditableTarget } from '../../lib/shortcuts.js';
+import { readStorage, writeStorage } from '../../lib/storage.js';
+import { newUndoGroup } from '../../lib/taskUndo.js';
+import { toast, truncate } from '../../lib/toast.js';
+import { performUndoEntry } from '../../lib/undo.js';
+import { useTaskFilters } from '../../lib/useTaskFilters.js';
+import { NoFilterResults } from '../../shell/FilterBar.js';
+import { ViewTabsActions } from '../../shell/ViewTabs.js';
+import { Alert, Badge, Button, EmptyState, ErrorState, Icon, Select, Skeleton } from '../../ui/index.js';
+import { DatePopover } from './DatePopover.js';
+import { Gantt } from './Gantt.js';
+import { GROUP_OPTIONS, parseGroupBy } from './grouping.js';
+import {
+  formatScheduleRange,
+  scheduleBefore,
+  scheduleFieldNote,
+  schedulePatch,
+  scheduleUndoLabel,
+} from './scheduleDrop.js';
+import { ScheduleDnd, UnscheduledRow } from './ScheduleDnd.js';
+import { useScheduleDnd } from './useScheduleDnd.js';
+import { autoScale, isScheduled, parseScale, SCALE_LABEL, SCALES } from './timeline.js';
+
+const UNSCHEDULED_KEY = 'gantt.unscheduled.collapsed';
+const SCALE_KEY = 'gantt.scale';
+const ERROR_HIDE_MS = 8000;
+const FLASH_MS = 1500;
+const SCHEDULED_TOAST_MS = 5000;
+
+/** Gantt 檢視（/tasks/gantt）：分組、日 / 週 / 月刻度、拖曳改日期、未排程區 */
+export function GanttPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const groupBy = parseGroupBy(searchParams.get('group'));
+  const setParam = useCallback(
+    (key, value) =>
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set(key, value);
+          return next;
+        },
+        { replace: true },
+      ),
+    [setSearchParams],
+  );
+
+  const { filters } = useTaskFilters();
+  const tasksQuery = useTasks(filters);
+  const users = useUsers();
+  const usersById = useUsersById();
+  // 失敗由頁面頂部提示列（含重試）呈現，不另發全域 toast
+  const update = useUpdateTask({ silentError: true });
+  const [today] = useState(() => todayString());
+  const ganttRef = useRef(null);
+
+  // 樂觀更新：送出期間以覆寫值顯示新日期
+  const [overrides, setOverrides] = useState(() => new Map());
+  const [saveError, setSaveError] = useState(null);
+  const [popover, setPopover] = useState(null);
+  const pendingScrollId = useRef(null);
+  /** 鍵盤拖曳排程放下後，焦點移到新長條所在列 */
+  const pendingFocus = useRef(false);
+  const canEdit = useCan('tasks.edit');
+  const [unscheduledCollapsed, setUnscheduledCollapsed] = useState(
+    () => readStorage(UNSCHEDULED_KEY) === '1',
+  );
+
+  const statusesById = useStatusesById();
+  const [storedScale, setStoredScale] = useState(() => parseScale(readStorage(SCALE_KEY)));
+  const [autoPicked, setAutoPicked] = useState(null);
+  const [flashAssignee, setFlashAssignee] = useState(null);
+  const flashTimer = useRef(undefined);
+  const unscheduledHeadRef = useRef(null);
+
+  const tasks = useMemo(() => {
+    const list = tasksQuery.data ?? [];
+    if (!overrides.size) return list;
+    return list.map((t) => {
+      const o = overrides.get(t.id);
+      return o ? { ...t, ...o } : t;
+    });
+  }, [tasksQuery.data, overrides]);
+
+  const scheduled = useMemo(() => tasks.filter(isScheduled), [tasks]);
+  const unscheduled = useMemo(() => tasks.filter((t) => !isScheduled(t)), [tasks]);
+  // 未排程任務可拖到時間軸排程：需 tasks.edit，且時間軸已顯示（全部未排程時只能用「排入日期」）
+  const dragEnabled = canEdit && scheduled.length > 0;
+  const unscheduledByAssignee = useMemo(() => {
+    const m = new Map();
+    for (const t of unscheduled)
+      if (t.assigneeId != null) m.set(t.assigneeId, (m.get(t.assigneeId) ?? 0) + 1);
+    return m;
+  }, [unscheduled]);
+
+  // 預設刻度：URL > localStorage（手動切換時寫入）> 自動（依首次載入的排程跨度，之後不隨資料跳動；不寫入 URL）
+  if (autoPicked === null && tasksQuery.data) setAutoPicked(autoScale(scheduled, today));
+  const scale = parseScale(searchParams.get('scale')) ?? storedScale ?? autoPicked ?? 'week';
+  const changeScale = useCallback(
+    (s) => {
+      setParam('scale', s);
+      setStoredScale(s);
+      writeStorage(SCALE_KEY, s);
+    },
+    [setParam],
+  );
+
+  const setUnscheduledOpen = useCallback((open) => {
+    setUnscheduledCollapsed(!open);
+    writeStorage(UNSCHEDULED_KEY, open ? '0' : '1');
+  }, []);
+
+  /** 展開未排程區並聚焦其標題列（U、「查看未排程」） */
+  const revealUnscheduled = useCallback(() => {
+    setUnscheduledOpen(true);
+    window.requestAnimationFrame(() => {
+      const el = unscheduledHeadRef.current;
+      el?.scrollIntoView({ block: 'nearest' });
+      el?.focus({ preventScroll: true });
+    });
+  }, [setUnscheduledOpen]);
+
+  /** 空分組摘要列：展開未排程區並標示該成員的列 1.5 秒 */
+  const showUnscheduledOf = useCallback(
+    (assigneeId) => {
+      revealUnscheduled();
+      window.clearTimeout(flashTimer.current);
+      setFlashAssignee(assigneeId);
+      flashTimer.current = window.setTimeout(() => setFlashAssignee(null), FLASH_MS);
+      window.requestAnimationFrame(() =>
+        document
+          .querySelector(`.gantt-unscheduled-row[data-assignee="${assigneeId}"]`)
+          ?.scrollIntoView({ block: 'nearest' }),
+      );
+    },
+    [revealUnscheduled],
+  );
+  useEffect(() => () => window.clearTimeout(flashTimer.current), []);
+
+  const members = useMemo(() => {
+    const active = (users.data ?? []).filter((u) => u.isActive);
+    const picked = filters.assignee.filter((a) => a !== 'none');
+    // 有負責人篩選時只列出被篩選的成員
+    const list = filters.assignee.length ? active.filter((u) => picked.includes(u.id)) : active;
+    return list
+      .map((u) => ({ id: u.id, displayName: u.displayName }))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName, 'zh-Hant'));
+  }, [users.data, filters.assignee]);
+
+  const changeDates = useCallback(
+    (task, patch) => {
+      setSaveError(null);
+      setOverrides((m) => new Map(m).set(task.id, { ...m.get(task.id), ...patch }));
+      // mutateAsync：連續拖曳多條時每一筆的失敗 / 清理都會執行（mutate 的呼叫層回呼只保留最後一次）
+      update
+        .mutateAsync({ id: task.id, ...patch })
+        .catch((err) => setSaveError({ task, patch, message: errorMessage(err) }))
+        .finally(() =>
+          setOverrides((m) => {
+            const next = new Map(m);
+            next.delete(task.id);
+            return next;
+          }),
+        );
+    },
+    [update],
+  );
+
+  useEffect(() => {
+    if (!saveError) return;
+    const t = window.setTimeout(() => setSaveError(null), ERROR_HIDE_MS);
+    return () => window.clearTimeout(t);
+  }, [saveError]);
+
+  // 排入日期 / 拖曳排程後捲到該長條並標示 1.5 秒
+  useEffect(() => {
+    const id = pendingScrollId.current;
+    if (id != null && scheduled.some((t) => t.id === id)) {
+      pendingScrollId.current = null;
+      ganttRef.current?.scrollToTask(id);
+      ganttRef.current?.flashTask(id);
+      if (pendingFocus.current) ganttRef.current?.focusTask(id);
+      pendingFocus.current = false;
+    }
+  }, [scheduled]);
+
+  /** 未排程任務拖到時間軸放下：樂觀更新 + PATCH（日期與依分組的欄位），一次放下 = 一筆復原紀錄 */
+  const scheduleDrop = useCallback(
+    (task, target, keyboard) => {
+      const patch = schedulePatch(target);
+      const title = truncate(task.title);
+      const label = scheduleUndoLabel(title, target.start, target.end);
+      const note = scheduleFieldNote(target);
+      pendingScrollId.current = task.id;
+      pendingFocus.current = keyboard;
+      ganttRef.current?.expandGroup(target.groupKey);
+      setSaveError(null);
+      setOverrides((m) => new Map(m).set(task.id, { ...m.get(task.id), ...patch }));
+      // mutateAsync：連續放下多筆時每一筆的成功 / 失敗處理都會執行（mutate 的回呼只保留最後一次）
+      const handle = { id: null };
+      update
+        .mutateAsync({
+          id: task.id,
+          ...patch,
+          undo: { group: newUndoGroup('gantt'), label, before: scheduleBefore(task), handle },
+        })
+        .then(
+          () =>
+            toast({
+              tone: 'success',
+              title: `已排程『${title}』：${formatScheduleRange(target.start, target.end)}`,
+              description: note ?? undefined,
+              action: {
+                label: '復原',
+                // 以項目 id 復原：不在堆疊頂端也能復原，且之後 Ctrl+Z 不會重複執行
+                onClick: () => void performUndoEntry(handle.id),
+              },
+              duration: SCHEDULED_TOAST_MS,
+            }),
+          (err) => {
+            if (pendingScrollId.current === task.id) pendingScrollId.current = null;
+            setSaveError({ task, patch, message: errorMessage(err) });
+          },
+        )
+        .finally(() =>
+          setOverrides((m) => {
+            const next = new Map(m);
+            next.delete(task.id);
+            return next;
+          }),
+        );
+    },
+    [update],
+  );
+  const schedDnd = useScheduleDnd({ ganttRef, onDrop: scheduleDrop });
+
+  const openPopover = (task, anchor) => {
+    if (!anchor) return;
+    setPopover({ task, anchor: anchor.getBoundingClientRect() });
+  };
+  const closePopover = useCallback(() => setPopover(null), []);
+
+  const requestDates = useCallback((task) => {
+    const el = document.querySelector(`[data-row-key="t${task.id}"] .gantt-cell-left`);
+    if (el) setPopover({ task, anchor: el.getBoundingClientRect() });
+  }, []);
+
+  const controls = createElement(
+    ViewTabsActions,
+    null,
+    createElement(
+      'div',
+      { className: 'gantt-actions' },
+      createElement(Select, {
+        className: 'gantt-group-select',
+        'aria-label': '分組',
+        options: GROUP_OPTIONS.map((o) => ({ value: o.value, label: `分組：${o.label}` })),
+        value: groupBy,
+        onChange: (v) => setParam('group', v),
+        align: 'end',
+      }),
+      createElement(
+        'div',
+        { className: 'gantt-scale', role: 'group', 'aria-label': '時間刻度' },
+        SCALES.map((s) =>
+          createElement(
+            'button',
+            { key: s, type: 'button', 'aria-pressed': s === scale, onClick: () => changeScale(s) },
+            SCALE_LABEL[s],
+          ),
+        ),
+      ),
+      createElement(Button, {
+        className: 'gantt-page-nav',
+        variant: 'ghost',
+        size: 'sm',
+        iconOnly: true,
+        icon: createElement(Icon, { name: 'chevronsLeft' }),
+        'aria-label': '往前',
+        onClick: () => ganttRef.current?.scrollPage(-1),
+      }),
+      createElement(
+        Button,
+        { variant: 'secondary', size: 'sm', onClick: () => ganttRef.current?.scrollToToday() },
+        '今天',
+      ),
+      createElement(Button, {
+        className: 'gantt-page-nav',
+        variant: 'ghost',
+        size: 'sm',
+        iconOnly: true,
+        icon: createElement(Icon, { name: 'chevronsRight' }),
+        'aria-label': '往後',
+        onClick: () => ganttRef.current?.scrollPage(1),
+      }),
+    ),
+  );
+
+  if (tasksQuery.isPending) {
+    return createElement(
+      'div',
+      { className: 'gantt-page', 'aria-busy': 'true' },
+      controls,
+      createElement(GanttSkeleton, null),
+    );
+  }
+  if (tasksQuery.isError && !tasksQuery.data) {
+    return createElement(
+      'div',
+      { className: 'gantt-page' },
+      controls,
+      createElement(ErrorState, { error: tasksQuery.error, onRetry: () => tasksQuery.refetch() }),
+    );
+  }
+  if (tasks.length === 0) {
+    return createElement(
+      'div',
+      { className: 'gantt-page' },
+      controls,
+      hasActiveFilters(filters)
+        ? createElement(NoFilterResults, null)
+        : createElement(EmptyState, { icon: 'gantt', title: '還沒有任務', description: '按 N 快速新增任務' }),
+    );
+  }
+
+  const onPageKeyDown = (e) => {
+    if (e.defaultPrevented || isEditableTarget(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+    if ((e.key === 'u' || e.key === 'U') && unscheduled.length > 0) {
+      e.preventDefault();
+      revealUnscheduled();
+    }
+  };
+
+  return createElement(
+    'div',
+    { className: 'gantt-page', onKeyDown: onPageKeyDown },
+    controls,
+    saveError &&
+      createElement(
+        Alert,
+        {
+          tone: 'danger',
+          onClose: () => setSaveError(null),
+          action: createElement(
+            Button,
+            {
+              variant: 'secondary',
+              size: 'sm',
+              onClick: () => {
+                const { task, patch } = saveError;
+                changeDates(task, patch);
+              },
+            },
+            '重試',
+          ),
+        },
+        '無法更新「',
+        saveError.task.title,
+        '」的日期，已還原（',
+        saveError.message,
+        '）',
+      ),
+    createElement(
+      ScheduleDnd,
+      { dnd: schedDnd },
+      createElement(
+        'div',
+        { className: 'gantt-stack' },
+        scheduled.length === 0
+          ? createElement(EmptyState, {
+              icon: 'gantt',
+              title: '尚無已排程的任務',
+              description: '設定開始日與到期日後會顯示在這裡',
+              action: createElement(
+                Button,
+                { variant: 'secondary', onClick: revealUnscheduled },
+                '查看未排程（',
+                unscheduled.length,
+                '）',
+              ),
+            })
+          : createElement(Gantt, {
+              tasks: scheduled,
+              groupBy: groupBy,
+              scale: scale,
+              today: today,
+              members: members,
+              onChangeDates: changeDates,
+              onRequestDates: requestDates,
+              onScaleChange: changeScale,
+              handleRef: ganttRef,
+              unscheduledCountByAssignee: unscheduledByAssignee,
+              onShowUnscheduled: showUnscheduledOf,
+              scheduleDrag: schedDnd.drag,
+              onScheduleTarget: schedDnd.onScheduleTarget,
+            }),
+        unscheduled.length > 0 &&
+          createElement(
+            'section',
+            { className: 'gantt-unscheduled', 'aria-label': '未排程' },
+            createElement(
+              'div',
+              { className: 'gantt-unscheduled-head' },
+              createElement(
+                'button',
+                {
+                  ref: unscheduledHeadRef,
+                  type: 'button',
+                  className: 'gantt-unscheduled-toggle',
+                  'aria-expanded': !unscheduledCollapsed,
+                  onClick: () => setUnscheduledOpen(unscheduledCollapsed),
+                },
+                createElement(Icon, {
+                  name: unscheduledCollapsed ? 'chevronRight' : 'chevronDown',
+                  size: 16,
+                }),
+                '未排程',
+                createElement(Badge, { count: true }, unscheduled.length),
+              ),
+              createElement(
+                'span',
+                { className: 'gantt-unscheduled-desc' },
+                '尚未設定日期，不會出現在時間軸',
+              ),
+            ),
+            !unscheduledCollapsed &&
+              createElement(
+                'div',
+                { className: 'gantt-unscheduled-list' },
+                unscheduled.map((t) => {
+                  const status = statusesById.get(t.statusId);
+                  const name =
+                    t.assigneeId == null ? '未指派' : (usersById.get(t.assigneeId)?.displayName ?? '—');
+                  return createElement(UnscheduledRow, {
+                    key: t.id,
+                    task: t,
+                    tone: status ? statusTone(status) : 'todo',
+                    statusName: status?.name,
+                    assigneeName: name,
+                    flash: flashAssignee != null && flashAssignee === t.assigneeId,
+                    draggable: dragEnabled,
+                    onRequestDates: (anchor) => openPopover(t, anchor),
+                  });
+                }),
+              ),
+          ),
+      ),
+    ),
+
+    popover &&
+      createElement(DatePopover, {
+        key: popover.task.id,
+        state: popover,
+        today: today,
+        saving: update.isPending,
+        onClose: closePopover,
+        onSave: (patch) => {
+          const { task } = popover;
+          // 成功後任務清單重抓時捲到新長條（需在 invalidate 前設定）
+          pendingScrollId.current = task.id;
+          update.mutate(
+            { id: task.id, ...patch },
+            {
+              onSuccess: () => setPopover(null),
+              onError: (err) =>
+                setSaveError({
+                  task,
+                  patch: {
+                    ...(patch.startDate ? { startDate: patch.startDate } : {}),
+                    ...(patch.dueDate ? { dueDate: patch.dueDate } : {}),
+                  },
+                  message: errorMessage(err),
+                }),
+            },
+          );
+        },
+      }),
+  );
+}
+
+function GanttSkeleton() {
+  return createElement(
+    'div',
+    { className: 'gantt', 'aria-label': '載入中' },
+    createElement('div', { className: 'gantt-skeleton-head' }),
+    Array.from({ length: 8 }, (_, i) =>
+      createElement(
+        'div',
+        { key: i, className: 'gantt-skeleton-row' },
+        createElement('span', null, createElement(Skeleton, { width: `${50 + ((i * 17) % 40)}%` })),
+        createElement(Skeleton, {
+          width: 80 + ((i * 53) % 160),
+          height: 24,
+          style: { marginLeft: 20 + ((i * 37) % 200) },
+        }),
+      ),
+    ),
+  );
+}

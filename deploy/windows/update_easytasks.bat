@@ -43,19 +43,8 @@ if errorlevel 1 (
   goto :end
 )
 
-echo === [4/5] Build frontend ===
-call :ensure_node
-if errorlevel 1 goto :end
-call npm ci
-if errorlevel 1 (
-  echo [X] npm ci failed. Service not restarted.
-  goto :end
-)
-call npm run build
-if errorlevel 1 (
-  echo [X] npm run build failed. Service not restarted.
-  goto :end
-)
+echo === [4/5] Frontend ===
+echo   Static files under web\ - nothing to build.
 
 echo === [5/5] Restart service ===
 net stop "%SVC%"
@@ -75,30 +64,3 @@ pause
 endlocal
 exit /b
 
-rem ---------------------------------------------------------------------------
-rem :ensure_node - same as in setup_easytasks.bat
-rem ---------------------------------------------------------------------------
-:ensure_node
-set "NODE_DIR=%APP_DIR%\.tools\node"
-set "SYS_NODE_MAJOR="
-for /f "tokens=1 delims=." %%V in ('node -v 2^>nul') do set "SYS_NODE_MAJOR=%%V"
-if defined SYS_NODE_MAJOR set "SYS_NODE_MAJOR=!SYS_NODE_MAJOR:v=!"
-if defined SYS_NODE_MAJOR if !SYS_NODE_MAJOR! GEQ 22 (
-  where npm >nul 2>&1
-  if not errorlevel 1 exit /b 0
-)
-if defined SYS_NODE_MAJOR echo   System Node v!SYS_NODE_MAJOR! is older than 22, using portable Node.js 22 instead.
-if exist "%NODE_DIR%\npm.cmd" goto :ensure_node_path
-echo   npm not found: downloading portable Node.js 22 into %NODE_DIR%
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%ensure-node.ps1" -ProjectDir "%APP_DIR%"
-if errorlevel 1 (
-  echo [X] Node.js download failed. Check that this machine can reach nodejs.org.
-  exit /b 1
-)
-if not exist "%NODE_DIR%\npm.cmd" (
-  echo [X] %NODE_DIR%\npm.cmd not found after download.
-  exit /b 1
-)
-:ensure_node_path
-set "PATH=%NODE_DIR%;%PATH%"
-exit /b 0

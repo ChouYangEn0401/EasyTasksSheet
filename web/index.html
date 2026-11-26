@@ -3,10 +3,47 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 伺服器每次請求代入：{{BASE}} = BASE_PATH（子路徑部署）、{{STATIC}} = 版本化的靜態檔前綴 -->
     <meta name="ts-base" content="{{BASE}}" />
     <meta name="ts-static" content="{{STATIC}}" />
     <title>TasksSheets</title>
+    <!-- 全域樣式先載（layer 順序宣告在 base.css），feature 樣式在後 -->
     <link rel="stylesheet" href="{{STATIC}}/css/base.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/tokens.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/components.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/shell.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/motion.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/utilities.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/admin.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/audit.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/checklist.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/delayLink.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/dependency.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/discussion.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/eng.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/feedback.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/gantt.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/kanban.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/listDnd.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/overview.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/personal.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/presence.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/relations.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/scroll-soft.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/settings.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/sync.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/tasks.css" />
+    <link rel="stylesheet" href="{{STATIC}}/css/features/undo.css" />
+    <!-- 唯一的第三方：Preact（web/static/vendor/preact/README.md）。程式碼用 preact / preact/hooks / preact/compat 這三個名字 -->
+    <script type="importmap">
+      {
+        "imports": {
+          "preact": "{{STATIC}}/vendor/preact/preact.module.js",
+          "preact/hooks": "{{STATIC}}/vendor/preact/hooks.module.js",
+          "preact/compat": "{{STATIC}}/vendor/preact/compat.module.js"
+        }
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
