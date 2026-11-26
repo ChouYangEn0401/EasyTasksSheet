@@ -3,21 +3,23 @@
 rem ============================================================================
 rem  EasyTasksSheet：第一次準備（或重建）程式環境。不註冊服務、不停任何服務。
 rem  做的事：建 .venv -> 安裝 Python 套件 -> 放 .env（已存在就不動）-> 建置前端 -> 建 data、logs
-rem  前提：已經 git clone 到 APP_DIR；已安裝 Python 3.11（所有使用者）與 Node.js 22 LTS（只用來建置前端）
+rem  前提：已經 git clone 專案（本腳本自動以所在專案為準）；已安裝 Python 3.11（所有使用者）與 Node.js 22 LTS（只用來建置前端）
 rem ============================================================================
 setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
-set "APP_DIR=C:\EasyTasksSheet"
+rem 專案路徑：本腳本在 <專案>\deploy\windows\，往上兩層就是專案根目錄（clone 到哪裡都適用）
+for %%I in ("%~dp0..\..") do set "APP_DIR=%%~fI"
 
 if not exist "%APP_DIR%\main.py" (
-  echo [X] 找不到 %APP_DIR%\main.py。先 git clone 到 %APP_DIR%。
+  echo [X] 找不到 %APP_DIR%\main.py：本腳本要放在專案的 deploy\windows\ 裡執行。
   goto :end
 )
 cd /d "%APP_DIR%"
 
 echo === [1/4] Python 環境 ===
 if not exist ".venv\Scripts\python.exe" (
-  py -3.11 -m venv .venv || ( echo [X] 建立 venv 失敗：確認已安裝 Python 3.11 與 py launcher & goto :end )
+  py -3.11 -m venv .venv 2>nul || py -3 -m venv .venv
+  if not exist ".venv\Scripts\python.exe" ( echo [X] 建立 venv 失敗：確認已安裝 Python 3.11 以上與 py launcher & goto :end )
 )
 ".venv\Scripts\python.exe" -m pip install -r requirements.txt || ( echo [X] pip 安裝失敗 & goto :end )
 ".venv\Scripts\python.exe" --version

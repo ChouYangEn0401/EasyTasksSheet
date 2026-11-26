@@ -7,7 +7,8 @@ rem  任何一步失敗就停下來，服務維持原狀（建置失敗時不會
 rem ============================================================================
 setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
-set "APP_DIR=C:\EasyTasksSheet"
+rem 專案路徑：本腳本在 <專案>\deploy\windows\，往上兩層就是專案根目錄（clone 到哪裡都適用）
+for %%I in ("%~dp0..\..") do set "APP_DIR=%%~fI"
 set "SVC=easytasks"
 set "PORT=8100"
 set "PY=%APP_DIR%\.venv\Scripts\python.exe"
