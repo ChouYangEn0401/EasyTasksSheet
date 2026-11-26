@@ -507,6 +507,13 @@
   .tl-row--task:hover .tl-row-actions .ui-btn {
     background: var(--color-surface);
   }
+  /* 動作鈕只在按鈕本身接指標；鈕與鈕之間的空隙讓給底下的標題徽章（被擋／擋著的 Tooltip 才叫得出來） */
+  .tl-row-actions {
+    pointer-events: none;
+  }
+  .tl-row-actions > * {
+    pointer-events: auto;
+  }
 
   /* ── 就地編輯欄位（List 與 Drawer 共用） ── */
   .tl-field {
