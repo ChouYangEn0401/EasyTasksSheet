@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import os
 import time
 from pathlib import Path
 
@@ -16,10 +17,8 @@ pytestmark = pytest.mark.usefixtures("data_hygiene")
 # 個人頁「匯報報告」：完成任務 / 待辦 → 選本週 → 預覽 → 取消勾選 → 複製 → 下載 .md；上週無資料 → 空狀態
 # （原檔 serial：pytest 同檔內本來就照順序跑）
 
-# 原檔即寫死此 Windows 路徑（逐字照搬）
-SHOTS = (
-    "C:\\Users\\629\\AppData\\Local\\Temp\\claude\\e7fe0c0dcc39054e\\13d96097-8b6c-4c25-a5d3-fc64b31cc29f\\scratchpad\\report"
-)
+# 截圖目錄：設環境變數 REPORT_SHOTS 才截（原檔寫死 Windows 路徑，這裡改成選用）
+SHOTS = os.environ.get("REPORT_SHOTS") or ""
 stamp = int(time.time() * 1000)
 T1 = f"報告任務甲-{stamp}"
 T2 = f"報告任務乙-{stamp}"
@@ -70,7 +69,8 @@ def _width(page: Page) -> int:
 
 def test_report_preview_copy_download_empty(page: Page, context: BrowserContext):
     """匯報報告：預覽、取消勾選、複製、下載 .md、上週空狀態"""
-    Path(SHOTS).mkdir(parents=True, exist_ok=True)
+    if SHOTS:
+        Path(SHOTS).mkdir(parents=True, exist_ok=True)
     context.grant_permissions(["clipboard-read", "clipboard-write"])
     errors = collect_errors(page)
     login_via_ui(page, E2E_USERS["member"], "/me")
@@ -85,7 +85,8 @@ def test_report_preview_copy_download_empty(page: Page, context: BrowserContext)
         expect(dialog.get_by_text(t, exact=True)).to_be_visible()
     expect(dialog.get_by_test_id("report-summary")).to_contain_text("完成任務")
     page.wait_for_timeout(400)  # 等對話框淡入完成
-    page.screenshot(path=f"{SHOTS}\\preview-{_width(page)}.png")
+    if SHOTS:
+        page.screenshot(path=f"{SHOTS}/preview-{_width(page)}.png")
 
     # 取消勾選任務乙：彙總與輸出同步更新
     dialog.get_by_role("checkbox", name=f"納入：{T2}").uncheck()
@@ -109,7 +110,8 @@ def test_report_preview_copy_download_empty(page: Page, context: BrowserContext)
     dialog.get_by_role("tab", name="可編輯文字").click()
     expect(area).to_have_value(re.compile(r"^# 匯報報告"))
     page.wait_for_timeout(400)  # 等對話框淡入完成
-    page.screenshot(path=f"{SHOTS}\\format-{_width(page)}.png")
+    if SHOTS:
+        page.screenshot(path=f"{SHOTS}/format-{_width(page)}.png")
     with page.expect_download() as dl:
         dialog.get_by_role("button", name="下載 .md").click()
     file = dl.value
@@ -132,7 +134,8 @@ def test_report_preview_copy_download_empty(page: Page, context: BrowserContext)
     dialog.get_by_role("tab", name="預覽").click()
     expect(dialog.get_by_text("這段期間沒有紀錄").first).to_be_visible()
     page.wait_for_timeout(400)  # 等對話框淡入完成
-    page.screenshot(path=f"{SHOTS}\\empty-{_width(page)}.png")
+    if SHOTS:
+        page.screenshot(path=f"{SHOTS}/empty-{_width(page)}.png")
 
     # 選項記憶：重新整理後仍為上週
     page.keyboard.press("Escape")
@@ -152,10 +155,12 @@ def test_report_768_and_other_member(page: Page):
     expect(dialog.get_by_test_id("report-summary")).to_be_visible()
     expect(dialog.get_by_text(T1, exact=True)).to_be_visible()
     page.wait_for_timeout(400)  # 等對話框淡入完成
-    page.screenshot(path=f"{SHOTS}\\preview-768.png")
+    if SHOTS:
+        page.screenshot(path=f"{SHOTS}/preview-768.png")
     dialog.get_by_role("tab", name="可編輯文字").click()
     page.wait_for_timeout(400)  # 等對話框淡入完成
-    page.screenshot(path=f"{SHOTS}\\format-768.png")
+    if SHOTS:
+        page.screenshot(path=f"{SHOTS}/format-768.png")
     page.keyboard.press("Escape")
 
     # 他人：標題標示成員名稱（唯讀資料）
