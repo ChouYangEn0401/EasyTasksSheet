@@ -310,20 +310,6 @@
   .tl-cell--title > .tl-field {
     min-width: calc(8em + 20px);
   }
-  /* 標題左側 8px 狀態點：把狀態欄藏掉的人也看得到狀態（ui-refresh §3.2） */
-  .tl-status-dot {
-    flex: none;
-    align-self: center;
-    width: 8px;
-    height: 8px;
-    margin: 0 2px 0 10px;
-    border-radius: var(--radius-full);
-    background: var(--status-dot, var(--color-status-todo));
-  }
-  .tl-status-dot + .tl-field {
-    padding-left: 6px;
-  }
-
   /* 到期日三色（列上的 data-due 由 ListTable 依日期算出；已完成的列不帶 data-due） */
   .tl-cell--due .tl-field-value {
     color: var(--color-text-secondary);

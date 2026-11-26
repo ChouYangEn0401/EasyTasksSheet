@@ -30,6 +30,12 @@
     margin: 0 0 0 var(--space-1);
     align-self: center;
   }
+  /* 清單的標題欄很窄（M4）：pill 縮到最小（圖示＋數字），別把未讀與等待中擠到第二行 */
+  .dep-blocks-mark .dep-mark {
+    padding: 0 4px 0 3px;
+    gap: 2px;
+    height: 16px;
+  }
 
   /* ── 清單列與看板卡的小標記（§3.3）：「被擋 N」琥珀、「擋著 N」中性 ── */
   .dep-mark-wrap {

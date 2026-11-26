@@ -109,13 +109,14 @@ export function BlockedLock({ task, mode = 'kanban' }) {
       createElement(
         'span',
         {
-          className: 'dep-lock-icon dep-mark dep-mark--blocked',
+          className: mode === 'list' ? 'dep-lock-icon' : 'dep-lock-icon dep-mark dep-mark--blocked',
           role: 'img',
           'aria-label': `等待中：${tip}`,
           tabIndex: mode === 'kanban' ? 0 : -1,
         },
-        createElement(HourglassIcon, { size: 12 }),
-        createElement('span', { className: 'dep-mark-text' }, blockedMarkText(n)),
+        createElement(HourglassIcon, { size: mode === 'list' ? 14 : 12 }),
+        // 清單的標題欄很窄（M4：未讀與等待中要優先留在第一行）：清單只放沙漏圖示，全文在 aria-label 與 Tooltip
+        mode !== 'list' && createElement('span', { className: 'dep-mark-text' }, blockedMarkText(n)),
       ),
     ),
   );
@@ -136,7 +137,7 @@ export function BlocksMark({ task }) {
         'span',
         { className: 'dep-mark dep-mark--blocks', role: 'img', 'aria-label': tip, tabIndex: -1 },
         createElement(ChainIcon, { size: 12 }),
-        createElement('span', { className: 'dep-mark-text' }, blocksMarkText(d.blocksCount)),
+        createElement('span', { className: 'dep-mark-text' }, String(d.blocksCount)),
       ),
     ),
   );

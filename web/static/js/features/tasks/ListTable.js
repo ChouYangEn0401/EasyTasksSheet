@@ -652,7 +652,6 @@ function TaskRow({
   const done = status?.category === 'done';
   const temp = task.id < 0;
   // 純顯示：標題左側狀態點的顏色（ui-refresh §3.2）
-  const dotColor = status ? `var(--color-status-${statusTone(status)})` : undefined;
   const commit = useFieldCommit();
   const toggleDone = async () => {
     const next = toggleDoneStatus(statuses, task.statusId);
@@ -706,14 +705,13 @@ function TaskRow({
         setEditing: setEditing,
         cellProps: cellProps,
         onSaved: onSaved,
-        dotColor: dotColor,
       }),
     ),
     createElement('div', { role: 'gridcell', className: 'tl-cell tl-cell--pad' }),
   );
 }
 
-function TaskCell({ task, col, colIndex, rowKey, edit, setEditing, cellProps, onSaved, dotColor }) {
+function TaskCell({ task, col, colIndex, rowKey, edit, setEditing, cellProps, onSaved }) {
   const valueText = useValueText(task, col);
   const sticky = col.kind === 'title' ? ' tl-sticky-1' : '';
   if (!isApplicable(task, col))
@@ -761,13 +759,6 @@ function TaskCell({ task, col, colIndex, rowKey, edit, setEditing, cellProps, on
       className: `tl-cell${sticky}${col.kind === 'title' ? ' tl-cell--title' : ''}${col.kind === 'dueDate' ? ' tl-cell--due' : ''}`,
       title: col.kind === 'title' ? task.title : undefined,
     },
-    col.kind === 'title' &&
-      dotColor &&
-      createElement('span', {
-        className: 'tl-status-dot',
-        style: { '--status-dot': dotColor },
-        'aria-hidden': 'true',
-      }),
     createElement(EditableField, {
       task: task,
       col: col,
