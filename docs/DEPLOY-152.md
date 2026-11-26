@@ -19,6 +19,7 @@
 | `install_easytasks_service.bat` | 建立／重建 NSSM 服務。可加 `check` 只檢查 |
 | `update_easytasks.bat` | 更新程式：先備份 → `git pull` → 套件 → 建置 → 重啟 → 健康檢查（建置失敗不會重啟） |
 | `backup_easytasks.bat` | 備份資料庫與附件（給工作排程器用，也可手動跑） |
+| `allow_restore.bat` | 開啟 30 分鐘的「還原解鎖」，讓 root 能在網頁上用整站搬家包覆蓋已有資料（加 `revoke` 立即關閉） |
 | `uninstall_easytasks_service.bat` | 移除服務（不刪資料） |
 | `env.152.example` | 152 用的 `.env` 範本（`setup_easytasks.bat` 會自動複製） |
 | `nginx-easytasks.conf` | 要貼進 152 `nginx.conf` 的 `/easytasks/` 段落 |
@@ -85,6 +86,29 @@
    ```
 
    還原演練：`.venv\Scripts\python.exe -m server.cli backup --self-test`。
+
+## 把本機的資料搬到 152（整站搬家包）
+
+帳號密碼、任務、設定、附件會整份帶過去。設計與安全說明見 [design/site-pack.md](design/site-pack.md)。
+
+1. 本機：用 root 登入 → 資料管理 → **整站搬家包 → 建立整站搬家包** → 再輸入一次密碼。
+2. 畫面會顯示 8 個英文單字的**解鎖密語（只顯示一次）**：按「複製密語」存到安全的地方（和檔案分開放），再按「下載搬家包」得到 `easytasks-<時間>.etpack`。
+3. 152 是**全新安裝**（還沒有人完成首次登入）：打開 `https://140.112.180.152/easytasks/login` → 「全新安裝？從整站搬家包還原」→ 選檔、貼上密語 → 還原 → 用本機的帳號密碼登入。
+4. 152 **已經有資料**，要整份覆蓋：
+   1. 用遠端桌面登入 152，執行 `C:\EasyTasksSheet\deploy\windows\allow_restore.bat`（開啟 30 分鐘的還原解鎖；只能在 152 本機開）。
+   2. 用 root 登入網頁 → 資料管理 → 整站搬家包 →「我已開啟，重新檢查」→ 選檔、貼上密語、輸入自己的密碼與「取代全部」→ 取代全部資料。
+   3. 還原前的資料會自動備份到 `.env` 的 `BACKUP_DIR`（`app-before-pack-restore-<時間>.db`），需要時可用 `python -m server.cli restore` 換回。
+
+檔案大於 nginx 的上傳上限（目前 256 MB）時，把檔案複製到 152 後改用指令：
+
+```bat
+cd /d C:\EasyTasksSheet
+net stop easytasks
+.venv\Scripts\python.exe -m server.cli pack-import C:\EasyTasksSheet\backups\easytasks-<時間>.etpack --replace --yes
+net start easytasks
+```
+
+（全新的 152 不需要 `--replace --yes`；密語會在執行時詢問，不會顯示在畫面上。）
 
 ## 日常
 

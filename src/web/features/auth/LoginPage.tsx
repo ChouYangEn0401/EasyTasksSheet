@@ -3,9 +3,11 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router';
 import { ApiError } from '../../lib/api.ts';
 import { useLogin, useMe } from '../../lib/auth.ts';
 import { safeNext } from '../../lib/navigation.ts';
+import { useSetupStatus } from '../../lib/sitePack.ts';
 import { Alert, Button, Field, Input, Spinner } from '../../ui/index.ts';
 import { AuthCard } from './AuthCard.tsx';
 import { PasswordInput } from './PasswordInput.tsx';
+import { SetupRestorePanel } from './SetupRestorePanel.tsx';
 
 type Notice = { tone: 'info' | 'warning' | 'danger'; text: string } | null;
 
@@ -19,8 +21,14 @@ export function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [notice, setNotice] = useState<Notice>(() =>
-    sp.get('reason') === 'expired' ? { tone: 'info', text: '登入已逾時，請重新登入' } : null,
+    sp.get('reason') === 'expired'
+      ? { tone: 'info', text: '登入已逾時，請重新登入' }
+      : sp.get('reason') === 'restored'
+        ? { tone: 'info', text: '已用整站搬家包還原，請用搬家包裡的帳號密碼登入' }
+        : null,
   );
+  const setup = useSetupStatus(!me.data);
+  const [showRestore, setShowRestore] = useState(false);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
   const userRef = useRef<HTMLInputElement>(null);
   const passRef = useRef<HTMLInputElement>(null);
@@ -78,8 +86,29 @@ export function LoginPage() {
     <AuthCard
       title="登入"
       subtitle="實驗室專案管理工具"
-      footer={<p className="m-0 text-xs text-tertiary">忘記密碼請洽管理員</p>}
+      footer={
+        <div className="flex flex-col items-center gap-2">
+          {setup.data?.pristine && !showRestore && (
+            <Button variant="ghost" size="sm" icon="inbox" onClick={() => setShowRestore(true)}>
+              全新安裝？從整站搬家包還原
+            </Button>
+          )}
+          <p className="m-0 text-xs text-tertiary">忘記密碼請洽管理員</p>
+        </div>
+      }
     >
+      {showRestore && setup.data?.pristine && (
+        <SetupRestorePanel
+          maxUploadMb={setup.data.maxUploadMb}
+          onDone={(r) => {
+            setShowRestore(false);
+            setNotice({
+              tone: 'info',
+              text: `還原完成（帳號 ${r.counts.users}、任務 ${r.counts.tasks}、附件 ${r.counts.attachments}），請用搬家包裡的帳號密碼登入`,
+            });
+          }}
+        />
+      )}
       {notice && (
         <Alert tone={notice.tone} role="alert">
           {notice.text}
