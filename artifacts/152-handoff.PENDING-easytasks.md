@@ -12,7 +12,7 @@
 ## 2. 架構圖第 3、4 層
 
 - 第 3 層 nginx 的分流加上 `/easytasks/` → 8100。
-- `split` 加第三格 `4c EasyTasksSheet`：`127.0.0.1:8100`，NSSM 服務 `easytasks`；靠 `BASE_PATH=/easytasks` 知道自己的前綴（前端建置時寫死、cookie Path）。<span class="st st-todo">待辦</span>
+- `split` 加第三格 `4c EasyTasksSheet`：`127.0.0.1:8100`，NSSM 服務 `easytasks`；靠 `BASE_PATH=/easytasks` 知道自己的前綴（伺服器每次回首頁時代入、cookie Path；改了只要重啟）。<span class="st st-todo">待辦</span>
 
 ## 3. 對外網址表（`#ov-urls`）加一列
 
@@ -24,7 +24,7 @@
 
 ## 5. 檔案與路徑（`#ov-paths`）加列
 
-| EasyTasksSheet 程式 | `C:\EasyTasksSheet\` | git 工作副本；venv 在 `.venv\`；進入點 `main.py`；前端建置檔 `dist\web\` |
+| EasyTasksSheet 程式 | `C:\EasyTasksSheet\` | git 工作副本；venv 在 `.venv\`；進入點 `main.py`；前端是 `web\` 底下的靜態檔（2.0 起不需建置、不需 Node.js） |
 | EasyTasksSheet 設定 | `C:\EasyTasksSheet\.env` | 範本 `deploy\windows\env.152.example`；不進 git |
 | EasyTasksSheet 資料 | `C:\EasyTasksSheet\data\app.db`、`data\attachments\` | SQLite；排程每天備份到 `.env` 的 `BACKUP_DIR` |
 | EasyTasksSheet log | `C:\EasyTasksSheet\logs\easytasks.out.log`、`easytasks.err.log`、`backup.log` | NSSM 10 MB 輪替 |
@@ -45,12 +45,12 @@
 ## 9. 8 日常維護
 
 - 健康檢查（`#m-check`）加：`(Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8100/api/health).StatusCode` → 200。
-- 新小節「更新 EasyTasksSheet」：`C:\EasyTasksSheet\deploy\windows\update_easytasks.bat`（先備份 → `git pull --ff-only` → 套件 → 建置 → 重啟 → 健康檢查；建置失敗不重啟）。
+- 新小節「更新 EasyTasksSheet」：`C:\EasyTasksSheet\deploy\windows\update_easytasks.bat`（先備份 → `git pull --ff-only` → 套件 → 重啟 → 健康檢查；任何一步失敗就停、不重啟）。
 - 備份（`#m-backup`）：EasyTasksSheet 不靠 backup.bat，由工作排程器 `EasyTasksSheet Backup`（每天 03:17，SYSTEM）執行 `backup_easytasks.bat`；線上備份不用停服務。
 
 ## 10. 待辦總表（`#todo`）新增一組「2026-11-25 新增：EasyTasksSheet」
 
-1. 152 安裝 Node.js 22 LTS（或決定改在開發電腦建置 `dist\web`）。<span class="st st-decide">待決定</span>
+1. （已不需要：2.0 起不需 Node.js，原本「152 安裝 Node.js 22 LTS 或在開發電腦建置 `dist\web`」這項刪除。）
 2. clone 到 `C:\EasyTasksSheet` → `setup_easytasks.bat` → `install_easytasks_service.bat check` → 正式跑。
 3. nginx 加 `location /easytasks/`，`-t` 後 reload。
 4. `jump_page.html` 換成 `deploy/windows/jump_page.html`（多一張 EasyTasksSheet 卡片）。

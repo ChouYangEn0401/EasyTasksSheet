@@ -1,5 +1,7 @@
 # PROGRESS
 
+> ⚠️ 歷史紀錄（React + Vite 時期）。2.0 起前端改為原生 JS、不需 Node，見 CHANGELOG.md 與 docs/frontend.md。
+
 專案：實驗室專案管理工具（TasksSheets）
 最後更新：2026-11-25（第六輪功能與審查修正完成，整合分支 `integration/wave6`）
 

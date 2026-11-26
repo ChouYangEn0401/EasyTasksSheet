@@ -1,5 +1,7 @@
 # PLAN — 實驗室專案管理工具（TasksSheets）
 
+> ⚠️ 歷史紀錄（React + Vite 時期）。2.0 起前端改為原生 JS、不需 Node，見 CHANGELOG.md 與 docs/frontend.md。
+
 - 文件狀態：**待使用者審核**（核准前不進行任何實作）
 - 建立日期：2026-11-24
 - 適用流程：parallel-dev-orchestrator（core 先行 → worktree 平行軌道 → ff-only 合併 → 立即清理）

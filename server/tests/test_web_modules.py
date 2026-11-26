@@ -106,9 +106,11 @@ def test_imports_resolve_and_names_exist(path: Path):
 @pytest.mark.parametrize("path", _files(), ids=lambda p: str(p.relative_to(WEB_JS)))
 def test_no_leftovers_from_the_old_toolchain(path: Path):
     text = path.read_text(encoding="utf-8")
-    bad = [
-        pat
-        for pat in (".ts'", ".tsx'", "from 'react'", "from 'react-dom", "@tanstack", "from 'zod'", "date-fns", "import.meta", "@dnd-kit", "__BLANK__")
-        if pat in text
-    ]
+    # 只看 import 的來源（註解裡提到「取代了哪個函式庫」是允許的）
+    specs = [spec for spec, _ in _imports(path)]
+    bad = [s for s in specs if s.startswith(("react", "@tanstack", "zod", "date-fns", "@dnd-kit")) or s.endswith((".ts", ".tsx"))]
+    if "import.meta" in text:
+        bad.append("import.meta")
+    if "__BLANK__" in text:
+        bad.append("__BLANK__")
     assert not bad, f"殘留：{bad}"

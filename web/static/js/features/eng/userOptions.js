@@ -1,3 +1,4 @@
+import { createElement } from 'preact';
 import { useMemo } from 'preact/compat';
 import { useUsers } from '../../lib/hooks.js';
 import { Avatar } from '../../ui/index.js';

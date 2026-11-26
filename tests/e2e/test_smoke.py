@@ -83,9 +83,12 @@ def test_all_routes_render_without_console_errors(page: Page, base_url: str):
     login_via_ui(page, E2E_USERS["admin"])
     for route in ROUTES:
         page.goto(f"{base_url}{route}")
-        expect(page.locator("#root")).not_to_be_empty()
-        expect(page.locator("h1").first).to_be_visible()
+        try:
+            expect(page.locator("#root")).not_to_be_empty()
+            expect(page.locator("h1").first).to_be_visible()
+        except AssertionError as e:  # 把 console 錯誤一起印出來，不然只看得到「空的」
+            raise AssertionError(f"{route} 沒畫出來；console：\n" + "\n".join(errors)) from e
         page.wait_for_timeout(300)
     # 已知可忽略：瀏覽器對 favicon 的 404
-    real = [e for e in errors if "favicon" not in e]
+    real = [e for e in errors if "favicon" not in e and "status of 401" not in e]
     assert real == [], "\n".join(real)

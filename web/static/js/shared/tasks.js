@@ -10,5 +10,3 @@ export const TASK_PRIORITY_LABELS = {
   urgent: '緊急',
 };
 
-/** PATCH 只送改動的欄位（欄位層級後寫入者勝） */
-export const taskUpdateInput = taskCreateInput.partial();
