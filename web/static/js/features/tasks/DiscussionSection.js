@@ -11,7 +11,7 @@ import { Button, Dialog, ErrorState, Icon, Skeleton, Tooltip } from '../../ui/in
 import { useCommentMutations, useThreads } from './discussionApi.js';
 import { DiscussionComposer } from './DiscussionComposer.js';
 import { filterThreads, firstUnreadId, isNearBottom, orderThreads, scrollEdges } from './discussionModel.js';
-import { PendingList, Thread } from './DiscussionThread.js';
+import { PendingList, Thread, layoutThreads } from './DiscussionThread.js';
 
 const FILTERS = [
   { key: 'all', label: '全部' },
@@ -95,6 +95,11 @@ export function DiscussionSection({ task }) {
   const unreadId = useMemo(
     () => (enteredReadId === undefined ? null : firstUnreadId(flat, enteredReadId, meId)),
     [flat, enteredReadId, meId],
+  );
+  // 日期分隔線與同作者連續訊息折疊（ui-refresh-2026-11-26 §8）
+  const layout = useMemo(
+    () => layoutThreads(visibleThreads, { unreadId }),
+    [visibleThreads, unreadId],
   );
   // 未讀在收合的回覆中：自動展開該串
   const [autoExpanded, setAutoExpanded] = useState(false);
@@ -335,6 +340,8 @@ export function DiscussionSection({ task }) {
           key: t.id,
           thread: t,
           env: env,
+          day: layout.get(t.id)?.day ?? null,
+          cont: layout.get(t.id)?.cont ?? false,
           expanded: expanded.has(t.id),
           onToggle: (open) =>
             setExpanded((s) => {

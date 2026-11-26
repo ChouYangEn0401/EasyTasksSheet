@@ -1,7 +1,7 @@
 import { createElement, Fragment } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/compat';
 import { Tooltip } from '../../ui/index.js';
-import { BlockedLock } from '../delay-link/DependencyBadge.js';
+import { BlockedLock, BlocksMark } from '../delay-link/DependencyBadge.js';
 import { TaskPresenceDots } from '../presence/TaskPresence.js';
 import { ChecklistBadge } from './ChecklistBadge.js';
 import { RelationBadge } from './RelationBadge.js';
@@ -12,6 +12,7 @@ export function TitleBadges({ task }) {
   const items = [
     { key: 'unread', node: unread ? createElement(TaskBadges, { task: task, part: 'comments' }) : null },
     { key: 'waiting', node: createElement(BlockedLock, { task: task, mode: 'list' }) },
+    { key: 'blocks', node: createElement(BlocksMark, { task: task }) },
     { key: 'presence', node: createElement(TaskPresenceDots, { taskId: task.id }) },
     { key: 'checklist', node: createElement(ChecklistBadge, { task: task }) },
     { key: 'relation', node: createElement(RelationBadge, { count: task.relationCount }) },

@@ -8,6 +8,75 @@ import { BODY_MAX, REPLIES_SHOWN, mergeReplies, shouldCollapse, tokenizeBody } f
 
 const nameOf = (env, id) => (id != null ? env.usersById.get(id)?.displayName : undefined) ?? '其他成員';
 
+// ── 版面分組（ui-refresh-2026-11-26 §8）：日期分隔線、同作者 5 分鐘內連續訊息折疊 ──
+
+/** 同一作者、這麼近的連續根訊息折成一組（第二則起不重複頭像與名字） */
+export const CONT_WINDOW_MS = 5 * 60_000;
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+const pad2 = (n) => String(n).padStart(2, '0');
+
+function dayKey(t) {
+  const d = new Date(t);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+/** 日期分隔線的字：今天／昨天／11/24（一）；跨年加年份 */
+export function dayLabel(at, now = Date.now()) {
+  if (dayKey(at) === dayKey(now)) return '今天';
+  const y = new Date(now);
+  y.setDate(y.getDate() - 1);
+  if (dayKey(at) === dayKey(y.getTime())) return '昨天';
+  const d = new Date(at);
+  const md = `${d.getMonth() + 1}/${d.getDate()}（${WEEKDAYS[d.getDay()]}）`;
+  return d.getFullYear() === new Date(now).getFullYear() ? md : `${d.getFullYear()}/${md}`;
+}
+
+/**
+ * 依畫面順序（舊→新）算每個討論串的版面：day = 這一串前面要不要插日期分隔線（字）、
+ * cont = 根訊息是否接在上一串後面（同作者、5 分鐘內、上一串沒有回覆、兩串都沒解決／沒刪除、不是未讀起點）。
+ * 純函式；回傳 Map(threadId → { day, cont })。
+ */
+export function layoutThreads(threads, { now = Date.now(), unreadId = null } = {}) {
+  const out = new Map();
+  let prev = null;
+  for (const t of threads) {
+    const at = t.lastActivityAt ?? t.createdAt;
+    const prevAt = prev ? (prev.lastActivityAt ?? prev.createdAt) : null;
+    const newDay = prev == null || dayKey(at) !== dayKey(prevAt);
+    const cont =
+      !newDay &&
+      prev != null &&
+      t.authorId != null &&
+      t.authorId === prev.authorId &&
+      t.deletedAt == null &&
+      prev.deletedAt == null &&
+      t.threadResolvedAt == null &&
+      prev.threadResolvedAt == null &&
+      (prev.replyCount ?? 0) === 0 &&
+      t.id !== unreadId &&
+      t.createdAt >= prev.createdAt &&
+      t.createdAt - prev.createdAt <= CONT_WINDOW_MS;
+    out.set(t.id, { day: newDay ? dayLabel(at, now) : null, cont });
+    prev = t;
+  }
+  return out;
+}
+
+/** 折疊訊息左側空位的小時間（14:32；hover／focus 才出現，完整時間在 tooltip） */
+function ContTime({ at, edited }) {
+  const d = new Date(at);
+  const full = formatDateTime(at) + (edited ? ` · 已於 ${formatDateTime(edited)} 編輯` : '');
+  return createElement(
+    Tooltip,
+    { content: full },
+    createElement(
+      'time',
+      { className: 'disc-time disc-cont-time', dateTime: d.toISOString(), tabIndex: 0, 'aria-label': full },
+      `${pad2(d.getHours())}:${pad2(d.getMinutes())}`,
+    ),
+  );
+}
+
 /** 相對時間；hover / focus 顯示絕對時間 */
 function MsgTime({ at, edited }) {
   const [now, setNow] = useState(() => Date.now());
@@ -141,10 +210,14 @@ function EditBox({ initial, onSave, onCancel }) {
 }
 
 /** 單則訊息（根訊息或回覆） */
-function Message({ c, env, thread, isRoot, tools, actions }) {
+function Message({ c, env, thread, isRoot, tools, actions, cont = false }) {
   const [editing, setEditing] = useState(false);
   const deleted = c.deletedAt != null;
   const mine = c.authorId != null && c.authorId === env.meId;
+  // 別人訊息裡 @ 到我：整則加左邊框（ui-refresh §8）
+  const mentionsMe =
+    !deleted && !mine && env.meId != null && Array.isArray(c.mentions) && c.mentions.includes(env.meId);
+  const folded = cont && !deleted;
   const canDelete = !deleted && env.canWrite && (mine || env.canModerate);
   const canEdit = !deleted && mine && env.canWrite;
   const replyTo = c.replyToId != null && c.replyToId !== thread.id ? findComment(thread, c.replyToId) : null;
@@ -173,7 +246,7 @@ function Message({ c, env, thread, isRoot, tools, actions }) {
     createElement(
       'div',
       {
-        className: `disc-msg${isRoot ? ' disc-msg--root' : ' disc-msg--reply'}${deleted ? ' is-deleted' : ''}`,
+        className: `disc-msg${isRoot ? ' disc-msg--root' : ' disc-msg--reply'}${deleted ? ' is-deleted' : ''}${folded ? ' disc-msg--cont' : ''}${mentionsMe ? ' disc-msg--mentions-me' : ''}`,
         'data-comment-id': c.id,
         id: `disc-msg-${c.id}`,
       },
@@ -182,16 +255,20 @@ function Message({ c, env, thread, isRoot, tools, actions }) {
         { className: 'disc-avatar' },
         deleted
           ? createElement('span', { className: 'disc-avatar-ghost', 'aria-hidden': 'true' })
-          : createElement(Avatar, { userId: c.authorId, size: isRoot ? 'sm' : 'xs', tooltip: false }),
+          : folded
+            ? createElement(ContTime, { at: c.createdAt, edited: c.editedAt })
+            : createElement(Avatar, { userId: c.authorId, size: isRoot ? 'sm' : 'xs', tooltip: false }),
       ),
       createElement(
         'div',
         { className: 'disc-msg-main' },
         createElement(
           'div',
-          { className: 'disc-meta' },
-          !deleted && createElement('span', { className: 'disc-author' }, nameOf(env, c.authorId)),
-          !deleted && createElement(MsgTime, { at: c.createdAt, edited: c.editedAt }),
+          { className: `disc-meta${folded ? ' disc-meta--cont' : ''}` },
+          // 折疊時名字留給螢幕閱讀器（視覺上隱藏），時間移到左側空位
+          !deleted &&
+            createElement('span', { className: `disc-author${folded ? ' sr-only' : ''}` }, nameOf(env, c.authorId)),
+          !deleted && !folded && createElement(MsgTime, { at: c.createdAt, edited: c.editedAt }),
           !deleted && c.editedAt != null && createElement('span', { className: 'disc-edited' }, '已編輯'),
           !editing &&
             (tools || menuItems.length > 0) &&
@@ -307,7 +384,7 @@ export function PendingList({ items, onRetry, onDiscard }) {
  * 討論串：根訊息 + 回覆（預設收合，只顯示「N 則回覆」）。展開後串內最多顯示最新 5 則，
  * 「顯示更早的回覆」先展開已載入的，再向後端載入更早的。已解決的串淡化並預設收合。
  */
-export function Thread({ thread, env, expanded, onToggle, pending, onRetry, onDiscard }) {
+export function Thread({ thread, env, expanded, onToggle, pending, onRetry, onDiscard, day = null, cont = false }) {
   const resolved = thread.threadResolvedAt != null;
   const [showResolved, setShowResolved] = useState(false);
   const [older, setOlder] = useState([]);
@@ -400,10 +477,22 @@ export function Thread({ thread, env, expanded, onToggle, pending, onRetry, onDi
         )
       : null;
 
+  const daySep =
+    day &&
+    createElement(
+      'div',
+      { className: 'disc-day', role: 'separator', 'aria-label': day },
+      createElement('span', null, day),
+    );
   return createElement(
+    Fragment,
+    null,
+    daySep,
+    createElement(
     'article',
     {
       className: 'disc-thread',
+      'data-cont': cont || undefined,
       'data-resolved': resolved || undefined,
       'data-collapsed-resolved': collapsedResolved || undefined,
       'aria-label': `${nameOf(env, thread.authorId)} 的討論串${resolved ? '（已解決）' : ''}`,
@@ -453,6 +542,7 @@ export function Thread({ thread, env, expanded, onToggle, pending, onRetry, onDi
       isRoot: true,
       tools: rootTools,
       actions: actions,
+      cont: cont,
     }),
     expanded &&
       !collapsedResolved &&
@@ -491,6 +581,7 @@ export function Thread({ thread, env, expanded, onToggle, pending, onRetry, onDi
         ),
         createElement(PendingList, { items: pending, onRetry: onRetry, onDiscard: onDiscard }),
       ),
+    ),
   );
 }
 

@@ -844,6 +844,297 @@
       grid-template-columns: 1fr;
     }
   }
+
+  /* ── 本週卡（ui-refresh §6.1、R1） ─────────────────────── */
+  .pl-week {
+    border-radius: var(--radius-xl);
+  }
+  .pl-week-range {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .pl-week-actions {
+    gap: var(--space-2);
+  }
+  .pl-week-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--color-border-subtle); /* 1px 分隔用底色做 */
+  }
+  .pl-week-col {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: var(--color-surface);
+    padding: 12px 16px 10px;
+    min-height: 168px;
+  }
+  .pl-week-col-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .pl-week-col-label {
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--color-text-secondary);
+  }
+  .pl-week-num {
+    font-size: var(--text-num);
+    line-height: var(--text-num--line-height);
+    font-weight: var(--font-semibold);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text);
+  }
+  .pl-week-col[data-kind='due'] .pl-week-num[data-has-overdue='true'] {
+    color: var(--color-status-overdue-text);
+  }
+  .pl-week-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .pl-week-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+    min-width: 0;
+    font-size: var(--text-sm);
+  }
+  .pl-week-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--status-dot, var(--color-status-todo));
+  }
+  .pl-week-title {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    text-align: left;
+    color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .pl-week-title:hover {
+    color: var(--color-accent-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .pl-week-title:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
+    border-radius: var(--radius-sm);
+  }
+  .pl-week-project {
+    flex: 0 1 auto;
+    max-width: 30%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+  }
+  .pl-week-pct {
+    flex: none;
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  .pl-week-due {
+    flex: none;
+    min-width: 52px;
+    text-align: right;
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .pl-week-item[data-due='overdue'] .pl-week-due {
+    color: var(--color-status-overdue-text);
+    font-weight: var(--font-medium);
+  }
+  .pl-week-item[data-due='today'] .pl-week-due {
+    color: var(--color-warning-text);
+    font-weight: var(--font-medium);
+  }
+  .pl-week-col[data-kind='done'] .pl-week-title {
+    color: var(--color-text-secondary);
+  }
+  .pl-week-more {
+    margin-top: auto;
+    padding-top: 6px;
+    font-size: var(--text-xs);
+    color: var(--color-accent-text);
+    text-decoration: none;
+  }
+  .pl-week-more:hover {
+    text-decoration: underline;
+  }
+  .pl-week-empty {
+    margin: auto 0;
+    font-size: var(--text-sm);
+    color: var(--color-text-tertiary);
+  }
+  @media (max-width: 1023px) {
+    .pl-week-grid {
+      grid-template-columns: 1fr;
+    }
+    .pl-week-col {
+      min-height: 0;
+    }
+  }
+  @media (max-width: 767px) {
+    .pl-week .pl-card-head {
+      height: auto;
+      min-height: 48px;
+      flex-wrap: wrap;
+      padding-block: var(--space-2);
+    }
+    .pl-week-project {
+      display: none;
+    }
+  }
+
+  /* ── 匯報模版（ui-refresh §6.2、R2～R4） ─────────────────────── */
+  .rp-template-row,
+  .rp-members {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-3);
+  }
+  .rp-members {
+    margin-bottom: 0;
+  }
+  .rp-label {
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+  }
+  .rp-hint {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+  }
+  .rp-templates,
+  .rp-bullets {
+    display: inline-flex;
+    flex-wrap: wrap;
+    padding: 2px;
+    gap: 2px;
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+  }
+  .rp-template {
+    height: 28px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: none;
+    font: inherit;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+  }
+  .rp-template--sm {
+    height: 24px;
+    padding: 0 10px;
+  }
+  .rp-template:hover {
+    color: var(--color-text);
+  }
+  .rp-template[aria-pressed='true'] {
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-weight: var(--font-medium);
+    box-shadow: var(--shadow-xs);
+  }
+  .rp-template:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 0;
+  }
+  .rp-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .rp-head .pl-report-tabs {
+    border-bottom: 0;
+  }
+  .rp-summary {
+    padding-bottom: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  /* 預覽要長得像「貼進 Word 之後的樣子」：14px、1.7 行高、黑字 */
+  .rp-preview {
+    min-height: 240px;
+    max-height: 46vh;
+    overflow: auto;
+    margin-top: var(--space-2);
+    padding: 16px 20px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    font-size: var(--text-base);
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+  }
+  /* 輸出的 HTML 帶 inline 色碼（給 Word 用）；預覽改用 token，深色主題也讀得清楚，複製出去的 HTML 不受影響 */
+  .rp-preview [style*='color'] {
+    color: var(--color-text) !important;
+  }
+  .rp-preview [style*='#5b636e'] {
+    color: var(--color-text-secondary) !important;
+  }
+  .rp-preview ul {
+    list-style-type: disc; /* 全站 reset 拿掉了條列符號；inline 的 list-style-type:none（➢）照樣優先 */
+  }
+  .rp-preview ol {
+    list-style-type: decimal;
+  }
+  .rp-preview .rp-doing {
+    color: var(--color-warning-text) !important;
+  }
+  .rp-preview .rp-paused {
+    color: var(--color-danger-text) !important;
+  }
+  .rp-preview .rp-done {
+    color: inherit;
+  }
+  .rp-plain {
+    margin-top: var(--space-2);
+    min-height: 240px;
+  }
+  .rp-foot {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+  }
+  .rp-copied {
+    font-weight: var(--font-medium);
+  }
+  .ui-dialog-actions:has(.rp-actions-main) {
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
 }
 
 /* 列印：只輸出報告內容（portal 到 body 的 .pl-report-print-portal），隱藏其餘介面 */

@@ -2,6 +2,7 @@ import { createElement, Fragment } from 'preact';
 import { useState } from 'preact/compat';
 import { useNavigate } from '../lib/router.js';
 import { PresenceStack } from '../features/presence/PresenceStack.js';
+import { SearchButton } from '../features/search/SearchButton.js';
 import { QuickAdd } from '../features/tasks/QuickAdd.js';
 import { UndoButtons } from '../features/undo/UndoButtons.js';
 import { logout, useCurrentUser } from '../lib/auth.js';
@@ -9,7 +10,7 @@ import { ROLE_BADGE_TONES, ROLE_LABELS } from '../lib/permissions.js';
 import { Avatar, Badge, Button, Icon, Menu } from '../ui/index.js';
 import { ChangePasswordDialog } from './ChangePasswordDialog.js';
 
-/** 頂欄：頁面標題、全域 QuickAdd、復原 / 重做、使用者選單（變更密碼、登出） */
+/** 頂欄：頁面標題、全站搜尋入口（Ctrl+K）、全域 QuickAdd、復原 / 重做、使用者選單（變更密碼、登出） */
 export function Header({ title, onOpenMenu, onPasswordChanged }) {
   const user = useCurrentUser();
   const [pwOpen, setPwOpen] = useState(false);
@@ -26,6 +27,7 @@ export function Header({ title, onOpenMenu, onPasswordChanged }) {
       onClick: onOpenMenu,
     }),
     createElement('h1', { className: 'header-title' }, title),
+    user && createElement(SearchButton, null),
     createElement(
       'div',
       { className: 'header-quickadd' },

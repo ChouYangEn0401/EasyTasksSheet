@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'preact/compat';
 import { useNavigate } from '../lib/router.js';
+import { openSearch } from '../features/search/searchStore.js';
 import {
   FILTER_SEARCH_ATTR,
   GLOBAL_QUICKADD_ATTR,
   isEditableTarget,
+  isSearchShortcut,
   resolveShortcut,
   resolveUndoShortcut,
   shortcutsSuspended,
@@ -12,7 +14,7 @@ import { performUndo, undoManager } from '../lib/undo.js';
 
 const G_TIMEOUT_MS = 1200;
 
-/** 掛載全域快捷鍵（N、/、G 序列、[、Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y） */
+/** 掛載全域快捷鍵（Ctrl+K / Cmd+K、N、/、G 序列、[、Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y） */
 export function useGlobalShortcuts(toggleSidebar) {
   const navigate = useNavigate();
   const toggleRef = useRef(toggleSidebar);
@@ -24,6 +26,15 @@ export function useGlobalShortcuts(toggleSidebar) {
     let pendingG = false;
     let timer;
     const onKey = (e) => {
+      // Ctrl+K / Cmd+K：在輸入框裡也有效；其他對話框開著或快捷鍵暫停時不搶
+      if (!e.defaultPrevented && isSearchShortcut(e)) {
+        if (shortcutsSuspended()) return;
+        const dlg = document.querySelector('dialog[open]');
+        if (dlg && !dlg.classList.contains('cmdk')) return;
+        e.preventDefault();
+        openSearch();
+        return;
+      }
       const undoKind = e.defaultPrevented || e.isComposing ? null : resolveUndoShortcut(e);
       if (undoKind) {
         if (shortcutsSuspended() || document.querySelector('dialog[open]')) return;
@@ -48,9 +59,13 @@ export function useGlobalShortcuts(toggleSidebar) {
         case 'focus-quickadd':
           document.querySelector(`[${GLOBAL_QUICKADD_ATTR}]`)?.focus();
           break;
-        case 'focus-search':
-          document.querySelector(`[${FILTER_SEARCH_ATTR}]`)?.focus();
+        case 'focus-search': {
+          // 有篩選列（任務區、成員管理…）時照舊聚焦它；沒有的頁面改開全站搜尋（ui-refresh §7）
+          const box = document.querySelector(`[${FILTER_SEARCH_ATTR}]`);
+          if (box) box.focus();
+          else openSearch();
           break;
+        }
         case 'toggle-sidebar':
           toggleRef.current();
           break;

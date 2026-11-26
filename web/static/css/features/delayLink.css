@@ -1,9 +1,10 @@
-/* 延遲鏈分頁（docs/design/delay-link.md）；只用既有 token。延後用琥珀（warning），準時用綠（success），不使用紅色 */
+/* 延遲鏈分頁（docs/design/delay-link.md、ui-refresh-2026-11-26.md §5.3）；只用 tokens.css。
+ * 延後／等待中用琥珀（--color-status-blocked-*），準時用綠（success）；紅色只用在「逾期 N 天」這種日期事實 */
 @layer theme, base, components, utilities;
 
 @layer components {
   .dl-page {
-    --dl-crit: var(--color-warning);
+    --dl-crit: var(--color-status-blocked);
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
@@ -13,6 +14,26 @@
     margin: 0;
     font-size: var(--text-base);
     line-height: var(--text-base--line-height);
+    color: var(--color-text-secondary);
+  }
+  .dl-summary-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-4);
+  }
+  .dl-summary-overdue {
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    color: var(--color-status-overdue-text);
+    font-variant-numeric: tabular-nums;
+  }
+  .dl-focus-note {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
     color: var(--color-text-secondary);
   }
   .dl-list {
@@ -34,6 +55,55 @@
     align-items: baseline;
     gap: var(--space-1) var(--space-3);
   }
+  .dl-chain[data-collapsed] {
+    padding-block: var(--space-3);
+    background: var(--color-bg);
+    box-shadow: none;
+  }
+  .dl-chain[data-collapsed] .dl-chain-head {
+    cursor: pointer;
+  }
+  .dl-chain[data-collapsed] .dl-chain-title {
+    font-weight: var(--font-medium);
+    color: var(--color-text-secondary);
+  }
+  .dl-chain-toggle {
+    margin-left: auto;
+    font-size: var(--text-xs);
+  }
+  .dl-chain-stats {
+    display: flex;
+    flex-wrap: wrap;
+    flex-basis: 100%;
+    gap: 4px 16px;
+    margin: 4px 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    color: var(--color-text-secondary);
+  }
+  .dl-chain-stats b {
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+    font-variant-numeric: tabular-nums;
+  }
+  .dl-chain-stats .is-delay b {
+    color: var(--color-status-blocked-text);
+  }
+  .dl-chain-stats .is-ok {
+    color: var(--color-success-text);
+  }
+  .dl-chain-stats .is-overdue b {
+    color: var(--color-status-overdue-text);
+  }
+  .dl-chain-wait .dl-link {
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
   .dl-chain-title {
     margin: 0;
     font-size: var(--text-base);
@@ -49,18 +119,44 @@
   }
   .dl-legend {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--space-1) var(--space-4);
     margin: var(--space-2) 0 0;
     font-size: var(--text-xs);
     line-height: var(--text-xs--line-height);
     color: var(--color-text-secondary);
+  }
+  .dl-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    white-space: nowrap;
+  }
+  .dl-legend-item.is-muted {
+    color: var(--color-text-tertiary);
   }
   .dl-legend-line {
     width: 20px;
     height: 0;
     border-top: 2.5px solid var(--dl-crit);
     border-radius: 2px;
+  }
+  .dl-legend-line--dashed {
+    border-top: 1.5px dashed var(--color-border-strong);
+  }
+  .dl-legend-edge {
+    width: 12px;
+    height: 12px;
+    border: 1px solid var(--color-border);
+    border-left: 3px solid var(--color-status-blocked);
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--color-status-blocked-soft) 45%, var(--color-surface));
+  }
+  .dl-legend-overdue {
+    color: var(--color-status-overdue-text);
+    font-weight: var(--font-medium);
+    font-variant-numeric: tabular-nums;
   }
 
   /* 畫布：節點以絕對定位放在 SVG 箭頭之上，在卡片內水平捲動 */
@@ -154,11 +250,22 @@
     outline-offset: 2px;
   }
   .dl-node.is-blocked {
-    background: color-mix(in srgb, var(--color-warning-soft) 45%, var(--color-surface));
+    background: color-mix(in srgb, var(--color-status-blocked-soft) 45%, var(--color-surface));
+    border-left: 3px solid var(--color-status-blocked);
+    padding-left: calc(var(--space-3) - 2px);
   }
   .dl-node.is-critical {
     border: 2px solid var(--dl-crit);
     padding: calc(var(--space-2) - 1px) calc(var(--space-3) - 1px);
+  }
+  .dl-node.is-critical.is-blocked {
+    border-left-width: 3px;
+    padding-left: calc(var(--space-3) - 2px);
+  }
+  /* ?focus= 帶來的節點：強調色外框（與鍵盤焦點同語言） */
+  .dl-node.is-focus {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
   .dl-node.is-done {
     opacity: 0.55;
@@ -177,6 +284,18 @@
     gap: var(--space-2);
     min-height: 40px;
   }
+  .dl-node-top .dl-node-lock {
+    margin-top: 3px;
+  }
+  .dl-node-person {
+    min-width: 0;
+    flex: 0 1 auto;
+    max-width: 50%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text);
+  }
   .dl-node-title {
     flex: 1;
     min-width: 0;
@@ -192,7 +311,6 @@
   }
   .dl-start-tag {
     flex: none;
-    margin-left: auto;
     padding: 0 6px;
     border-radius: var(--radius-full);
     background: var(--color-info-soft);
@@ -224,7 +342,7 @@
   }
   .dl-node-lock {
     flex: none;
-    color: var(--color-warning-text);
+    color: var(--color-status-blocked-text);
   }
   .dl-node-dates {
     display: flex;
@@ -238,6 +356,20 @@
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
+  .dl-node-date-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dl-date-overdue {
+    color: var(--color-status-overdue-text);
+    font-weight: var(--font-medium);
+  }
+  .dl-node-badges {
+    display: inline-flex;
+    flex: none;
+    gap: 4px;
+  }
   .dl-badge {
     flex: none;
     padding: 0 var(--space-2);
@@ -247,8 +379,13 @@
     font-weight: var(--font-medium);
   }
   .dl-badge--warning {
-    background: var(--color-warning-soft);
-    color: var(--color-warning-text);
+    background: var(--color-status-blocked-soft);
+    color: var(--color-status-blocked-text);
+  }
+  .dl-badge--overdue {
+    background: var(--color-status-overdue-soft);
+    color: var(--color-status-overdue-text);
+    box-shadow: inset 0 0 0 1px var(--color-status-overdue-border);
   }
   .dl-badge--success {
     background: var(--color-success-soft);
@@ -259,8 +396,11 @@
     color: var(--color-text-secondary);
   }
   .dl-node-wait {
+    display: block;
+    min-height: 18px;
+    min-width: 0;
     font-size: var(--text-xs);
-    line-height: var(--text-xs--line-height);
+    line-height: 18px;
     color: var(--color-text-tertiary);
     overflow: hidden;
     text-overflow: ellipsis;

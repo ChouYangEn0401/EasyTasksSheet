@@ -2,6 +2,8 @@
  * 全域快捷鍵（docs/design/core-shell.md §8）：
  *   N 聚焦 Header 的 QuickAdd；/ 聚焦 FilterBar 搜尋框；G 然後 O/L/K/G/F/M/E 前往頁面；[ 收合 Sidebar
  *   Ctrl+Z 復原、Ctrl+Shift+Z / Ctrl+Y 重做（Mac 用 Cmd；docs/design/undo.md）
+ *   Ctrl+K / Cmd+K 開全站搜尋（ui-refresh-2026-11-26.md §7）——唯一在輸入框裡也有效的快捷鍵；
+ *   其他對話框開著時不觸發（搜尋浮層自己開著時再按一次＝焦點拉回輸入框）
  * focus 在輸入框 / 可編輯區時不觸發（保留瀏覽器原生的文字復原）；開著對話框時不觸發；
  * suspendGlobalShortcuts() 可暫停（例如 Kanban 鍵盤拖曳中）。
  */
@@ -86,4 +88,14 @@ export function resolveUndoShortcut(e) {
   if (k === 'z') return e.shiftKey ? 'redo' : 'undo';
   if (k === 'y' && !e.shiftKey) return 'redo';
   return null;
+}
+
+/**
+ * 是否為全站搜尋快捷鍵（純函式）：Ctrl+K 或 Cmd+K（不含 Shift / Alt）。
+ * 輸入法組字中的按鍵不算；在輸入框內也算（刻意，跟其他單鍵快捷鍵不同）。
+ */
+export function isSearchShortcut(e) {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.isComposing) return false;
+  const k = (e.key ?? '').toLowerCase();
+  return k === 'k' || (k.length !== 1 && e.code === 'KeyK');
 }

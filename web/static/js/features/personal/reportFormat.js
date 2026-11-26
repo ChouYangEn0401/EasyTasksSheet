@@ -32,6 +32,7 @@ export function inclusiveDays(from, to) {
 }
 
 export const RANGE_PRESETS = [
+  { value: 'today', label: '今日' },
   { value: 'week', label: '本週' },
   { value: 'lastWeek', label: '上週' },
   { value: 'twoWeeks', label: '近兩週' },
@@ -43,12 +44,14 @@ export const RANGE_PRESETS = [
 
 /**
  * 快速區間（以 today 為準）：本週 / 上週為週一至週日；近兩週 / 近三週為含今天往前 14 / 21 天；
- * 本月為當月 1 日至月底，上月同理。custom 回 null（由使用者自填）。
+ * 本月為當月 1 日至月底，上月同理；今日為今天～今天（R4 每日匯報）。custom 回 null（由使用者自填）。
  */
 export function presetRange(preset, today) {
   const t = parseDate(today);
   const monday = addDays(today, -((t.getDay() + 6) % 7));
   switch (preset) {
+    case 'today':
+      return { from: today, to: today };
     case 'week':
       return { from: monday, to: addDays(monday, 6) };
     case 'lastWeek':

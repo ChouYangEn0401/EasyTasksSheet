@@ -8,19 +8,27 @@ import { todayString } from '../../lib/format.js';
 import { useStatusesById, useTasks, useUsersById } from '../../lib/hooks.js';
 import { openTask } from '../../lib/openTask.js';
 import { useCan } from '../../lib/permissions.js';
+import { Link } from '../../lib/router.js';
 import { toast, truncate } from '../../lib/toast.js';
 import { recordDependencyAdd, recordDependencyRemove, undoFromToast } from '../undo/linkUndo.js';
-import { Button, Icon, Input, Skeleton } from '../../ui/index.js';
+import { Avatar, Button, Input, Skeleton } from '../../ui/index.js';
 import { useDrawerActive } from '../tasks/drawerActive.js';
 import { Popover } from '../tasks/Popover.js';
 import { useCreateDependency, useDeleteDependency, useTaskDependencies } from './api.js';
-import { delayPhrase, lagLabel, shortDate } from './depText.js';
+import { HourglassIcon } from './DependencyBadge.js';
+import { currentWaitId, overdueDays, rowStates, shortDate } from './depText.js';
+
+/** 上游／下游各自超過幾條就先收起來（「還有 N 條」展開） */
+const SHOW_MAX = 5;
 
 /**
- * 任務詳情的「依賴」區（TaskDrawer 最小接入：<DependenciesSection task={task} />）。
- * 兩小節：「等待這些任務完成」（前置任務）與「完成後可開始的任務」。
+ * 任務詳情的「相依」區（TaskDrawer 最小接入：<DependenciesSection task={task} />；docs/design/ui-refresh-2026-11-26.md §5.1）。
+ * 一條垂直時間線分三段：上游「等待這些完成」→ 本任務 → 下游「完成後可開始」。
+ * 每一列：狀態點、標題（點了開那個任務）、負責人、到期日、狀態 pill（逾期 N 天／預計延後 N 天／預計可如期／未排程）；
+ * 上游中決定本任務何時能開始的那一條標「目前等待」。右上「看整條鏈 →」帶 ?focus= 到延遲鏈頁。
  * 新增：輕量搜尋選單（標題關鍵字、排除自己與已存在者、最多 8 筆、鍵盤選擇；lag 天數在「進階」）。
  * 移除：一鍵移除，toast 可復原。建立失敗（例如會形成循環）在選單內顯示中文訊息。
+ * 語氣（product-principles.md）：「等待中」「前置任務」「預計延後」，不寫「卡住」「拖延」；逾期紅只用在日期事實。
  */
 export function DependenciesSection({ task }) {
   const q = useTaskDependencies(task.id, useDrawerActive());
@@ -30,6 +38,10 @@ export function DependenciesSection({ task }) {
   const today = todayString();
   const data = q.data;
   const self = data?.self;
+  const up = data?.blockedBy ?? [];
+  const down = data?.blocks ?? [];
+  const total = up.length + down.length;
+  const waitId = useMemo(() => currentWaitId(up), [up]);
 
   const open = (dir, el) => {
     setInitialDir(dir);
@@ -39,20 +51,35 @@ export function DependenciesSection({ task }) {
   return createElement(
     'section',
     {
-      className: 'task-drawer-section',
+      className: 'task-drawer-section dep-section',
       'aria-labelledby': `dep-title-${task.id}`,
       'data-testid': 'dep-section',
     },
     createElement(
       'div',
-      { className: 'tl-section-title' },
-      createElement('span', { id: `dep-title-${task.id}` }, '依賴'),
+      { className: 'tl-section-title dep-section-title' },
+      createElement(
+        'span',
+        { id: `dep-title-${task.id}` },
+        '相依',
+        total > 0 && createElement('span', { className: 'tr-count dep-title-count' }, total),
+      ),
+      total > 0 &&
+        createElement(
+          Link,
+          {
+            to: `/tasks/delay-link?focus=${task.id}`,
+            className: 'tl-link dep-chain-link',
+            'aria-label': '在延遲鏈頁看整條鏈',
+          },
+          '看整條鏈 →',
+        ),
     ),
     self?.isBlocked && createElement(SelfNotice, { self: self, today: today }),
     q.isPending
       ? createElement(
           'div',
-          { className: 'flex flex-col gap-2', 'aria-busy': 'true', 'aria-label': '載入依賴中' },
+          { className: 'flex flex-col gap-2', 'aria-busy': 'true', 'aria-label': '載入相依中' },
           createElement(Skeleton, { height: 14, width: '60%' }),
           createElement(Skeleton, { height: 14, width: '45%' }),
         )
@@ -60,7 +87,7 @@ export function DependenciesSection({ task }) {
         ? createElement(
             'div',
             { className: 'dep-none', role: 'alert' },
-            '無法載入依賴：',
+            '無法載入相依：',
             errorMessage(q.error),
             ' ',
             createElement(
@@ -70,28 +97,45 @@ export function DependenciesSection({ task }) {
             ),
           )
         : createElement(
-            Fragment,
-            null,
-            createElement(DepGroup, {
-              title: '等待這些任務完成',
-              empty: '沒有前置任務',
-              items: data?.blockedBy ?? [],
-              taskId: task.id,
-              canEdit: canEdit,
-              today: today,
-              onAdd: (el) => open('blocked_by', el),
-              addLabel: '新增前置任務',
-            }),
-            createElement(DepGroup, {
-              title: '完成後可開始的任務',
-              empty: '沒有等待此任務的任務',
-              items: data?.blocks ?? [],
-              taskId: task.id,
-              canEdit: canEdit,
-              today: today,
-              onAdd: (el) => open('blocks', el),
-              addLabel: '新增後續任務',
-            }),
+            'ol',
+            { className: 'dep-chain', 'aria-label': '相依鏈：上游、本任務、下游' },
+            createElement(
+              'li',
+              { className: 'dep-chain-seg dep-chain-seg--up' },
+              createElement(DepGroup, {
+                title: '等待這些完成',
+                hint: '上游',
+                empty: '沒有前置任務',
+                items: up,
+                waitId: waitId,
+                taskId: task.id,
+                canEdit: canEdit,
+                today: today,
+                onAdd: (el) => open('blocked_by', el),
+                addLabel: '新增前置任務',
+              }),
+            ),
+            createElement(
+              'li',
+              { className: 'dep-chain-seg dep-chain-seg--self' },
+              createElement(SelfRow, { task: task, self: self, today: today }),
+            ),
+            createElement(
+              'li',
+              { className: 'dep-chain-seg dep-chain-seg--down' },
+              createElement(DepGroup, {
+                title: '完成後可開始',
+                hint: '下游',
+                empty: '沒有等待此任務的任務',
+                items: down,
+                waitId: null,
+                taskId: task.id,
+                canEdit: canEdit,
+                today: today,
+                onAdd: (el) => open('blocks', el),
+                addLabel: '新增後續任務',
+              }),
+            ),
           ),
     anchor &&
       canEdit &&
@@ -101,7 +145,7 @@ export function DependenciesSection({ task }) {
         createElement(DependencyPicker, {
           task: task,
           initialDirection: initialDir,
-          existing: [...(data?.blockedBy ?? []), ...(data?.blocks ?? [])].map((d) => d.task.id),
+          existing: [...up, ...down].map((d) => d.task.id),
           onDone: () => setAnchor(null),
         }),
       ),
@@ -109,30 +153,79 @@ export function DependenciesSection({ task }) {
 }
 
 function SelfNotice({ self, today }) {
+  const n = self.blockedByCount ?? 0;
+  const head = n > 0 ? `等待中 · ${n} 個前置任務` : '等待中';
   const text = self.unknownBlockerDate
-    ? '等待中（前置任務尚未排程，暫時無法推算）'
+    ? `${head}（前置任務尚未排程，暫時無法推算）`
     : self.delayDays && self.delayDays > 0
-      ? `等待中 · 依前置任務的時程，預計延後 ${self.delayDays} 天（到 ${shortDate(self.projectedEnd, today)}）`
+      ? `${head} · 依前置任務的時程，預計延後 ${self.delayDays} 天（到 ${shortDate(self.projectedEnd, today)}）`
       : self.projectedEnd
-        ? `等待中 · 依前置任務的時程，預計 ${shortDate(self.projectedEnd, today)} 完成`
-        : '等待中';
+        ? `${head} · 依前置任務的時程，預計 ${shortDate(self.projectedEnd, today)} 完成`
+        : head;
   return createElement(
     'div',
     { className: 'dep-self', 'data-testid': 'dep-self' },
-    createElement(Icon, { name: 'lock', size: 14 }),
+    createElement(HourglassIcon, { size: 14 }),
     createElement('span', null, text),
   );
 }
 
-function DepGroup({ title, empty, items, taskId, canEdit, today, onAdd, addLabel }) {
-  const headingId = useId();
+/** 狀態 pill（一列可能兩顆：逾期＝日期事實、預計延後＝推算） */
+function StatePills({ states }) {
+  return states.map((st) =>
+    createElement(
+      'span',
+      { key: st.tone + st.text, className: `dep-row-state dep-row-state--${st.tone}` },
+      st.text,
+    ),
+  );
+}
+
+/** 負責人：頭像＋名字（未指派時虛線頭像＋「未指派」） */
+function Person({ userId }) {
+  const users = useUsersById();
+  const name = userId != null ? users.get(userId)?.displayName : undefined;
   return createElement(
-    'div',
-    { className: 'dep-section-group' },
+    'span',
+    { className: 'dep-row-person' },
+    createElement(Avatar, { userId: userId, size: 'xs', tooltip: false }),
+    createElement('span', { className: 'dep-row-person-name' }, name ?? '未指派'),
+  );
+}
+
+function DueText({ task, today, overdue }) {
+  if (!task.dueDate)
+    return createElement('span', { className: 'dep-row-due dep-row-due--none' }, '未設到期日');
+  return createElement(
+    'time',
+    { className: 'dep-row-due', dateTime: task.dueDate, 'data-overdue': overdue || undefined },
+    '到期 ',
+    shortDate(task.dueDate, today),
+  );
+}
+
+function DepGroup({ title, hint, empty, items, waitId, taskId, canEdit, today, onAdd, addLabel }) {
+  const headingId = useId();
+  const [all, setAll] = useState(false);
+  const shown = all ? items : items.slice(0, SHOW_MAX);
+  const rest = items.length - shown.length;
+  return createElement(
+    Fragment,
+    null,
     createElement(
       'div',
-      { className: 'dep-subtitle' },
-      createElement('span', { id: headingId }, title),
+      { className: 'dep-group-head' },
+      createElement(
+        'span',
+        { id: headingId, className: 'dep-group-title' },
+        title,
+        createElement('span', { className: 'dep-group-hint' }, `（${hint}）`),
+      ),
+      createElement(
+        'span',
+        { className: 'dep-group-count', 'aria-label': `${items.length} 個` },
+        items.length,
+      ),
       canEdit &&
         createElement(
           Button,
@@ -151,31 +244,84 @@ function DepGroup({ title, empty, items, taskId, canEdit, today, onAdd, addLabel
       : createElement(
           'ul',
           { className: 'dep-list', 'aria-labelledby': headingId },
-          items.map((d) =>
-            createElement(DepRow, { key: d.id, item: d, taskId: taskId, canEdit: canEdit, today: today }),
+          shown.map((d) =>
+            createElement(DepRow, {
+              key: d.id,
+              item: d,
+              isWait: d.id === waitId,
+              taskId: taskId,
+              canEdit: canEdit,
+              today: today,
+            }),
           ),
         ),
+    rest > 0 &&
+      createElement(
+        'button',
+        { type: 'button', className: 'tl-linkbtn dep-more', onClick: () => setAll(true) },
+        `還有 ${rest} 條`,
+      ),
   );
 }
 
-function DepRow({ item, taskId, canEdit, today }) {
+/** 本任務那一列：鏈的中段（不可點、沒有動作） */
+function SelfRow({ task, self, today }) {
   const statuses = useStatusesById();
-  const users = useUsersById();
+  const status = statuses.get(task.statusId);
+  const tone = status ? statusTone(status) : 'todo';
+  const isDone = status?.category === 'done';
+  const od = overdueDays(task.dueDate, today, isDone);
+  const states = rowStates({ ...task, isDone: isDone }, self, today);
+  return createElement(
+    'div',
+    {
+      className: `dep-row dep-row--self${od > 0 ? ' is-overdue' : ''}`,
+      'data-overdue': od > 0 || undefined,
+      'aria-current': 'true',
+    },
+    createElement(
+      'span',
+      { className: 'dep-node', style: statusStyle(tone) },
+      createElement('span', {
+        className: 'dep-node-dot',
+        role: 'img',
+        'aria-label': `本任務，狀態：${status?.name ?? '—'}`,
+      }),
+    ),
+    createElement(
+      'div',
+      { className: 'dep-row-main' },
+      createElement(
+        'div',
+        { className: 'dep-row-line' },
+        createElement('span', { className: 'dep-row-title', title: task.title }, task.title),
+        createElement(StatePills, { states: states }),
+      ),
+      createElement(
+        'div',
+        { className: 'dep-row-sub' },
+        createElement(Person, { userId: task.assigneeId }),
+        createElement(DueText, { task: task, today: today, overdue: od > 0 }),
+      ),
+    ),
+  );
+}
+
+function DepRow({ item, isWait, taskId, canEdit, today }) {
+  const statuses = useStatusesById();
   const del = useDeleteDependency(taskId);
   const t = item.task;
   const status = statuses.get(t.statusId);
   const tone = status ? statusTone(status) : 'todo';
-  const assignee = t.assigneeId != null ? users.get(t.assigneeId)?.displayName : undefined;
-  const dates =
-    t.startDate && t.dueDate
-      ? `${shortDate(t.startDate, today)}–${shortDate(t.dueDate, today)}`
-      : shortDate(t.dueDate ?? t.startDate, today);
-  const phrase = t.isDone ? '已完成的前置任務' : delayPhrase(item.projection, today);
-  const delayed = !t.isDone && (item.projection.delayDays ?? 0) > 0;
+  const od = overdueDays(t.dueDate, today, t.isDone);
+  const states = rowStates(t, item.projection, today);
 
+  // 用 mutateAsync：伺服器的即時事件可能比 DELETE 的回應先到，列先被重抓卸載；
+  // mutate(…, { onSuccess }) 那層回呼只在元件還掛著時才呼叫，會漏掉「已移除＋復原」的 toast
   const remove = () =>
-    del.mutate(item.id, {
-      onSuccess: (res) => {
+    del
+      .mutateAsync(item.id)
+      .then((res) => {
         const r = res.removed;
         // 登記到全站復原堆疊（Ctrl+Z）；toast 的「復原」走同一筆（列已卸載，皆直接呼叫 API）
         const entry = recordDependencyRemove(
@@ -190,55 +336,77 @@ function DepRow({ item, taskId, canEdit, today }) {
           title: `已移除依賴「${truncate(t.title)}」`,
           action: { label: '復原', onClick: () => undoFromToast(entry) },
         });
-      },
-    });
+      })
+      .catch(() => {
+        // 失敗訊息由全域 mutation 錯誤 toast 顯示
+      });
 
   return createElement(
     'li',
-    { className: `dep-row${t.isDone ? ' is-done' : ''}`, 'data-testid': 'dep-row' },
-    createElement('span', {
-      className: 'dep-row-status',
-      style: statusStyle(tone),
-      role: 'img',
-      'aria-label': `狀態：${status?.name ?? '—'}`,
-    }),
+    {
+      className: ['dep-row', t.isDone && 'is-done', isWait && 'is-current-wait', od > 0 && 'is-overdue']
+        .filter(Boolean)
+        .join(' '),
+      'data-testid': 'dep-row',
+      'data-overdue': od > 0 || undefined,
+    },
     createElement(
       'span',
+      { className: 'dep-node', style: statusStyle(tone) },
+      createElement('span', {
+        className: 'dep-node-dot dep-row-status',
+        role: 'img',
+        'aria-label': `狀態：${status?.name ?? '—'}`,
+      }),
+    ),
+    createElement(
+      'div',
       { className: 'dep-row-main' },
       createElement(
-        'button',
-        { type: 'button', className: 'dep-row-title', onClick: () => openTask(t.id), title: t.title },
-        t.title,
+        'div',
+        { className: 'dep-row-line' },
+        createElement(
+          'button',
+          { type: 'button', className: 'dep-row-title', onClick: () => openTask(t.id), title: t.title },
+          t.title,
+        ),
+        isWait &&
+          createElement(
+            'span',
+            { className: 'dep-wait-tag', title: '本任務預計何時能開始，取決於這一條' },
+            '目前等待',
+          ),
+        createElement(StatePills, { states: states }),
       ),
       createElement(
-        'span',
-        { className: 'dep-row-meta' },
-        [assignee ?? '未指派', dates].filter(Boolean).join('・'),
-        phrase &&
+        'div',
+        { className: 'dep-row-sub' },
+        createElement(Person, { userId: t.assigneeId }),
+        createElement(DueText, { task: t, today: today, overdue: od > 0 }),
+        item.lagDays > 0 &&
           createElement(
-            Fragment,
-            null,
-            '・',
-            createElement(
-              'span',
-              {
-                className: delayed
-                  ? 'dep-delay'
-                  : item.projection.delayDays === 0 && !t.isDone
-                    ? 'dep-ok'
-                    : '',
-              },
-              phrase,
-            ),
+            'span',
+            { className: 'dep-row-lag', title: `完成後再等 ${item.lagDays} 天` },
+            `完成後再等 ${item.lagDays} 天`,
           ),
-        item.lagDays > 0 && `・完成後再等 ${item.lagDays} 天`,
       ),
     ),
-    item.lagDays > 0
-      ? createElement('span', { className: 'dep-option-hint' }, lagLabel(item.lagDays))
-      : createElement('span', null),
-    canEdit
-      ? createElement(Button, {
+    createElement(
+      'span',
+      { className: 'dep-row-actions' },
+      createElement(
+        'button',
+        {
+          type: 'button',
+          className: 'dep-row-open',
+          'aria-label': `開啟「${t.title}」`,
+          title: '開啟這個任務',
+          onClick: () => openTask(t.id),
+        },
+        '→',
+      ),
+      canEdit &&
+        createElement(Button, {
           variant: 'ghost',
           size: 'sm',
           iconOnly: true,
@@ -247,8 +415,8 @@ function DepRow({ item, taskId, canEdit, today }) {
           'aria-label': `移除依賴「${t.title}」`,
           loading: del.isPending,
           onClick: remove,
-        })
-      : createElement('span', null),
+        }),
+    ),
   );
 }
 

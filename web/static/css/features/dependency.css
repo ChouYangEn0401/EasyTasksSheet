@@ -1,20 +1,21 @@
-/* 依賴標示（看板卡片、清單列、任務詳情依賴區；docs/design/delay-link.md）。只用既有 token，琥珀色取 warning 系列，不用紅色 */
+/* 相依標示（看板卡片、清單列、任務詳情相依區；docs/design/delay-link.md、ui-refresh-2026-11-26.md §3.3／§5）。
+ * 只用 tokens.css：被擋／等待中／預計延後＝--color-status-blocked-*（琥珀，不用紅）；紅色只用在「逾期 N 天」這種日期事實 */
 @layer theme, base, components, utilities;
 
 @layer components {
   .kanban-card.dep-card--blocked {
-    border-left: 3px solid var(--color-warning);
+    border-left: 3px solid var(--color-status-blocked);
     padding-left: calc(var(--space-3) - 2px);
   }
   .kanban-card.dep-card--blocked:not(.is-selected):not(.is-placeholder) {
-    background: color-mix(in srgb, var(--color-warning-soft) 55%, var(--color-surface));
+    background: color-mix(in srgb, var(--color-status-blocked-soft) 55%, var(--color-surface));
   }
 
   .dep-lock {
     display: inline-flex;
-    vertical-align: -2px;
+    vertical-align: -3px;
     margin-right: var(--space-1);
-    color: var(--color-warning-text);
+    color: var(--color-status-blocked-text);
   }
   .dep-lock-icon {
     display: inline-flex;
@@ -28,6 +29,65 @@
     flex: none;
     margin: 0 0 0 var(--space-1);
     align-self: center;
+  }
+
+  /* ── 清單列與看板卡的小標記（§3.3）：「被擋 N」琥珀、「擋著 N」中性 ── */
+  .dep-mark-wrap {
+    display: inline-flex;
+  }
+  .dep-mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    height: 18px;
+    padding: 0 6px 0 5px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-full);
+    font-size: var(--text-2xs);
+    line-height: 1;
+    font-weight: var(--font-medium);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .dep-mark svg {
+    flex: none;
+    width: 12px;
+    height: 12px;
+  }
+  .dep-mark--blocked {
+    background: var(--color-status-blocked-soft);
+    color: var(--color-status-blocked-text);
+    border-color: var(--color-status-blocked-border);
+  }
+  .dep-mark--blocks {
+    background: var(--color-surface-active);
+    color: var(--color-text-secondary);
+  }
+  .dep-mark:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
+  }
+  .dep-blocks-mark {
+    display: inline-flex;
+    flex: none;
+    align-self: center;
+  }
+  .tl-tbadges .dep-blocks-mark {
+    margin: 0;
+  }
+  /* Tooltip 內：一句說明＋前置／後續任務標題，一行一個 */
+  .dep-tip {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    text-align: left;
+  }
+  .dep-tip-label {
+    margin-top: 4px;
+    opacity: 0.75;
+  }
+  .dep-tip-item {
+    display: block;
   }
 
   .dep-badges {
@@ -53,9 +113,9 @@
     text-overflow: ellipsis;
   }
   .dep-badge--waiting {
-    background: var(--color-warning-soft);
-    border-color: var(--color-warning-border);
-    color: var(--color-warning-text);
+    background: var(--color-status-blocked-soft);
+    border-color: var(--color-status-blocked-border);
+    color: var(--color-status-blocked-text);
   }
   .dep-badge--blocks {
     background: var(--color-surface-active);
@@ -74,19 +134,100 @@
     user-select: none;
   }
 
-  /* ── 任務詳情：依賴區 ─────────────────────── */
-  .dep-section-group + .dep-section-group {
-    margin-top: var(--space-3);
-  }
-  .dep-subtitle {
+  /* ── 任務詳情：相依區（三段垂直時間線；ui-refresh-2026-11-26 §5.1） ─────────── */
+  .dep-section-title {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    margin-bottom: var(--space-1);
+  }
+  .dep-title-count {
+    margin-left: var(--space-1);
+  }
+  .dep-chain-link {
+    margin-left: auto;
     font-size: var(--text-xs);
     line-height: var(--text-xs--line-height);
+    font-weight: var(--font-regular);
+    color: var(--color-accent-text);
+    text-decoration: none;
+    white-space: nowrap;
+    border-radius: var(--radius-sm);
+  }
+  .dep-chain-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .dep-chain-link:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+
+  .dep-chain {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    position: relative;
+  }
+  /* 垂直時間線：畫在節點欄（20px）中央 */
+  .dep-chain::before {
+    content: '';
+    position: absolute;
+    left: 9px;
+    top: 14px;
+    bottom: 14px;
+    width: 2px;
+    background: var(--color-border);
+    border-radius: 1px;
+  }
+  .dep-chain-seg {
+    position: relative;
+  }
+  .dep-chain-seg + .dep-chain-seg {
+    margin-top: var(--space-1);
+  }
+  /* 段與段之間的小箭頭（方向：上游 → 本任務 → 下游） */
+  .dep-chain-seg--up::after,
+  .dep-chain-seg--self::after {
+    content: '';
+    position: absolute;
+    left: 6px;
+    bottom: -5px;
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid var(--color-border-strong);
+  }
+  .dep-group-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 28px;
+    padding-left: 30px;
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
+    color: var(--color-text-secondary);
+    font-weight: var(--font-medium);
+  }
+  .dep-group-hint {
+    font-weight: var(--font-regular);
     color: var(--color-text-tertiary);
   }
+  .dep-group-count {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: var(--radius-full);
+    background: var(--color-surface-active);
+    font-size: var(--text-2xs);
+    line-height: 18px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .dep-group-head .ui-btn {
+    margin-left: auto;
+  }
+
   .dep-list {
     list-style: none;
     margin: 0;
@@ -96,31 +237,50 @@
     gap: 2px;
   }
   .dep-row {
+    position: relative;
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
-    align-items: center;
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    align-items: start;
     column-gap: var(--space-2);
-    padding: 6px var(--space-2);
+    min-height: 36px;
+    padding: 4px 4px 4px 0;
     border-radius: var(--radius-md);
   }
-  .dep-row:hover {
+  .dep-row:hover,
+  .dep-row:focus-within {
     background: var(--color-surface-hover);
   }
-  .dep-row.is-done {
-    opacity: 0.65;
+  .dep-node {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
   }
-  .dep-row-status {
-    width: 8px;
-    height: 8px;
-    border-radius: var(--radius-full);
+  .dep-node-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
     background: var(--status-dot, var(--color-status-todo));
+    box-shadow: 0 0 0 2px var(--color-surface); /* 蓋在時間線上 */
   }
   .dep-row-main {
     min-width: 0;
     display: flex;
     flex-direction: column;
+    gap: 2px;
+  }
+  .dep-row-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+    min-height: 20px;
+    min-width: 0;
   }
   .dep-row-title {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
     padding: 0;
     border: 0;
     background: none;
@@ -129,50 +289,201 @@
     line-height: var(--text-sm--line-height);
     color: var(--color-text);
     text-align: left;
-    cursor: pointer;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    cursor: pointer;
   }
-  .dep-row-title:hover {
+  button.dep-row-title:hover {
     color: var(--color-accent-text);
     text-decoration: underline;
+    text-underline-offset: 2px;
   }
-  .dep-row.is-done .dep-row-title {
-    text-decoration: line-through;
+  button.dep-row-title:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
+    border-radius: var(--radius-sm);
   }
-  .dep-row-meta {
+  .dep-row-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px var(--space-3);
+    min-width: 0;
     font-size: var(--text-xs);
     line-height: var(--text-xs--line-height);
-    color: var(--color-text-tertiary);
-    font-variant-numeric: tabular-nums;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    color: var(--color-text-secondary);
+  }
+  .dep-row-person {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 140px;
+    min-width: 0;
     white-space: nowrap;
   }
-  .dep-row-meta .dep-delay {
-    color: var(--color-warning-text);
+  .dep-row-person-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .dep-row-meta .dep-ok {
+  .dep-row-due {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .dep-row-due--none {
+    color: var(--color-text-tertiary);
+  }
+  .dep-row[data-overdue] .dep-row-due {
+    color: var(--color-status-overdue-text);
+    font-weight: var(--font-medium);
+  }
+  .dep-row-lag {
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+  }
+  .dep-row-state,
+  .dep-wait-tag {
+    flex: none;
+    height: 18px;
+    padding: 0 6px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-full);
+    font-size: var(--text-2xs);
+    line-height: 16px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .dep-row-state--overdue {
+    background: var(--color-status-overdue-soft);
+    color: var(--color-status-overdue-text);
+    border-color: var(--color-status-overdue-border);
+  }
+  .dep-row-state--delay {
+    background: var(--color-status-blocked-soft);
+    color: var(--color-status-blocked-text);
+    border-color: var(--color-status-blocked-border);
+  }
+  .dep-row-state--ok {
+    background: var(--color-success-soft);
     color: var(--color-success-text);
   }
+  .dep-row-state--unknown,
+  .dep-row-state--done {
+    background: var(--color-surface-active);
+    color: var(--color-text-secondary);
+  }
+  /* 目前等待的節點：上游中決定本任務何時能開始的那一條（琥珀外圈＋標籤，標籤是真的元素、讀屏讀得到） */
+  .dep-wait-tag {
+    background: var(--color-status-blocked-soft);
+    border-color: var(--color-status-blocked);
+    color: var(--color-status-blocked-text);
+    font-weight: var(--font-medium);
+  }
+  .dep-row.is-current-wait .dep-node-dot {
+    box-shadow:
+      0 0 0 2px var(--color-surface),
+      0 0 0 4px var(--color-status-blocked);
+  }
+  .dep-row-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .dep-row-open {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: none;
+    font: inherit;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+  }
+  .dep-row-open:hover {
+    background: var(--color-surface-active);
+    color: var(--color-text);
+  }
+  .dep-row-open:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
+  }
+  .dep-row-open,
   .dep-row-remove {
     opacity: 0;
   }
+  .dep-row:hover .dep-row-open,
+  .dep-row:focus-within .dep-row-open,
   .dep-row:hover .dep-row-remove,
   .dep-row:focus-within .dep-row-remove {
     opacity: 1;
   }
   @media (hover: none) {
+    .dep-row-open,
     .dep-row-remove {
       opacity: 1;
     }
   }
+  .dep-row.is-done {
+    opacity: 0.6;
+  }
+  .dep-row.is-done .dep-row-title {
+    text-decoration: line-through;
+  }
+
+  /* 本任務那一列（鏈的中段） */
+  .dep-row--self {
+    grid-template-columns: 20px minmax(0, 1fr);
+    background: var(--color-accent-soft);
+  }
+  .dep-row--self:hover,
+  .dep-row--self:focus-within {
+    background: var(--color-accent-soft);
+  }
+  .dep-row--self .dep-node-dot {
+    width: 12px;
+    height: 12px;
+    background: var(--color-accent);
+    box-shadow:
+      0 0 0 2px var(--color-surface),
+      0 0 0 4px var(--color-accent-border);
+  }
+  .dep-row--self .dep-row-title {
+    font-weight: var(--font-medium);
+    cursor: default;
+  }
+  .dep-row--self .dep-row-title::before {
+    content: '本任務 · ';
+    color: var(--color-text-tertiary);
+    font-weight: var(--font-regular);
+  }
+
+  /* 舊的狀態點（新增選單的選項仍在用） */
+  .dep-row-status {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--status-dot, var(--color-status-todo));
+  }
+  .dep-node-dot.dep-row-status {
+    width: 10px;
+    height: 10px;
+  }
   .dep-none {
-    padding: 2px var(--space-2);
+    padding: 2px var(--space-2) 4px 30px;
     font-size: var(--text-sm);
     line-height: var(--text-sm--line-height);
     color: var(--color-text-tertiary);
+  }
+  .dep-options .dep-none {
+    padding-left: var(--space-2);
+  }
+  .dep-more {
+    margin: 2px 0 0 30px;
+    font-size: var(--text-xs);
   }
   .dep-self {
     display: flex;
@@ -181,11 +492,21 @@
     margin-bottom: var(--space-2);
     padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-md);
-    background: var(--color-warning-soft);
-    border: 1px solid var(--color-warning-border);
-    color: var(--color-warning-text);
+    background: var(--color-status-blocked-soft);
+    border: 1px solid var(--color-status-blocked-border);
+    color: var(--color-status-blocked-text);
     font-size: var(--text-sm);
     line-height: var(--text-sm--line-height);
+  }
+  .dep-self svg {
+    flex: none;
+  }
+
+  /* 行動版：狀態 pill 換到第二行也沒關係（line 已 wrap），動作常駐 */
+  @media (max-width: 767px) {
+    .dep-row-person {
+      max-width: 112px;
+    }
   }
 
   /* 新增選單 */

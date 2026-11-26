@@ -8,6 +8,7 @@ import { ReportDialog } from './ReportDialog.js';
 import { readTodoParam, sectionText } from './model.js';
 import { AssignedSection, PinnedSection } from './TaskSections.js';
 import { TodoSection } from './TodoSection.js';
+import { WeekCard } from './WeekCard.js';
 
 const USER_PARAM = 'user';
 
@@ -17,7 +18,9 @@ const USER_PARAM = 'user';
  */
 export function PersonalPage() {
   const me = useCurrentUser();
-  const [reportOpen, setReportOpen] = useState(false);
+  // 匯報對話框：template = null 為一般格式（原本的「產生匯報報告」）；本週卡的按鈕帶模版與區間進來
+  const [report, setReport] = useState({ open: false, template: null, preset: null });
+  const openReport = (template = null, preset = null) => setReport({ open: true, template, preset });
   const [sp, setSp] = useSearchParams();
   const users = useUsers();
   const raw = sp.get(USER_PARAM);
@@ -109,7 +112,7 @@ export function PersonalPage() {
         { className: 'pl-head-actions' },
         createElement(
           Button,
-          { variant: 'secondary', icon: 'list', onClick: () => setReportOpen(true) },
+          { variant: 'secondary', icon: 'list', onClick: () => openReport() },
           '產生匯報報告',
         ),
         createElement(
@@ -129,11 +132,15 @@ export function PersonalPage() {
       ),
     ),
     createElement(ReportDialog, {
-      open: reportOpen,
-      onClose: () => setReportOpen(false),
+      open: report.open,
+      onClose: () => setReport((r) => ({ ...r, open: false })),
       userId: viewingId,
       memberName: name,
+      selfName: me.displayName,
+      initialTemplate: report.template,
+      initialPreset: report.preset,
     }),
+    createElement(WeekCard, { key: `week-${viewingId}`, userId: viewingId, onReport: openReport }),
     createElement(
       'div',
       { className: 'pl-grid', key: viewingId },

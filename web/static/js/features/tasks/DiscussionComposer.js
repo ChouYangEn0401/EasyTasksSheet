@@ -228,7 +228,7 @@ export const DiscussionComposer = forwardRef(function DiscussionComposer(
     createElement(
       'div',
       { className: 'disc-hint', id: hintId },
-      createElement('span', null, 'Enter 送出 · Shift+Enter 換行'),
+      createElement('span', null, 'Enter 送出 · Shift+Enter 換行 · @ 提及成員'),
       remaining < 500 &&
         createElement(
           'span',

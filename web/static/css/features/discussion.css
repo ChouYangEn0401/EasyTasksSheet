@@ -341,7 +341,7 @@
   }
   .disc-author {
     font-size: var(--text-sm);
-    font-weight: var(--font-medium);
+    font-weight: var(--font-semibold);
     color: var(--color-text);
   }
   .disc-time {
@@ -426,8 +426,8 @@
   }
   .disc-body {
     margin-top: 1px;
-    font-size: var(--text-sm);
-    line-height: var(--text-sm--line-height);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
     color: var(--color-text);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -454,6 +454,8 @@
   .disc-mention--me {
     background: var(--color-warning-soft);
     color: var(--color-warning-text);
+    /* 1px 邊框用 inset 陰影畫，不改變行高與寬度 */
+    box-shadow: inset 0 0 0 1px var(--color-warning-border);
   }
   .disc-link {
     color: var(--color-accent-text);
@@ -538,6 +540,71 @@
   .disc-pending-state {
     font-size: var(--text-xs);
     color: var(--color-text-tertiary);
+  }
+
+  /* ── 可讀性（ui-refresh-2026-11-26 §8）──── */
+  /* 同一作者 5 分鐘內的連續根訊息：第二則起不顯示頭像與名字，左側空位 hover 才出現小時間 */
+  .disc-thread[data-cont='true'] {
+    margin-top: -8px;
+    padding-top: 0;
+    border-top: 0;
+  }
+  .disc-meta--cont {
+    min-height: 0;
+  }
+  .disc-msg--cont .disc-avatar {
+    display: flex;
+    justify-content: center;
+    padding-top: 4px;
+  }
+  .disc-cont-time {
+    display: block;
+    width: 32px;
+    margin: 0 -4px;
+    text-align: center;
+    font-size: var(--text-2xs);
+    line-height: var(--text-2xs--line-height);
+    color: var(--color-text-tertiary);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+  .disc-msg--cont:hover .disc-cont-time,
+  .disc-msg--cont:focus-within .disc-cont-time {
+    opacity: 1;
+  }
+  @media (hover: none) {
+    .disc-cont-time {
+      opacity: 1;
+    }
+  }
+  /* 別人提到我的訊息：左邊一條暖色線（inset 陰影，不推動版面） */
+  .disc-msg--mentions-me {
+    box-shadow: inset 2px 0 0 var(--color-warning);
+    background: color-mix(in srgb, var(--color-warning-soft) 45%, transparent);
+  }
+  /* 日期分隔線：跨日時插一行（畫法同未讀分隔線，顏色中性） */
+  .disc-day {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 0 4px;
+    font-size: var(--text-2xs);
+    line-height: var(--text-2xs--line-height);
+    color: var(--color-text-tertiary);
+    text-align: center;
+  }
+  .disc-day::before,
+  .disc-day::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--color-border-subtle);
+  }
+  .disc-day + .disc-thread {
+    border-top: 0;
+    padding-top: 4px;
   }
 
   /* 未讀分隔線 */

@@ -7,7 +7,7 @@
 
 export const DEFAULT_LAYOUT = {
   nodeWidth: 232,
-  nodeHeight: 112,
+  nodeHeight: 128, // ui-refresh-2026-11-26 §5.3：+16 放負責人名與「等待：…」那一行
   colGap: 72,
   rowGap: 20,
   padding: 16,
