@@ -44,7 +44,9 @@ def test_health_without_login():
     t = create_test_app(now=lambda: 123)
     res = t.http.get("/api/health")
     assert res.status_code == 200
-    assert res.json() == {"ok": True, "time": 123}
+    body = res.json()
+    assert body["ok"] is True and body["time"] == 123
+    assert body["app"] == "EasyTasksSheet" and "version" in body
 
 
 @pytest.mark.parametrize("method,path", PROTECTED_PATHS)
@@ -86,13 +88,13 @@ def test_spa_fallback(tmp_path):
     from server.app.app import create_app
 
     (tmp_path / "index.html").write_text('<div id="root"></div>', encoding="utf-8")
-    (tmp_path / "assets").mkdir()
-    (tmp_path / "assets" / "app.js").write_text("console.log(1)", encoding="utf-8")
+    (tmp_path / "static" / "js").mkdir(parents=True)
+    (tmp_path / "static" / "js" / "app.js").write_text("console.log(1)", encoding="utf-8")
     t = create_test_app()
     http = TestClient(create_app(t.db, static_dir=str(tmp_path)))
     assert '<div id="root">' in http.get("/some/spa/route").text
     assert http.get("/").status_code == 200
-    assert http.get("/assets/app.js").text == "console.log(1)"
+    assert http.get("/static/js/app.js").text == "console.log(1)"
     assert '<div id="root">' in http.get("/../pyproject.toml").text
     res = http.get("/api/unknown")
     assert res.status_code == 401  # 未登入的 /api/* 不會被 SPA 接走

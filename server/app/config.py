@@ -21,15 +21,14 @@ class ConfigError(ValueError):
 
 @dataclass(frozen=True)
 class Config:
-    NODE_ENV: str = "development"
+    #: 執行模式：development / production / test。舊名 NODE_ENV 仍可用（APP_ENV 優先）。
+    APP_ENV: str = "development"
     HOST: str = "127.0.0.1"
     PORT: int = 3000
-    WEB_PORT: int = 5173
     APP_ORIGIN: str | None = None
     DATABASE_PATH: str = "data/app.db"
-    STATIC_DIR: str = "dist/web"
     #: 掛在反向代理的子路徑底下時的網址前綴，例如 /easytasks（nginx 轉發時去掉前綴）；空 = 掛在網站根目錄。
-    #: 影響 cookie 路徑、後端產生的附件網址；前端在 npm run build 時讀同一個值（vite.config.ts）
+    #: 影響 cookie 路徑、後端產生的附件網址；前端的 index.html 由伺服器在每次請求時代入同一個值，改了只要重啟。
     BASE_PATH: str = ""
     TZ: str = "Asia/Taipei"
 
@@ -81,7 +80,7 @@ class Config:
 
     @property
     def is_production(self) -> bool:
-        return self.NODE_ENV == "production"
+        return self.APP_ENV == "production"
 
     @property
     def cookie_secure(self) -> bool:
@@ -90,7 +89,6 @@ class Config:
 
 _INT = {
     "PORT",
-    "WEB_PORT",
     "LOGIN_MAX_FAILS_PER_USER",
     "LOGIN_MAX_FAILS_PER_IP",
     "GIT_TIMEOUT_MS",
@@ -135,10 +133,15 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
     values: dict[str, object] = {}
     for name in Config.__dataclass_fields__:
         raw = env.get(name)
+        shown = name
+        if name == "APP_ENV" and (raw is None or raw == ""):
+            # 向下相容：舊版 .env 與部署腳本寫的是 NODE_ENV
+            raw = env.get("NODE_ENV")
+            shown = "NODE_ENV"
         if raw is None or raw == "":
             continue
         try:
-            if name == "NODE_ENV":
+            if name == "APP_ENV":
                 if raw not in ("development", "production", "test"):
                     raise ValueError(raw)
                 values[name] = raw
@@ -161,7 +164,7 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
             else:
                 values[name] = raw
         except ValueError as e:
-            raise ConfigError(f"環境變數 {name} 的值無效：{raw!r}") from e
+            raise ConfigError(f"環境變數 {shown} 的值無效：{raw!r}") from e
     return Config(**values)  # type: ignore[arg-type]
 
 

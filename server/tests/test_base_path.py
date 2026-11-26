@@ -29,8 +29,8 @@ def test_default_is_root():
 
 def _app(tmp_path, base_path="/easytasks"):
     (tmp_path / "index.html").write_text('<div id="root"></div>', encoding="utf-8")
-    (tmp_path / "assets").mkdir()
-    (tmp_path / "assets" / "app.js").write_text("console.log(1)", encoding="utf-8")
+    (tmp_path / "static" / "js").mkdir(parents=True)
+    (tmp_path / "static" / "js" / "app.js").write_text("console.log(1)", encoding="utf-8")
     t = create_test_app()
     app = create_app(t.db, settings={"cookie_path": base_path or "/"}, static_dir=str(tmp_path), base_path=base_path)
     return t, TestClient(app)
@@ -41,7 +41,7 @@ def test_prefix_stripped_or_not_both_work(tmp_path):
     _, http = _app(tmp_path)
     for prefix in ("", "/easytasks"):
         assert http.get(f"{prefix}/api/health").json()["ok"] is True
-        assert http.get(f"{prefix}/assets/app.js").text == "console.log(1)"
+        assert http.get(f"{prefix}/static/js/app.js").text == "console.log(1)"
         assert '<div id="root">' in http.get(f"{prefix}/tasks/list").text
         assert http.get(f"{prefix}/api/tasks").status_code == 401  # API 仍受登入保護
     assert http.get("/easytasks").status_code == 200

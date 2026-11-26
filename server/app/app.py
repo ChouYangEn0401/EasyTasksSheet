@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+import hashlib
+import mimetypes
+import os
 import time
 from pathlib import Path
 from typing import Any, Callable
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+
+# Windows 的登錄檔常把 .js 對到 text/plain，瀏覽器會拒絕以 ES module 載入；這裡一律釘死
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("image/svg+xml", ".svg")
+mimetypes.add_type("application/json", ".json")
+mimetypes.add_type("font/woff2", ".woff2")
 
 from .config import config
 from .db import Database
@@ -28,6 +38,7 @@ from .features import task_checklist
 from .features import audit_log
 from .features import task_comments
 from .features import site_pack
+from .version import APP_NAME, AUTHOR, REPOSITORY, __version__
 
 #: 不需登入的路由。/api/eng/worktrees/report 由端點自行以 WORKTREE_REPORT_TOKEN 驗證（仍受 CSRF 檢查約束）
 PUBLIC_PATHS = {
@@ -55,7 +66,7 @@ def create_app(
     base_path: str = "",
 ) -> FastAPI:
     """建立 app。now：可注入時鐘（unix ms）；settings：AuthSettings 欄位覆寫（測試用）；
-    static_dir：正式模式提供前端靜態檔與 SPA fallback 的目錄（None = 不提供）；
+    static_dir：前端目錄（含 index.html 與 static/；None = 只提供 API）。index.html 是模板，每次請求代入 BASE_PATH；
     base_path：子路徑前綴（BASE_PATH，例如 /easytasks；空 = 根目錄）。"""
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.db = db
@@ -86,7 +97,14 @@ def create_app(
 
     @app.get("/api/health")
     async def health() -> dict[str, Any]:
-        return {"ok": True, "time": app.state.now()}
+        return {
+            "ok": True,
+            "time": app.state.now(),
+            "app": APP_NAME,
+            "version": __version__,
+            "author": AUTHOR,
+            "repository": REPOSITORY,
+        }
 
     app.include_router(auth.router, prefix="/api/auth")
     app.include_router(users.router, prefix="/api/users")
@@ -130,7 +148,7 @@ def create_app(
     app.add_api_route("/api/{rest:path}", api_not_found, methods=ALL_METHODS, include_in_schema=False)
 
     if static_dir is not None:
-        _mount_spa(app, Path(static_dir))
+        _mount_spa(app, Path(static_dir), base_path, recompute=not config.is_production)
     if base_path:
         # 最外層：先去掉子路徑前綴，內部所有路由與檢查仍以 /api/... 為準
         app.add_middleware(StripBasePath, base_path=base_path)
@@ -160,17 +178,53 @@ class StripBasePath:
         await self.app(scope, receive, send)
 
 
-def _mount_spa(app: FastAPI, root: Path) -> None:
-    """正式模式：同一行程提供前端靜態檔，非 /api 路徑回退到 index.html（SPA）"""
+def _static_version(static_root: Path) -> str:
+    """static/ 底下所有檔案的（相對路徑、大小、修改時間）雜湊，當作網址裡的版本段。檔案一變網址就變，舊快取自然失效。"""
+    h = hashlib.sha1()
+    for dirpath, dirnames, filenames in os.walk(static_root):
+        dirnames.sort()
+        for name in sorted(filenames):
+            full = Path(dirpath) / name
+            st = full.stat()
+            h.update(f"{full.relative_to(static_root).as_posix()}|{st.st_size}|{st.st_mtime_ns}\n".encode())
+    return h.hexdigest()[:12]
+
+
+def _mount_spa(app: FastAPI, root: Path, base_path: str = "", recompute: bool = True) -> None:
+    """同一行程提供前端（無建置步驟的 ES modules）。
+
+    - `index.html` 是模板：`{{BASE}}` → BASE_PATH、`{{STATIC}}` → `{BASE}/static/v/<版本>`；每次請求代入，回 no-cache。
+    - `/static/v/<版本>/...`：版本化路徑，回一年 immutable 快取。模組之間以相對路徑互相 import，自然都落在同一個版本段底下。
+    - `/static/...`（沒有版本段）：回 no-cache，給人直接看或除錯用。
+    - `/static/` 底下找不到檔回 404（不能回 index.html，否則瀏覽器只會看到難懂的 MIME 錯誤）。
+    - 其他路徑一律回 index.html（SPA 路由）。
+    - recompute：每次回 index.html 都重算版本（開發：改了 JS 重新整理就生效）；正式模式啟動時算一次，改檔要重啟。
+    """
     root = root.resolve()
-    index_html = (root / "index.html").read_text(encoding="utf-8")
+    static_root = (root / "static").resolve()
+    template = (root / "index.html").read_text(encoding="utf-8")
+    cached_version = _static_version(static_root) if static_root.is_dir() else "0"
+
+    def render_index() -> HTMLResponse:
+        ver = _static_version(static_root) if (recompute and static_root.is_dir()) else cached_version
+        html = template.replace("{{STATIC}}", f"{base_path}/static/v/{ver}").replace("{{BASE}}", base_path)
+        return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+    def serve_static(rel: str, immutable: bool) -> Response:
+        candidate = (static_root / rel).resolve()
+        if not (candidate.is_relative_to(static_root) and candidate.is_file()):
+            return JSONResponse({"error": "NOT_FOUND", "message": f"找不到靜態檔：{rel}"}, status_code=404)
+        headers = {"Cache-Control": "public, max-age=31536000, immutable" if immutable else "no-cache"}
+        return FileResponse(candidate, headers=headers)
 
     async def spa(rest: str = ""):  # type: ignore[no-untyped-def]
-        if rest:
-            candidate = (root / rest).resolve()
-            if candidate.is_relative_to(root) and candidate.is_file():
-                return FileResponse(candidate)
-        return HTMLResponse(index_html)
+        if rest == "static" or rest.startswith("static/"):
+            rel = rest[len("static/") :]
+            if rel.startswith("v/"):
+                parts = rel.split("/", 2)
+                return serve_static(parts[2] if len(parts) == 3 else "", immutable=True)
+            return serve_static(rel, immutable=False)
+        return render_index()
 
     app.add_api_route("/", spa, methods=["GET", "HEAD"], include_in_schema=False)
     app.add_api_route("/{rest:path}", spa, methods=["GET", "HEAD"], include_in_schema=False)
