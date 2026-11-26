@@ -22,3 +22,6 @@ test-results/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# 專案內的免安裝版 Node.js（deploy/windows/ensure-node.ps1 下載，只用來建置前端）
+.tools/
