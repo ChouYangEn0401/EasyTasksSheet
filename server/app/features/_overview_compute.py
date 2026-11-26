@@ -39,7 +39,7 @@ def sort_members(members: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     """成員排序：無任務在前（待辦少 → 多）；進行中（逾期多 → 少）；同條件依使用者 id。
 
     不以名稱排序：Python 端無 ICU，中文定序與瀏覽器不同；前端會在同條件成員間以
-    Intl.Collator('zh-Hant') 依顯示名稱重排（src/web/features/overview/sortMembers.ts）。
+    Intl.Collator('zh-Hant') 依顯示名稱重排（web/static/js/features/overview/sortMembers.js）。
     """
 
     def key(m: dict[str, Any]) -> tuple:

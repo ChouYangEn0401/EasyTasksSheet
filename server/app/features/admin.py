@@ -109,7 +109,7 @@ def revoke_sessions(conn: sqlite3.Connection, user_id: int, keep_id: str | None 
 
 
 def is_last_active_root(target: dict[str, Any], all_users: list[dict[str, Any]]) -> bool:
-    """目標是否為唯一啟用中的 root（同 src/shared/admin.ts isLastActiveRoot）"""
+    """目標是否為唯一啟用中的 root（同 web/static/js/shared/admin.js isLastActiveRoot）"""
     if target["role"] != "root" or not target["isActive"]:
         return False
     return not any(u["id"] != target["id"] and u["role"] == "root" and u["isActive"] for u in all_users)

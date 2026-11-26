@@ -1,4 +1,4 @@
-"""請求 body 的 pydantic 模型（對應 src/shared/*.ts 的 zod schema）。
+"""請求 body 的 pydantic 模型（對應 web/static/js/shared/*.js 的常數；1.x 時是 zod schema）。
 
 慣例：選填但「不可為 null」的欄位寫成 `x: T = None`——預設值不經驗證，
 所以未送時為 None，明確送 null 則驗證失敗（同 zod 的 `.optional()`）。

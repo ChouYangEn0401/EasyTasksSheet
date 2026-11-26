@@ -4,7 +4,7 @@
 
 - `record_audit()`：與主操作在同一個 transaction 內寫入（以 SAVEPOINT 包住）；稽核寫入本身失敗時
   只記警告、不讓主操作失敗。即時更新沿用主操作本身的 record_change（每次寫入恰好一筆流水的不變式不變）：
-  前端收到 task / project / status / property / user / permission 變更時一併重抓稽核查詢（src/web/lib/sync.ts）。
+  前端收到 task / project / status / property / user / permission 變更時一併重抓稽核查詢（web/static/js/lib/sync.js）。
   還原同樣對被還原的資料呼叫 record_change。
 - `diff_fields()`：只留下有變動的欄位；`snapshot()`：把資料列轉成可比較的欄位字典（API 欄位名）。
 - 還原（`revert_action()` / `plan_revert()`，含衝突保護）在 audit_revert.py。

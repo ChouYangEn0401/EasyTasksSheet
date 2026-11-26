@@ -1,4 +1,4 @@
-"""測試 helper（對應 tests/helpers/db.ts、auth.ts）。"""
+"""測試 helper（1.x 時對應 tests/helpers 的 TS 版）。"""
 
 from __future__ import annotations
 

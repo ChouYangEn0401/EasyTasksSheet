@@ -141,12 +141,14 @@ def test_matrix_shape():
 
 
 def test_frontend_capabilities_in_sync():
-    """src/shared/permissions.ts 的 CAPABILITIES 與後端一致（名稱與最低角色）"""
+    """web/static/js/shared/permissions.js 的 CAPABILITIES 與後端一致（名稱與最低角色）"""
     import re
     from pathlib import Path
 
-    ts = (Path(__file__).resolve().parents[2] / "src" / "shared" / "permissions.ts").read_text(encoding="utf-8")
-    pairs = dict(re.findall(r"'([a-z_]+(?:\.[a-z_]+)+)': '(root|manager|user)'", ts))
+    js = (Path(__file__).resolve().parents[2] / "web" / "static" / "js" / "shared" / "permissions.js").read_text(
+        encoding="utf-8"
+    )
+    pairs = dict(re.findall(r"'([a-z_]+(?:\.[a-z_]+)+)': '(root|manager|user)'", js))
     assert pairs == CAPABILITIES
 
 
