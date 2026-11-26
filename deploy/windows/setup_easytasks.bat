@@ -1,69 +1,110 @@
 @echo off
-@echo off
 rem ============================================================================
-rem  EasyTasksSheet：第一次準備（或重建）程式環境。不註冊服務、不停任何服務。
-rem  做的事：建 .venv -> 安裝 Python 套件 -> 放 .env（已存在就不動）-> 建置前端 -> 建 data、logs
-rem  前提：已經 git clone 專案（本腳本自動以所在專案為準）；已安裝 Python 3.11 以上（所有使用者）。Node.js 不用先裝：沒有時自動下載免安裝版到 .tools\node
+rem  EasyTasksSheet - first-time setup (or rebuild) of the program environment.
+rem  Does: create .venv -> pip install -> create .env (kept if it exists)
+rem        -> build frontend -> create data / logs / backups folders.
+rem  Does NOT register or stop any service.
+rem  Needs: Python 3.11+ (installed for all users). Node.js is optional: if npm
+rem  is missing or older than v22, a portable Node.js 22 is downloaded into
+rem  <project>\.tools\node (used only to build the frontend).
+rem
+rem  KEEP THIS FILE ASCII-ONLY. cmd.exe misreads UTF-8 files after call/goto
+rem  (it jumps to the wrong byte offset), which breaks the script.
+rem  See server/tests/test_deploy_scripts.py.
 rem ============================================================================
 setlocal EnableExtensions EnableDelayedExpansion
-chcp 65001 >nul
-rem 專案路徑：本腳本在 <專案>\deploy\windows\，往上兩層就是專案根目錄（clone 到哪裡都適用）
+rem Project root = two folders up from this script (works wherever it is cloned)
 set "SCRIPT_DIR=%~dp0"
 for %%I in ("%~dp0..\..") do set "APP_DIR=%%~fI"
 
 if not exist "%APP_DIR%\main.py" (
-  echo [X] 找不到 %APP_DIR%\main.py：本腳本要放在專案的 deploy\windows\ 裡執行。
+  echo [X] %APP_DIR%\main.py not found. Run this script from the project's deploy\windows folder.
   goto :end
 )
 cd /d "%APP_DIR%"
 
-echo === [1/4] Python 環境 ===
+echo === [1/4] Python environment ===
 if not exist ".venv\Scripts\python.exe" (
   py -3.11 -m venv .venv 2>nul || py -3 -m venv .venv
-  if not exist ".venv\Scripts\python.exe" ( echo [X] 建立 venv 失敗：確認已安裝 Python 3.11 以上與 py launcher & goto :end )
+  if not exist ".venv\Scripts\python.exe" (
+    echo [X] Could not create .venv. Install Python 3.11+ with the py launcher.
+    goto :end
+  )
 )
-".venv\Scripts\python.exe" -m pip install -r requirements.txt || ( echo [X] pip 安裝失敗 & goto :end )
+".venv\Scripts\python.exe" -m pip install -r requirements.txt
+if errorlevel 1 (
+  echo [X] pip install failed.
+  goto :end
+)
 ".venv\Scripts\python.exe" --version
 
 echo === [2/4] .env ===
 if exist ".env" (
-  echo   .env 已存在，不覆蓋。
+  echo   .env already exists, not overwritten.
 ) else (
   copy /Y "deploy\windows\env.152.example" ".env" >nul
-  echo   已從 deploy\windows\env.152.example 建立 .env，請用記事本確認 BACKUP_DIR 等值。
+  echo   Created .env from deploy\windows\env.152.example. Check BACKUP_DIR in Notepad.
 )
 
-echo === [3/4] 建置前端（會讀 .env 的 BASE_PATH）===
-call :ensure_node || goto :end
-call npm ci || ( echo [X] npm ci 失敗 & goto :end )
-call npm run build || ( echo [X] npm run build 失敗 & goto :end )
+echo === [3/4] Build frontend - reads BASE_PATH from .env ===
+call :ensure_node
+if errorlevel 1 goto :end
+call npm ci
+if errorlevel 1 (
+  echo [X] npm ci failed.
+  goto :end
+)
+call npm run build
+if errorlevel 1 (
+  echo [X] npm run build failed.
+  goto :end
+)
+if not exist "dist\web\index.html" (
+  echo [X] Build finished but dist\web\index.html is missing.
+  goto :end
+)
+echo   [OK] dist\web\index.html built.
 
-echo === [4/4] 資料夾 ===
+echo === [4/4] Folders ===
 if not exist "data" mkdir "data"
 if not exist "logs" mkdir "logs"
 if not exist "backups" mkdir "backups"
-echo 完成。下一步：install_easytasks_service.bat check
+echo.
+echo DONE. Next: deploy\windows\install_easytasks_service.bat check
 
 :end
 echo.
 pause
 endlocal
-
 exit /b
 
-rem ---- 確保有 npm：系統有就用系統的；沒有就用（或下載）專案內的免安裝版 Node.js 22 ----
-rem 放在括號區塊外，避免 PATH 裡的 "Program Files (x86)" 弄壞 if ( ... ) 的解析
+rem ---------------------------------------------------------------------------
+rem :ensure_node - make npm available.
+rem   System Node v22+ on PATH -> use it.
+rem   Otherwise use (or download) the portable Node.js 22 in .tools\node.
+rem   Kept outside any ( ... ) block so a PATH containing "(x86)" cannot break parsing.
+rem ---------------------------------------------------------------------------
 :ensure_node
-where npm >nul 2>&1
-if not errorlevel 1 exit /b 0
 set "NODE_DIR=%APP_DIR%\.tools\node"
+set "SYS_NODE_MAJOR="
+for /f "tokens=1 delims=." %%V in ('node -v 2^>nul') do set "SYS_NODE_MAJOR=%%V"
+if defined SYS_NODE_MAJOR set "SYS_NODE_MAJOR=!SYS_NODE_MAJOR:v=!"
+if defined SYS_NODE_MAJOR if !SYS_NODE_MAJOR! GEQ 22 (
+  where npm >nul 2>&1
+  if not errorlevel 1 exit /b 0
+)
+if defined SYS_NODE_MAJOR echo   System Node v!SYS_NODE_MAJOR! is older than 22, using portable Node.js 22 instead.
 if exist "%NODE_DIR%\npm.cmd" goto :ensure_node_path
-echo   找不到 npm：自動下載免安裝版 Node.js 22 到 %NODE_DIR%
-echo   （只給本專案建置前端用，不跑安裝程式、不改系統設定）
+echo   npm not found: downloading portable Node.js 22 into %NODE_DIR%
+echo   - for building this project only; no installer, no system changes.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%ensure-node.ps1" -ProjectDir "%APP_DIR%"
 if errorlevel 1 (
-  echo [X] 下載 Node.js 失敗：確認這台電腦連得到 nodejs.org；
-  echo     或手動安裝 Node.js 22 LTS 後重開 cmd 再執行
+  echo [X] Node.js download failed. Check that this machine can reach nodejs.org,
+  echo     or install Node.js 22 LTS manually, reopen cmd and run this again.
+  exit /b 1
+)
+if not exist "%NODE_DIR%\npm.cmd" (
+  echo [X] %NODE_DIR%\npm.cmd not found after download.
   exit /b 1
 )
 :ensure_node_path
